@@ -30,7 +30,8 @@ public class MonsterAI : MonoBehaviour
 
     [Header("Patrol")]
     public Transform[] waypoints;                // optional; empty = wander randomly
-    public float wanderRadius = 40f;
+    public Transform patrolCenter;               // optional; wanders around this (defaults to spawn point)
+    public float wanderRadius = 15f;
     public float patrolPause = 2f;
 
     [Header("Chase")]
@@ -48,10 +49,12 @@ public class MonsterAI : MonoBehaviour
     float stateStartTime;
     float pauseUntil;
     int waypointIndex;
+    Vector3 homePosition;
 
     void Awake()
     {
         agent = GetComponent<NavMeshAgent>();
+        homePosition = transform.position;
     }
 
     void OnEnable() => NoiseSystem.OnNoise += HearNoise;
@@ -216,7 +219,7 @@ public class MonsterAI : MonoBehaviour
             agent.SetDestination(waypoints[waypointIndex].position);
             waypointIndex = (waypointIndex + 1) % waypoints.Length;
         }
-        else if (RandomPointNear(transform.position, wanderRadius, out var p))
+        else if (RandomPointNear(patrolCenter != null ? patrolCenter.position : homePosition, wanderRadius, out var p))
         {
             agent.SetDestination(p);
         }
