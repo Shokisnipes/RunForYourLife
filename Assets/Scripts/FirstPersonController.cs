@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -25,6 +26,9 @@ public class FirstPersonController : MonoBehaviour
     public float crouchHeight = 1.0f;
     public float crouchLerpSpeed = 10f;
 
+    // Every player in the scene registers here so the monster can find them (co-op ready)
+    public static readonly List<FirstPersonController> All = new List<FirstPersonController>();
+
     CharacterController controller;
     float pitch;
     float verticalVelocity;
@@ -40,6 +44,9 @@ public class FirstPersonController : MonoBehaviour
         controller.height = standHeight;
         controller.center = new Vector3(0f, standHeight / 2f, 0f);
     }
+
+    void OnEnable() => All.Add(this);
+    void OnDisable() => All.Remove(this);
 
     void Start()
     {
