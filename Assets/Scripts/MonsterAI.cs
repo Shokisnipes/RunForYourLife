@@ -1,13 +1,14 @@
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
-using UnityEngine.SceneManagement;
 
 public enum MonsterState { Patrol, Investigate, Chase, Search }
 
-// Put on the monster together with a NavMeshAgent.
+// Put on the monster together with a NavMeshAgent, NetworkObject and NetworkTransform.
+// The brain only runs on the host; everyone else just sees it move.
 // Patrol -> hears a noise -> Investigate -> sees you -> Chase -> loses you -> Search -> Patrol
 [RequireComponent(typeof(NavMeshAgent))]
-public class MonsterAI : MonoBehaviour
+public class MonsterAI : NetworkBehaviour
 {
     [Header("Current state (read only)")]
     public MonsterState state = MonsterState.Patrol;
@@ -37,6 +38,7 @@ public class MonsterAI : MonoBehaviour
     [Header("Chase")]
     public float loseSightTime = 2f;             // keeps tracking you briefly after losing sight
     public float catchDistance = 1.6f;
+    public float catchCooldown = 3f;             // ignores everyone briefly after a catch
 
     [Header("Search")]
     public float searchDuration = 12f;
@@ -50,6 +52,7 @@ public class MonsterAI : MonoBehaviour
     float pauseUntil;
     int waypointIndex;
     Vector3 homePosition;
+    float ignorePlayersUntil;
 
     void Awake()
     {
@@ -60,13 +63,20 @@ public class MonsterAI : MonoBehaviour
     void OnEnable() => NoiseSystem.OnNoise += HearNoise;
     void OnDisable() => NoiseSystem.OnNoise -= HearNoise;
 
-    void Start()
+    public override void OnNetworkSpawn()
     {
+        if (!IsServer)
+        {
+            agent.enabled = false;   // the host moves it; we just watch
+            return;
+        }
         SetState(MonsterState.Patrol);
     }
 
     void Update()
     {
+        if (!IsServer || !IsSpawned) return;
+
         var seen = FindVisiblePlayer();
         if (seen != null)
         {
@@ -170,6 +180,7 @@ public class MonsterAI : MonoBehaviour
 
     void HearNoise(Vector3 position, float radius)
     {
+        if (!IsServer || !IsSpawned) return;
         if (state == MonsterState.Chase) return;
 
         float dist = Vector3.Distance(transform.position, position);
@@ -181,6 +192,8 @@ public class MonsterAI : MonoBehaviour
 
     FirstPersonController FindVisiblePlayer()
     {
+        if (Time.time < ignorePlayersUntil) return null;
+
         Vector3 eye = transform.position + Vector3.up * eyeHeight;
         FirstPersonController best = null;
         float bestDist = float.MaxValue;
@@ -247,8 +260,11 @@ public class MonsterAI : MonoBehaviour
 
     void CatchPlayer()
     {
-        Debug.Log("Caught by the monster!");
-        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);   // restart for now
+        Debug.Log($"Monster caught player {target.OwnerClientId}");
+        target.Caught();                         // that player respawns at PlayerSpawn
+        target = null;
+        ignorePlayersUntil = Time.time + catchCooldown;
+        SetState(MonsterState.Patrol);
     }
 
     // ---------- Debug drawing in the Scene view ----------

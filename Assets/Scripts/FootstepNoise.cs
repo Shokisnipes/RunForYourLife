@@ -1,9 +1,11 @@
+using Unity.Netcode;
 using UnityEngine;
 
 // Put on the Player next to FirstPersonController.
+// Each footstep sends a noise to the host (where the monster lives).
 // Each footstep emits a noise: sprinting is loud, walking is medium, crouching is nearly silent.
 [RequireComponent(typeof(FirstPersonController))]
-public class FootstepNoise : MonoBehaviour
+public class FootstepNoise : NetworkBehaviour
 {
     [Header("Noise radius per footstep (meters)")]
     public float crouchRadius = 2f;
@@ -36,6 +38,8 @@ public class FootstepNoise : MonoBehaviour
 
     void Update()
     {
+        if (!IsSpawned || !IsOwner) return;
+
         bool grounded = controller.isGrounded;
 
         // Landing from a jump/fall is loud
@@ -60,7 +64,7 @@ public class FootstepNoise : MonoBehaviour
 
     void MakeNoise(float radius)
     {
-        NoiseSystem.Emit(transform.position, radius);
+        NoiseRpc(transform.position, radius);
 
         lastNoisePos = transform.position;
         lastNoiseRadius = radius;
@@ -72,6 +76,12 @@ public class FootstepNoise : MonoBehaviour
             float volume = Mathf.Clamp01(radius / sprintRadius) * 0.8f + 0.2f;
             audioSource.PlayOneShot(footstepClips[Random.Range(0, footstepClips.Length)], volume);
         }
+    }
+
+    [Rpc(SendTo.Server)]
+    void NoiseRpc(Vector3 position, float radius)
+    {
+        NoiseSystem.Emit(position, radius);
     }
 
     // Yellow circle in the Scene view shows how far each footstep carries
