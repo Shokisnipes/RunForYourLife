@@ -13,6 +13,10 @@ public class MonsterAI : NetworkBehaviour
     [Header("Current state (read only)")]
     public MonsterState state = MonsterState.Patrol;
 
+    // The host writes the state, everyone reads it (used for sounds/animation)
+    readonly NetworkVariable<MonsterState> netState = new NetworkVariable<MonsterState>(MonsterState.Patrol);
+    public MonsterState SyncedState => netState.Value;
+
     [Header("Speeds")]
     public float patrolSpeed = 2f;
     public float investigateSpeed = 3.5f;
@@ -99,6 +103,7 @@ public class MonsterAI : NetworkBehaviour
     void SetState(MonsterState newState)
     {
         state = newState;
+        if (IsServer) netState.Value = newState;
         stateStartTime = Time.time;
         pauseUntil = 0f;
 

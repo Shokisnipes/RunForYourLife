@@ -13,6 +13,7 @@ public class BuildingGenerator : EditorWindow
     float doorHeight = 2.3f;
     float doorOffset = 0f;      // slide the door left/right along the front wall
     bool addInteriorWall = false;
+    bool addReverb = true;
     Material wallMaterial;
 
     [MenuItem("Tools/RunForYourLife/Building Generator")]
@@ -34,6 +35,7 @@ public class BuildingGenerator : EditorWindow
 
         GUILayout.Space(6);
         addInteriorWall = EditorGUILayout.Toggle("Interior Wall", addInteriorWall);
+        addReverb = EditorGUILayout.Toggle("Indoor Echo (Reverb)", addReverb);
         wallMaterial = (Material)EditorGUILayout.ObjectField("Material", wallMaterial, typeof(Material), false);
 
         GUILayout.Space(10);
@@ -94,6 +96,15 @@ public class BuildingGenerator : EditorWindow
             float z = depth * 0.15f;
             Box(root, "Interior_L", new Vector3(-innerW / 2f + segment / 2f, height / 2f, z), new Vector3(segment, height, t));
             Box(root, "Interior_R", new Vector3(innerW / 2f - segment / 2f, height / 2f, z), new Vector3(segment, height, t));
+        }
+
+        // Echo when you're inside
+        if (addReverb)
+        {
+            var zone = root.AddComponent<AudioReverbZone>();
+            zone.reverbPreset = AudioReverbPreset.Room;
+            zone.minDistance = Mathf.Min(width, depth) * 0.4f;
+            zone.maxDistance = Mathf.Max(width, depth) * 0.5f;
         }
 
         Selection.activeGameObject = root;
