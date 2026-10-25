@@ -53,10 +53,10 @@ public class MonsterAnimator : MonoBehaviour
     public Vector3 holdOffset = new Vector3(0.05f, -0.05f, 0.3f);
 
     [Header("Foot plants (sound + shake land on contact)")]
-    [Tooltip("Foot counts as planted below this height. In NORMAL human meters; scaled to the model automatically.")]
-    public float plantHeight = 0.11f;
-    [Tooltip("Foot counts as lifted above this height (normal human meters). Keep it above Plant Height.")]
-    public float liftHeight = 0.18f;
+    [Tooltip("Foot counts as planted when it's within this much of its standing height (normal human meters).")]
+    public float plantMargin = 0.03f;
+    [Tooltip("Foot counts as lifted once it's this much above its standing height (normal human meters). Lower it for shuffling walks.")]
+    public float liftMargin = 0.06f;
     public bool showFootDebug = false;
 
     [Header("Foot grounding (IK keeps planted feet on the ground)")]
@@ -179,7 +179,7 @@ public class MonsterAnimator : MonoBehaviour
         // The model starts in its standing T-pose: the feet's height above the root IS the ankle height
         if (autoAnkleHeight && leftFoot != null && rightFoot != null)
         {
-            float measured = Mathf.Min(leftFoot.position.y, rightFoot.position.y) - root.position.y;
+            float measured = Mathf.Min(leftFoot.position.y, rightFoot.position.y) - transform.position.y;
             measured /= modelScale;
             if (measured > 0.02f && measured < 0.3f) ankleHeight = measured;
             else Debug.LogWarning($"MonsterAnimator: couldn't measure ankle height (got {measured:0.000}), using {ankleHeight}");
@@ -380,8 +380,9 @@ public class MonsterAnimator : MonoBehaviour
         {
             // Only the foot that's actually on the ground tells us the stride speed
             bool leftDown = l.y < r.y;
-            float footHeight = (leftDown ? l.y : r.y) / modelScale;   // normal human meters
-            if (footHeight < plantHeight * 1.5f)
+            float footY = leftDown ? leftFoot.position.y : rightFoot.position.y;
+            float footHeight = (footY - transform.position.y) / modelScale - ankleHeight;   // above standing height
+            if (footHeight < plantMargin * 1.5f)
             {
                 float backward = leftDown ? (leftLastLocal.z - l.z) : (rightLastLocal.z - r.z);
                 float natural = (backward / Time.deltaTime) / animator.speed;   // m/s at playback 1
@@ -405,15 +406,16 @@ public class MonsterAnimator : MonoBehaviour
     void CheckFoot(Transform foot, ref bool planted)
     {
         if (foot == null) return;
-        float h = (foot.position.y - root.position.y) / modelScale;   // in normal human meters
+        // Height above its standing height, measured from the model itself (so lifting the model doesn't matter)
+        float h = (foot.position.y - transform.position.y) / modelScale - ankleHeight;   // normal human meters
 
-        if (!planted && h < plantHeight)
+        if (!planted && h < plantMargin)
         {
             planted = true;
             if (smoothedSpeed > 0.2f && monsterAudio != null)
                 monsterAudio.Footstep(foot.position);
         }
-        else if (planted && h > liftHeight)
+        else if (planted && h > liftMargin)
         {
             planted = false;
         }
@@ -573,8 +575,8 @@ public class MonsterAnimator : MonoBehaviour
         Gizmos.color = planted ? Color.green : Color.red;
         Gizmos.DrawSphere(foot.position, 0.3f * modelScale / 8f + 0.2f);
 #if UNITY_EDITOR
-        float h = (foot.position.y - root.position.y) / modelScale;
-        UnityEditor.Handles.Label(foot.position + Vector3.up, h.ToString("0.00"));
+        float h = (foot.position.y - transform.position.y) / modelScale - ankleHeight;
+        UnityEditor.Handles.Label(foot.position + Vector3.up, h.ToString("0.000"));
 #endif
     }
 }
