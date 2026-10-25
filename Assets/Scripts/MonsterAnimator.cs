@@ -61,8 +61,12 @@ public class MonsterAnimator : MonoBehaviour
 
     [Header("Foot grounding (IK keeps planted feet on the ground)")]
     public bool groundFeet = true;
-    [Tooltip("Ankle height above the sole, in normal human meters.")]
+    [Tooltip("Measure the ankle height from the model's standing pose at startup (recommended).")]
+    public bool autoAnkleHeight = true;
+    [Tooltip("Ankle height above the sole, in normal human meters. Set automatically if Auto Ankle Height is on.")]
     public float ankleHeight = 0.09f;
+    [Tooltip("Most the hips may drop to plant a foot (normal human meters).")]
+    public float maxHipDrop = 0.1f;
     [Tooltip("Feet closer to the ground than this (normal human meters) get pinned to it.")]
     public float groundingZone = 0.2f;
     [Tooltip("How fast the hips move down/up to let both feet reach the ground.")]
@@ -171,6 +175,15 @@ public class MonsterAnimator : MonoBehaviour
         head = animator.GetBoneTransform(HumanBodyBones.Head);
         leftHandBone = animator.GetBoneTransform(HumanBodyBones.LeftHand);
         rightHandBone = animator.GetBoneTransform(HumanBodyBones.RightHand);
+
+        // The model starts in its standing T-pose: the feet's height above the root IS the ankle height
+        if (autoAnkleHeight && leftFoot != null && rightFoot != null)
+        {
+            float measured = Mathf.Min(leftFoot.position.y, rightFoot.position.y) - root.position.y;
+            measured /= modelScale;
+            if (measured > 0.02f && measured < 0.3f) ankleHeight = measured;
+            else Debug.LogWarning($"MonsterAnimator: couldn't measure ankle height (got {measured:0.000}), using {ankleHeight}");
+        }
 
         ScaleBone(HumanBodyBones.LeftUpperArm, armScale);
         ScaleBone(HumanBodyBones.RightUpperArm, armScale);
@@ -488,6 +501,7 @@ public class MonsterAnimator : MonoBehaviour
 
         // If a planted foot can't reach the ground, drop the hips so it can (never raise above the animation)
         float targetOffset = Mathf.Min(0f, Mathf.Min(leftNeed, rightNeed));
+        targetOffset = Mathf.Max(targetOffset, -maxHipDrop * modelScale);
         hipOffset = Mathf.Lerp(hipOffset, targetOffset, 1f - Mathf.Exp(-hipAdjustSpeed * Time.deltaTime));
         animator.bodyPosition += Vector3.up * hipOffset;
     }
