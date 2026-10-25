@@ -48,6 +48,7 @@ public class MonsterAI : NetworkBehaviour
     public float eyeHeightPeeking = 3f;     // crouched at a doorway, peering in
     public float sightRange = 35f;
     public float flashlightSightRange = 50f;
+    public float litSightRange = 45f;       // standing under a lit street lamp
     public float viewAngle = 120f;          // full cone width (horizontal)
     public float crouchVisibility = 0.6f;   // crouching shrinks how far it can see you
     public float feelRange = 6f;            // notices you this close even from behind
@@ -580,6 +581,7 @@ public class MonsterAI : NetworkBehaviour
 
             var light = player.GetComponentInChildren<Flashlight>();
             float range = (light != null && light.IsOn) ? flashlightSightRange : sightRange;
+            if (StreetLamp.IsUnderLight(player.transform.position)) range = Mathf.Max(range, litSightRange);
             if (player.IsCrouching) range *= crouchVisibility;
             if (dist > range) continue;
 

@@ -150,6 +150,7 @@ public class BuildingGenerator : EditorWindow
         go.transform.localPosition = localPos;
         go.transform.localScale = size;   // plain cubes are 1x1x1, so scale = size in meters
         go.isStatic = true;               // lets lighting + NavMesh treat it as level geometry
+        go.AddComponent<BoxUV>();         // textures tile at real-world size
         if (wallMaterial != null)
             go.GetComponent<MeshRenderer>().sharedMaterial = wallMaterial;
     }
