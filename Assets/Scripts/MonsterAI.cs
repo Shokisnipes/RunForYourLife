@@ -72,6 +72,7 @@ public class MonsterAI : NetworkBehaviour
     public float reachRange = 7f;           // how far its arm gets into an opening
     public float reachWindup = 0.8f;        // time between seeing you in range and grabbing
     public float peekDuration = 6f;         // how long it waits at the opening without seeing you
+    public float doorSearchRadius = 15f;    // only uses doorways (ReachPoints) this close to where you are
 
     [Header("Search")]
     public float searchDuration = 15f;
@@ -93,6 +94,7 @@ public class MonsterAI : NetworkBehaviour
     float windupStart = -1f;
     float arrivedTime = -1f;
     float grabStart = -1f;
+    ReachPoint currentReachPoint;
     float holdUntil;
     bool holding;
 
@@ -223,9 +225,12 @@ public class MonsterAI : NetworkBehaviour
                 nextPathCheck = 0f;
                 break;
             case MonsterState.Reach:
+                // Only peek in through a doorway. No doorway near you? Back to patrolling.
+                currentReachPoint = FindReachPoint(pointOfInterest);
+                if (currentReachPoint == null) { SetState(MonsterState.Patrol); return; }
                 agent.speed = pursuitSpeed;
                 agent.acceleration = 10f;
-                agent.SetDestination(pointOfInterest);   // ends at the closest spot it can stand
+                agent.SetDestination(StandPoint(currentReachPoint));
                 break;
             case MonsterState.Search:
                 agent.speed = huntSpeed;
@@ -328,12 +333,14 @@ public class MonsterAI : NetworkBehaviour
 
     void UpdateReach()
     {
+        if (currentReachPoint == null) { SetState(MonsterState.Patrol); return; }
+
         // Walking to the opening
         if (arrivedTime < 0f)
         {
             if (!Arrived())
             {
-                if (Time.time - stateStartTime > 15f) SetState(MonsterState.Search);   // couldn't get there
+                if (Time.time - stateStartTime > 15f) SetState(MonsterState.Patrol);   // couldn't get there
                 return;
             }
             arrivedTime = Time.time;
@@ -341,10 +348,11 @@ public class MonsterAI : NetworkBehaviour
             agent.updateRotation = false;
         }
 
-        // Crouched at the opening, peering in
-        FaceTowards(pointOfInterest);
-
         bool seesTarget = target != null && target.IsSpawned && Time.time - lastSeenTime < 0.25f;
+
+        // Crouched at the doorway, peering in (toward you if it can see you)
+        FaceTowards(seesTarget ? pointOfInterest : currentReachPoint.LookInPoint);
+
         if (seesTarget)
         {
             pointOfInterest = lastSeenPosition;
@@ -365,9 +373,9 @@ public class MonsterAI : NetworkBehaviour
         }
         else windupStart = -1f;
 
-        // Nothing for a while: give up and search the area around the building
+        // Nothing for a while: give up and go back to patrolling
         if (Time.time - Mathf.Max(arrivedTime, lastSeenTime) > peekDuration)
-            SetState(MonsterState.Search);
+            SetState(MonsterState.Patrol);
     }
 
     void UpdateSearch()
@@ -460,12 +468,33 @@ public class MonsterAI : NetworkBehaviour
 
     // ---------- Navigation helpers ----------
 
+    // Nearest doorway to 'position' that the giant can actually walk to
+    ReachPoint FindReachPoint(Vector3 position)
+    {
+        ReachPoint best = null;
+        float bestDist = doorSearchRadius;
+        foreach (var rp in ReachPoint.All)
+        {
+            float d = Vector3.Distance(position, rp.transform.position);
+            if (d > bestDist) continue;
+            if (!IsReachable(rp.transform.position, 4f)) continue;
+            best = rp;
+            bestDist = d;
+        }
+        return best;
+    }
+
+    Vector3 StandPoint(ReachPoint rp)
+    {
+        return NavMesh.SamplePosition(rp.transform.position, out var hit, 4f, Filter) ? hit.position : rp.transform.position;
+    }
+
     NavMeshQueryFilter Filter => new NavMeshQueryFilter { agentTypeID = agent.agentTypeID, areaMask = agent.areaMask };
 
     // Can the giant actually walk all the way to this spot?
-    bool IsReachable(Vector3 position)
+    bool IsReachable(Vector3 position, float snapDistance = 1.5f)
     {
-        if (!NavMesh.SamplePosition(position, out var hit, 1.5f, Filter)) return false;
+        if (!NavMesh.SamplePosition(position, out var hit, snapDistance, Filter)) return false;
         return agent.CalculatePath(hit.position, path) && path.status == NavMeshPathStatus.PathComplete;
     }
 

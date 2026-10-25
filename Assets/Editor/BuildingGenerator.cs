@@ -98,6 +98,9 @@ public class BuildingGenerator : EditorWindow
             Box(root, "Interior_R", new Vector3(innerW / 2f - segment / 2f, height / 2f, z), new Vector3(segment, height, t));
         }
 
+        // Doorway marker for the giant: it crouches here and reaches in
+        AddReachPoint(root.transform, doorOffset, frontZ);
+
         // Echo when you're inside
         if (addReverb)
         {
@@ -108,6 +111,35 @@ public class BuildingGenerator : EditorWindow
         }
 
         Selection.activeGameObject = root;
+    }
+
+    const float GiantStandDistance = 3.5f;   // how far outside the door the giant stands
+
+    static void AddReachPoint(Transform building, float doorX, float frontZ)
+    {
+        var rp = new GameObject("ReachPoint");
+        rp.transform.SetParent(building, false);
+        rp.transform.localPosition = new Vector3(doorX, 0f, frontZ - GiantStandDistance);
+        rp.transform.localRotation = Quaternion.identity;   // forward (+Z) points into the building
+        rp.AddComponent<ReachPoint>();
+        Undo.RegisterCreatedObjectUndo(rp, "Add Reach Point");
+    }
+
+    // For buildings made before reach points existed
+    [MenuItem("Tools/RunForYourLife/Add Reach Points To Existing Buildings")]
+    static void AddToExisting()
+    {
+        int added = 0;
+        foreach (var t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (t.name != "Wall_Front_Top" || t.parent == null) continue;
+            var building = t.parent;
+            if (building.GetComponentInChildren<ReachPoint>() != null) continue;
+
+            AddReachPoint(building, t.localPosition.x, t.localPosition.z);
+            added++;
+        }
+        Debug.Log($"Added {added} reach point(s).");
     }
 
     void Box(GameObject parent, string name, Vector3 localPos, Vector3 size)
