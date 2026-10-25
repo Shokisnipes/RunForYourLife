@@ -16,6 +16,8 @@ public class FootstepNoise : NetworkBehaviour
 
     [Header("Steps")]
     public float strideLength = 0.75f;   // meters travelled per footstep
+    [Tooltip("Stand still this long and your next movement plays a footstep right away.")]
+    public float stopTime = 0.15f;
 
     [Header("Audio")]
     public AudioClip[] footstepClips;
@@ -30,6 +32,7 @@ public class FootstepNoise : NetworkBehaviour
     bool wasGrounded = true;
     Vector3 lastPosition;
     float smoothedSpeed;
+    float stillTimer = 999f;             // start "stopped" so the very first move makes a step
 
     // For the Scene view gizmo
     Vector3 lastNoisePos;
@@ -82,18 +85,36 @@ public class FootstepNoise : NetworkBehaviour
         }
         lastPosition = transform.position;
 
-        if (!grounded || speed < 0.3f) return;
+        if (!grounded) return;
+
+        if (speed < 0.3f)
+        {
+            stillTimer += Time.deltaTime;
+            return;
+        }
+
+        // Just started moving after standing still: first footfall happens immediately
+        if (stillTimer >= stopTime)
+        {
+            stillTimer = 0f;
+            distanceSinceStep = 0f;
+            Step(RadiusFor(speed), false);
+            return;
+        }
+        stillTimer = 0f;
 
         distanceSinceStep += speed * Time.deltaTime;
         if (distanceSinceStep < strideLength) return;
         distanceSinceStep = 0f;
 
-        float radius;
-        if (player.IsCrouching) radius = crouchRadius;
-        else if (speed > (player.walkSpeed + player.sprintSpeed) / 2f) radius = sprintRadius;
-        else radius = walkRadius;
+        Step(RadiusFor(speed), false);
+    }
 
-        Step(radius, false);
+    float RadiusFor(float speed)
+    {
+        if (player.IsCrouching) return crouchRadius;
+        if (speed > (player.walkSpeed + player.sprintSpeed) / 2f) return sprintRadius;
+        return walkRadius;
     }
 
     void Step(float radius, bool landing)
