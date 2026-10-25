@@ -11,6 +11,11 @@ public class CameraShake : MonoBehaviour
     public float maxAngle = 2.5f;        // degrees
     public float frequency = 22f;        // how fast it jitters
     public float recovery = 1.6f;        // how fast it settles
+    [Header("Impact kick (the instant 'thud' on each hit)")]
+    public float kickDrop = 0.06f;       // meters the view dips on impact
+    public float kickPitch = 1.5f;       // degrees the view nods down on impact
+    public float kickRecovery = 14f;     // how fast it springs back (higher = snappier)
+
     [Tooltip("Overall multiplier. Turn it up or down to taste.")]
     [Range(0f, 5f)] public float intensity = 2.5f;
 
@@ -18,6 +23,7 @@ public class CameraShake : MonoBehaviour
 
     Camera cam;
     float trauma;                        // 0..1
+    float kick;                          // 0..1, spikes instantly, decays fast
     float seed;
     Vector3 basePos;
     Quaternion baseRot;
@@ -42,6 +48,7 @@ public class CameraShake : MonoBehaviour
             float falloff = 1f - Vector3.Distance(source, s.transform.position) / range;
             if (falloff <= 0f) continue;
             s.trauma = Mathf.Clamp01(s.trauma + strength * falloff);
+            s.kick = Mathf.Clamp01(Mathf.Max(s.kick, strength * falloff * 1.5f));
         }
     }
 
@@ -55,7 +62,12 @@ public class CameraShake : MonoBehaviour
         float ny = Mathf.PerlinNoise(seed + 1f, t) * 2f - 1f;
         float nr = Mathf.PerlinNoise(seed + 2f, t) * 2f - 1f;
 
-        transform.localPosition = basePos + new Vector3(nx, ny, 0f) * maxOffset * shake;
-        transform.localRotation = baseRot * Quaternion.Euler(ny * maxAngle * shake, nx * maxAngle * shake, nr * maxAngle * shake);
+        // The kick hits on the exact frame of the impact, then springs back
+        kick = Mathf.Lerp(kick, 0f, 1f - Mathf.Exp(-kickRecovery * Time.deltaTime));
+        float k = kick * intensity;
+
+        transform.localPosition = basePos + new Vector3(nx, ny, 0f) * maxOffset * shake + Vector3.down * kickDrop * k;
+        transform.localRotation = baseRot * Quaternion.Euler(
+            ny * maxAngle * shake + kickPitch * k, nx * maxAngle * shake, nr * maxAngle * shake);
     }
 }
