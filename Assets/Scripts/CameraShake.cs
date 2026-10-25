@@ -11,6 +11,8 @@ public class CameraShake : MonoBehaviour
     public float maxAngle = 2.5f;        // degrees
     public float frequency = 22f;        // how fast it jitters
     public float recovery = 1.6f;        // how fast it settles
+    [Tooltip("Overall multiplier. Turn it up or down to taste.")]
+    [Range(0f, 5f)] public float intensity = 2.5f;
 
     static readonly List<CameraShake> all = new List<CameraShake>();
 
@@ -46,7 +48,7 @@ public class CameraShake : MonoBehaviour
     void LateUpdate()
     {
         trauma = Mathf.MoveTowards(trauma, 0f, recovery * Time.deltaTime);
-        float shake = trauma * trauma;   // squared: small hits are subtle, big hits are violent
+        float shake = Mathf.Pow(trauma, 1.3f) * intensity;   // big hits are noticeably more violent
 
         float t = Time.time * frequency;
         float nx = Mathf.PerlinNoise(seed, t) * 2f - 1f;
