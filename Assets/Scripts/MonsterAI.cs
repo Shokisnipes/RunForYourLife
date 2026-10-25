@@ -26,10 +26,14 @@ public class MonsterAI : NetworkBehaviour
     readonly NetworkVariable<bool> netHasLookTarget = new NetworkVariable<bool>();
     readonly NetworkVariable<bool> netPeeking = new NetworkVariable<bool>();
     readonly NetworkVariable<bool> netReaching = new NetworkVariable<bool>();
+    readonly NetworkVariable<Vector3> netHandTarget = new NetworkVariable<Vector3>();
+    readonly NetworkVariable<Vector3> netDoorPoint = new NetworkVariable<Vector3>();
     public Vector3 SyncedLookTarget => netLookTarget.Value;
     public bool SyncedHasLookTarget => netHasLookTarget.Value;
     public bool SyncedPeeking => netPeeking.Value;
     public bool SyncedReaching => netReaching.Value;
+    public Vector3 SyncedHandTarget => netHandTarget.Value;
+    public Vector3 SyncedDoorPoint => netDoorPoint.Value;
 
     [Header("Movement")]
     public float walkSpeed = 2.5f;        // slow, lumbering patrol
@@ -68,10 +72,15 @@ public class MonsterAI : NetworkBehaviour
     public float grabHoldTime = 3.5f;       // stands still holding you up after a catch
     public float catchCooldown = 4f;
 
-    [Header("Reach (you're somewhere it can't walk, e.g. inside a building)")]
-    public float reachRange = 7f;           // how far its arm gets into an opening
-    public float reachWindup = 0.8f;        // time between seeing you in range and grabbing
-    public float peekDuration = 6f;         // how long it waits at the opening without seeing you
+    [Header("Reach (arm goes in through a doorway and feels around)")]
+    public float peekBeforeReach = 1.2f;    // looks in first, then the arm comes in
+    public float reachDepth = 6f;           // how far past the doorway the hand can go
+    public float handSpeed = 2.5f;          // feeling around blind
+    public float handLungeSpeed = 7f;       // going for you when it sees/hears you
+    public float handRadius = 0.45f;        // size of the hand for hitting walls
+    public float grabRadius = 1.1f;         // hand this close to you = caught
+    public float feelDuration = 8f;         // gives up after feeling around this long
+    public float peekDuration = 6f;         // waits this long at the door without seeing you (before reaching)
     public float doorSearchRadius = 15f;    // only uses doorways (ReachPoints) this close to where you are
 
     [Header("Search")]
@@ -95,6 +104,14 @@ public class MonsterAI : NetworkBehaviour
     float arrivedTime = -1f;
     float grabStart = -1f;
     ReachPoint currentReachPoint;
+
+    enum ReachPhase { Peek, Enter, Feel, Retract }
+    ReachPhase reachPhase;
+    float reachPhaseStart;
+    Vector3 handPos, handGoal;
+    float nextProbeTime;
+    float heardTime = -999f;
+    readonly RaycastHit[] handHits = new RaycastHit[8];
     float holdUntil;
     bool holding;
 
@@ -170,6 +187,11 @@ public class MonsterAI : NetworkBehaviour
             look = Chest(target);          // stares right at you
             hasLook = true;
         }
+        else if (state == MonsterState.Reach && arrivedTime >= 0f && reachPhase == ReachPhase.Feel)
+        {
+            look = handGoal;                               // watches where its hand is feeling
+            hasLook = true;
+        }
         else if (state == MonsterState.Investigate || state == MonsterState.Search || state == MonsterState.Reach)
         {
             look = pointOfInterest + Vector3.up * 1.5f;   // looks where it thinks you are
@@ -182,8 +204,14 @@ public class MonsterAI : NetworkBehaviour
         bool peeking = IsPeeking;
         if (netPeeking.Value != peeking) netPeeking.Value = peeking;
 
-        bool reaching = state == MonsterState.Reach && windupStart >= 0f;
+        bool reaching = state == MonsterState.Reach && arrivedTime >= 0f && reachPhase != ReachPhase.Peek;
         if (netReaching.Value != reaching) netReaching.Value = reaching;
+        if (reaching)
+        {
+            if ((netHandTarget.Value - handPos).sqrMagnitude > 0.0025f) netHandTarget.Value = handPos;
+            if (currentReachPoint != null && (netDoorPoint.Value - currentReachPoint.DoorPoint).sqrMagnitude > 0.01f)
+                netDoorPoint.Value = currentReachPoint.DoorPoint;
+        }
     }
 
     // ---------- States ----------
@@ -335,7 +363,7 @@ public class MonsterAI : NetworkBehaviour
     {
         if (currentReachPoint == null) { SetState(MonsterState.Patrol); return; }
 
-        // Walking to the opening
+        // Walking to the doorway
         if (arrivedTime < 0f)
         {
             if (!Arrived())
@@ -346,36 +374,159 @@ public class MonsterAI : NetworkBehaviour
             arrivedTime = Time.time;
             agent.isStopped = true;
             agent.updateRotation = false;
+            SetReachPhase(ReachPhase.Peek);
+            handPos = HandRest();
         }
 
-        bool seesTarget = target != null && target.IsSpawned && Time.time - lastSeenTime < 0.25f;
+        bool seesTarget = target != null && target.IsSpawned && !target.IsGrabbed && Time.time - lastSeenTime < 0.25f;
+        if (seesTarget) pointOfInterest = lastSeenPosition;
 
-        // Crouched at the doorway, peering in (toward you if it can see you)
+        // You ran back out into the street? Chase again.
+        if (seesTarget && Time.time >= nextPathCheck)
+        {
+            nextPathCheck = Time.time + 0.3f;
+            if (IsReachable(target.transform.position)) { SetState(MonsterState.Chase); return; }
+        }
+
+        Vector3 door = currentReachPoint.DoorPoint;
         FaceTowards(seesTarget ? pointOfInterest : currentReachPoint.LookInPoint);
 
-        if (seesTarget)
+        switch (reachPhase)
         {
-            pointOfInterest = lastSeenPosition;
+            case ReachPhase.Peek:
+                // Crouched, eye at the door. Arm comes in after a beat (or right away if it sees you)
+                if (seesTarget || Time.time - reachPhaseStart > peekBeforeReach)
+                    SetReachPhase(ReachPhase.Enter);
+                else if (Time.time - reachPhaseStart > peekDuration)
+                    SetState(MonsterState.Patrol);
+                break;
 
-            if (CanGrab(target, reachRange, transform.position + Vector3.up * 2.5f))
-            {
-                if (windupStart < 0f) windupStart = Time.time;
-                else if (Time.time - windupStart >= reachWindup) { GrabAnimRpc(); CatchPlayer(); return; }
-            }
-            else windupStart = -1f;
+            case ReachPhase.Enter:
+                // Hand goes to the door opening first, so the arm passes through the frame
+                handPos = Vector3.MoveTowards(handPos, door, handLungeSpeed * Time.deltaTime);
+                if ((handPos - door).sqrMagnitude < 0.04f)
+                {
+                    SetReachPhase(ReachPhase.Feel);
+                    nextProbeTime = 0f;
+                }
+                break;
 
-            // You ran back out into the street? Chase again.
-            if (Time.time >= nextPathCheck)
-            {
-                nextPathCheck = Time.time + 0.3f;
-                if (IsReachable(target.transform.position)) { SetState(MonsterState.Chase); return; }
-            }
+            case ReachPhase.Feel:
+                bool knowsWhere = seesTarget || Time.time - heardTime < 1.5f;
+                if (knowsWhere)
+                {
+                    handGoal = seesTarget ? Chest(target) : pointOfInterest + Vector3.up * 0.8f;
+                }
+                else if (Time.time >= nextProbeTime)
+                {
+                    handGoal = RandomProbe(door, currentReachPoint.Inward);
+                    nextProbeTime = Time.time + Random.Range(0.8f, 1.6f);
+                }
+
+                float speed = knowsWhere ? handLungeSpeed : handSpeed;
+                Vector3 desired = Vector3.MoveTowards(handPos, handGoal, speed * Time.deltaTime);
+                desired = ClampToRoom(door, currentReachPoint.Inward, desired);
+                handPos = CollideHand(door, desired);
+
+                // Touched someone?
+                var touched = PlayerTouchedByHand();
+                if (touched != null)
+                {
+                    target = touched;
+                    CatchPlayer();
+                    return;
+                }
+
+                if (!knowsWhere && Time.time - reachPhaseStart > feelDuration)
+                    SetReachPhase(ReachPhase.Retract);
+                break;
+
+            case ReachPhase.Retract:
+                // Pull the hand back out through the door, then give up
+                Vector3 outTarget = Time.time - reachPhaseStart < 0.5f ? door : HandRest();
+                handPos = Vector3.MoveTowards(handPos, outTarget, handLungeSpeed * Time.deltaTime);
+                if (Time.time - reachPhaseStart > 1.5f) SetState(MonsterState.Patrol);
+                break;
         }
-        else windupStart = -1f;
+    }
 
-        // Nothing for a while: give up and go back to patrolling
-        if (Time.time - Mathf.Max(arrivedTime, lastSeenTime) > peekDuration)
-            SetState(MonsterState.Patrol);
+    void SetReachPhase(ReachPhase phase)
+    {
+        reachPhase = phase;
+        reachPhaseStart = Time.time;
+    }
+
+    Vector3 HandRest() => transform.position + Vector3.up * 4f + transform.forward * 2f;
+
+    // A random spot in the room to feel around
+    Vector3 RandomProbe(Vector3 door, Vector3 inward)
+    {
+        Vector3 right = Vector3.Cross(Vector3.up, inward);
+        return door
+            + inward * Random.Range(1f, reachDepth)
+            + right * Random.Range(-reachDepth * 0.7f, reachDepth * 0.7f)
+            + Vector3.up * Random.Range(-0.9f, 0.5f);
+    }
+
+    // Keep the hand inside the room, within arm's reach of the doorway, between floor and ceiling-ish
+    Vector3 ClampToRoom(Vector3 door, Vector3 inward, Vector3 p)
+    {
+        Vector3 v = p - door;
+        float along = Vector3.Dot(v, inward);
+        if (along < 0f) v -= inward * along;
+        if (v.magnitude > reachDepth) v = v.normalized * reachDepth;
+        p = door + v;
+        p.y = Mathf.Clamp(p.y, door.y - 1.0f, door.y + 0.8f);
+        return p;
+    }
+
+    // Sweep the hand from the doorway to where it wants to go; stop against walls
+    Vector3 CollideHand(Vector3 door, Vector3 desired)
+    {
+        Vector3 dir = desired - door;
+        float dist = dir.magnitude;
+        if (dist < 0.01f) return desired;
+        dir /= dist;
+
+        int count = Physics.SphereCastNonAlloc(door, handRadius, dir, handHits, dist, ~0, QueryTriggerInteraction.Ignore);
+        float nearest = dist;
+        for (int i = 0; i < count; i++)
+        {
+            var h = handHits[i];
+            if (h.collider.transform.IsChildOf(transform)) continue;                       // its own body
+            if (h.collider.GetComponentInParent<FirstPersonController>() != null) continue; // players don't block it
+            if (h.distance <= 0f) continue;                                                // started touching
+            nearest = Mathf.Min(nearest, h.distance);
+        }
+
+        Vector3 result = door + dir * nearest;
+        // Tiny tremble so the hand looks alive while it feels around
+        float t = Time.time * 3f;
+        result += new Vector3(Mathf.PerlinNoise(t, 0f) - 0.5f, Mathf.PerlinNoise(0f, t) - 0.5f, Mathf.PerlinNoise(t, t) - 0.5f) * 0.15f;
+        return result;
+    }
+
+    FirstPersonController PlayerTouchedByHand()
+    {
+        foreach (var p in FirstPersonController.All)
+        {
+            if (!p.IsSpawned || p.IsGrabbed) continue;
+            Vector3 chest = Chest(p);
+            Vector3 feet = p.transform.position + Vector3.up * 0.3f;
+            // Distance from the hand to the player's body (a line from feet to chest)
+            Vector3 closest = ClosestPointOnSegment(feet, chest, handPos);
+            if (Vector3.Distance(closest, handPos) > grabRadius) continue;
+            if (!LineClear(handPos, p)) continue;
+            return p;
+        }
+        return null;
+    }
+
+    static Vector3 ClosestPointOnSegment(Vector3 a, Vector3 b, Vector3 p)
+    {
+        Vector3 ab = b - a;
+        float t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / Mathf.Max(ab.sqrMagnitude, 0.0001f));
+        return a + ab * t;
     }
 
     void UpdateSearch()
@@ -407,7 +558,7 @@ public class MonsterAI : NetworkBehaviour
         if (dist > radius * hearingMultiplier) return;
 
         pointOfInterest = position;
-        if (state == MonsterState.Reach) return;   // already peeking: just look toward the sound
+        if (state == MonsterState.Reach) { heardTime = Time.time; return; }   // hand goes for the sound
         SetState(MonsterState.Investigate);
     }
 
@@ -600,7 +751,13 @@ public class MonsterAI : NetworkBehaviour
         Gizmos.DrawWireSphere(eye, 0.5f);
 
         // Grab / reach range on the ground
-        DrawCircle(transform.position, state == MonsterState.Reach ? reachRange : grabRange);
+        DrawCircle(transform.position, grabRange);
+        if (Application.isPlaying && state == MonsterState.Reach && arrivedTime >= 0f)
+        {
+            Gizmos.DrawWireSphere(handPos, handRadius);
+            Gizmos.DrawWireSphere(handPos, grabRadius);
+            Gizmos.DrawLine(handPos, handGoal);
+        }
 
         if (state == MonsterState.Investigate || state == MonsterState.Search || state == MonsterState.Reach)
             Gizmos.DrawWireSphere(pointOfInterest, 0.5f);

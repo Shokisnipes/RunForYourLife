@@ -37,7 +37,10 @@ public class MonsterAnimator : MonoBehaviour
 
     [Header("Reach (arm goes in after you at a doorway)")]
     public AvatarIKGoal reachHand = AvatarIKGoal.RightHand;
-    public float reachSpeed = 2.5f;
+    public float reachSpeed = 2.5f;         // how fast the arm blends into reaching
+    public float handSmoothing = 12f;       // smooths the synced hand position
+    [Tooltip("Max distance (normal human meters, scaled) it leans its body in when the hand is out of reach.")]
+    public float maxLean = 0.35f;
 
     [Header("Pick-up (after a catch)")]
     public float liftTime = 1.2f;           // seconds to raise you from the ground to its face
@@ -97,6 +100,10 @@ public class MonsterAnimator : MonoBehaviour
     Vector3 carryTarget;
     float carryWeight;
     Transform head, leftHandBone, rightHandBone;
+    Transform shoulder, elbow;
+    float armLength;
+    Vector3 smoothedHand;
+    Vector3 lean;
 
     // Read by the player being carried
     public Vector3 HandPosition
@@ -150,6 +157,14 @@ public class MonsterAnimator : MonoBehaviour
         ScaleBone(HumanBodyBones.LeftUpperArm, armScale);
         ScaleBone(HumanBodyBones.RightUpperArm, armScale);
         ScaleBone(HumanBodyBones.Head, headScale);
+
+        // Measure the reaching arm (after scaling) so it can lean in when the hand needs more reach
+        bool left = reachHand == AvatarIKGoal.LeftHand;
+        shoulder = animator.GetBoneTransform(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm);
+        elbow = animator.GetBoneTransform(left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm);
+        var hand = left ? leftHandBone : rightHandBone;
+        if (shoulder != null && elbow != null && hand != null)
+            armLength = Vector3.Distance(shoulder.position, elbow.position) + Vector3.Distance(elbow.position, hand.position);
     }
 
     void ScaleBone(HumanBodyBones bone, float scale)
@@ -202,8 +217,14 @@ public class MonsterAnimator : MonoBehaviour
         currentLookWeight = Mathf.MoveTowards(currentLookWeight, hasLook ? lookWeight : 0f, dt * 1.2f);
         if (hasLook) lookPos = Vector3.Lerp(lookPos, ai.SyncedLookTarget, 1f - Mathf.Exp(-lookSmoothing * dt));
 
-        // Arm slowly extends toward you during the reach wind-up
+        // Arm blends in while reaching through a doorway; hand follows the host's hand position smoothly
         currentReachWeight = Mathf.MoveTowards(currentReachWeight, ai.SyncedReaching ? 1f : 0f, dt * reachSpeed);
+        if (ai.SyncedReaching)
+        {
+            if (smoothedHand == Vector3.zero) smoothedHand = HandPosition;
+            smoothedHand = Vector3.Lerp(smoothedHand, ai.SyncedHandTarget, 1f - Mathf.Exp(-handSmoothing * dt));
+        }
+        else smoothedHand = HandPosition;
 
         UpdateCarry(dt);
     }
@@ -319,8 +340,37 @@ public class MonsterAnimator : MonoBehaviour
         {
             animator.SetIKPositionWeight(reachHand, currentReachWeight);
             if (currentReachWeight > 0f && ai != null)
-                animator.SetIKPosition(reachHand, ai.SyncedLookTarget);
+            {
+                animator.SetIKPosition(reachHand, smoothedHand);
+
+                // Palm faces where it's reaching
+                Vector3 dir = smoothedHand - ai.SyncedDoorPoint;
+                if (dir.sqrMagnitude > 0.01f)
+                {
+                    animator.SetIKRotationWeight(reachHand, currentReachWeight * 0.7f);
+                    animator.SetIKRotation(reachHand, Quaternion.LookRotation(dir.normalized, Vector3.up));
+                }
+
+                // Elbow goes through the door opening, not through the wall next to it
+                AvatarIKHint hint = reachHand == AvatarIKGoal.LeftHand ? AvatarIKHint.LeftElbow : AvatarIKHint.RightElbow;
+                Vector3 inward = dir; inward.y = 0f;
+                inward = inward.sqrMagnitude > 0.01f ? inward.normalized : root.forward;
+                animator.SetIKHintPositionWeight(hint, currentReachWeight);
+                animator.SetIKHintPosition(hint, ai.SyncedDoorPoint - inward * 1.5f + Vector3.up * 1.5f);
+            }
         }
+
+        // Lean the body in if the hand is past arm's length
+        Vector3 targetLean = Vector3.zero;
+        if (currentReachWeight > 0f && shoulder != null && armLength > 0f)
+        {
+            Vector3 toHand = smoothedHand - shoulder.position;
+            float extra = toHand.magnitude - armLength * 0.95f;
+            if (extra > 0f)
+                targetLean = toHand.normalized * Mathf.Min(extra, maxLean * modelScale) * currentReachWeight;
+        }
+        lean = Vector3.Lerp(lean, targetLean, 1f - Mathf.Exp(-4f * Time.deltaTime));
+        animator.bodyPosition += lean;
     }
 
     // ---------- Foot grounding ----------

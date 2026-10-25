@@ -11,14 +11,23 @@ public class ReachPoint : MonoBehaviour
     void OnEnable() => All.Add(this);
     void OnDisable() => All.Remove(this);
 
+    [Tooltip("Distance from this marker to the door opening (the generator uses 3.5).")]
+    public float doorDistance = 3.5f;
+    [Tooltip("Height of the middle of the door opening above the floor.")]
+    public float doorHeight = 1.2f;
+
+    // The middle of the door opening: the hand passes through here
+    public Vector3 DoorPoint => transform.position + transform.forward * doorDistance + Vector3.up * doorHeight;
+    public Vector3 Inward => transform.forward;
+
     // A spot inside the doorway the giant looks at while peeking
-    public Vector3 LookInPoint => transform.position + transform.forward * 5f + Vector3.up * 1.5f;
+    public Vector3 LookInPoint => DoorPoint + transform.forward * 3f;
 
     void OnDrawGizmos()
     {
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireSphere(transform.position, 0.6f);
-        Gizmos.DrawLine(transform.position, transform.position + transform.forward * 4f);
-        Gizmos.DrawWireSphere(transform.position + transform.forward * 4f, 0.2f);
+        Gizmos.DrawLine(transform.position, DoorPoint);
+        Gizmos.DrawWireSphere(DoorPoint, 0.3f);
     }
 }
