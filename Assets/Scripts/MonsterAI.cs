@@ -63,6 +63,9 @@ public class MonsterAI : NetworkBehaviour
     [Header("Chase")]
     public float loseSightTime = 2f;
     public float grabRange = 5f;            // how far its hand reaches in the open
+    public float grabWindup = 0.5f;         // stops, hand comes down... still there after this? caught
+    public float grabEscapeRange = 7f;      // you must get this far away during the wind-up to dodge
+    public float grabHoldTime = 2f;         // stands still holding you after a catch
     public float catchCooldown = 4f;
 
     [Header("Reach (you're somewhere it can't walk, e.g. inside a building)")]
@@ -89,6 +92,9 @@ public class MonsterAI : NetworkBehaviour
     bool targetReachable = true;
     float windupStart = -1f;
     float arrivedTime = -1f;
+    float grabStart = -1f;
+    float holdUntil;
+    bool holding;
 
     // Read by animation/IK later
     public bool IsPeeking => state == MonsterState.Reach && arrivedTime >= 0f;
@@ -118,6 +124,15 @@ public class MonsterAI : NetworkBehaviour
     void Update()
     {
         if (!IsServer || !IsSpawned) return;
+
+        // Standing still holding its victim after a catch
+        if (holding)
+        {
+            if (Time.time < holdUntil) { UpdateSyncedAnimationState(); return; }
+            holding = false;
+            agent.isStopped = false;
+            agent.updateRotation = true;
+        }
 
         var seen = FindVisiblePlayer();
         if (seen != null)
@@ -179,6 +194,7 @@ public class MonsterAI : NetworkBehaviour
         pauseUntil = 0f;
         windupStart = -1f;
         arrivedTime = -1f;
+        grabStart = -1f;
         agent.isStopped = false;
         agent.updateRotation = true;
 
@@ -259,10 +275,28 @@ public class MonsterAI : NetworkBehaviour
         if (target == null || !target.IsSpawned) { SetState(MonsterState.Search); return; }
 
         Vector3 playerPos = target.transform.position;
+        Vector3 hand = transform.position + Vector3.up * 4f;
 
-        if (CanGrab(target, grabRange, transform.position + Vector3.up * 4f))
+        // Mid-grab: stopped, turning to face you, hand coming down
+        if (grabStart >= 0f)
         {
-            CatchPlayer();
+            FaceTowards(playerPos);
+            if (Time.time - grabStart < grabWindup) return;
+
+            grabStart = -1f;
+            if (CanGrab(target, grabEscapeRange, hand)) { CatchPlayer(); return; }
+
+            // Missed! Back to the chase
+            agent.isStopped = false;
+            agent.updateRotation = true;
+        }
+        else if (CanGrab(target, grabRange, hand))
+        {
+            grabStart = Time.time;
+            agent.velocity = Vector3.zero;
+            agent.isStopped = true;
+            agent.updateRotation = false;
+            GrabAnimRpc();
             return;
         }
 
@@ -318,7 +352,7 @@ public class MonsterAI : NetworkBehaviour
             if (CanGrab(target, reachRange, transform.position + Vector3.up * 2.5f))
             {
                 if (windupStart < 0f) windupStart = Time.time;
-                else if (Time.time - windupStart >= reachWindup) { CatchPlayer(); return; }
+                else if (Time.time - windupStart >= reachWindup) { GrabAnimRpc(); CatchPlayer(); return; }
             }
             else windupStart = -1f;
 
@@ -488,6 +522,20 @@ public class MonsterAI : NetworkBehaviour
         target = null;
         ignorePlayersUntil = Time.time + catchCooldown;
         SetState(MonsterState.Patrol);
+
+        // Stand still while the grab plays out, then go back to patrolling
+        holding = true;
+        holdUntil = Time.time + grabHoldTime;
+        agent.velocity = Vector3.zero;
+        agent.isStopped = true;
+        agent.updateRotation = false;
+    }
+
+    [Rpc(SendTo.Everyone)]
+    void GrabAnimRpc()
+    {
+        var anim = GetComponentInChildren<MonsterAnimator>();
+        if (anim != null) anim.PlayGrab();
     }
 
     [Rpc(SendTo.Everyone)]
@@ -496,8 +544,6 @@ public class MonsterAI : NetworkBehaviour
         bool iAmTheVictim = NetworkManager.LocalClientId == victimClientId;
         var monsterAudio = GetComponent<MonsterAudio>();
         if (monsterAudio != null) monsterAudio.PlayCatch(victimPosition, iAmTheVictim);
-        var anim = GetComponentInChildren<MonsterAnimator>();
-        if (anim != null) anim.PlayGrab();
     }
 
     // ---------- Debug drawing in the Scene view ----------

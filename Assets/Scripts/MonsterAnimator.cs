@@ -23,6 +23,8 @@ public class MonsterAnimator : MonoBehaviour
     [Tooltip("Extra leg speed while running. 1 = perfectly matched (no sliding). Higher = legs pump faster, more frantic.")]
     [Range(1f, 2.5f)] public float runCadence = 1.3f;
     public Vector2 playbackLimits = new Vector2(0.3f, 2.5f);
+    [Tooltip("Playback speed for Grab and Peek (not tied to movement).")]
+    public float actionPlaybackSpeed = 1.1f;
 
     [Header("Head tracking")]
     [Range(0f, 1f)] public float lookWeight = 1f;
@@ -41,6 +43,16 @@ public class MonsterAnimator : MonoBehaviour
     [Tooltip("Foot counts as lifted above this height (normal human meters). Keep it above Plant Height.")]
     public float liftHeight = 0.18f;
     public bool showFootDebug = false;
+
+    [Header("Foot grounding (IK keeps planted feet on the ground)")]
+    public bool groundFeet = true;
+    [Tooltip("Ankle height above the sole, in normal human meters.")]
+    public float ankleHeight = 0.09f;
+    [Tooltip("Feet closer to the ground than this (normal human meters) get pinned to it.")]
+    public float groundingZone = 0.2f;
+    [Tooltip("How fast the hips move down/up to let both feet reach the ground.")]
+    public float hipAdjustSpeed = 6f;
+    public LayerMask groundLayers = ~0;
 
     [Header("Uncanny proportions")]
     public float armScale = 1.25f;
@@ -63,6 +75,8 @@ public class MonsterAnimator : MonoBehaviour
     Vector3 lookPos;
     float currentLookWeight;
     float currentReachWeight;
+    float hipOffset;
+    readonly RaycastHit[] rayHits = new RaycastHit[8];
 
     void Awake()
     {
@@ -138,6 +152,9 @@ public class MonsterAnimator : MonoBehaviour
         natural *= modelScale;
         float cadence = Mathf.Lerp(1f, runCadence, Mathf.InverseLerp(0.5f, 1f, b));   // only boosts the run
         float playback = natural > 0.1f ? Mathf.Clamp(smoothedSpeed / natural * cadence, playbackLimits.x, playbackLimits.y) : 1f;
+
+        // Grab / Peek play at their own speed, not the walking speed
+        if (InAction()) playback = actionPlaybackSpeed;
         animator.speed = Mathf.Lerp(animator.speed, playback, 1f - Mathf.Exp(-10f * dt));
 
         if (ai == null) return;
@@ -151,6 +168,12 @@ public class MonsterAnimator : MonoBehaviour
 
         // Arm slowly extends toward you during the reach wind-up
         currentReachWeight = Mathf.MoveTowards(currentReachWeight, ai.SyncedReaching ? 1f : 0f, dt * reachSpeed);
+    }
+
+    bool InAction()
+    {
+        if (!animator.GetCurrentAnimatorStateInfo(0).IsName("Locomotion")) return true;
+        return animator.IsInTransition(0) && !animator.GetNextAnimatorStateInfo(0).IsName("Locomotion");
     }
 
     void LateUpdate()
@@ -179,12 +202,74 @@ public class MonsterAnimator : MonoBehaviour
 
     void OnAnimatorIK(int layerIndex)
     {
+        if (groundFeet && animator.isHuman) GroundFeet();
+
         animator.SetLookAtWeight(currentLookWeight, lookBodyWeight, lookHeadWeight, 1f, lookClamp);
         animator.SetLookAtPosition(lookPos);
 
         animator.SetIKPositionWeight(reachHand, currentReachWeight);
         if (currentReachWeight > 0f && ai != null)
             animator.SetIKPosition(reachHand, ai.SyncedLookTarget);
+    }
+
+    // ---------- Foot grounding ----------
+
+    void GroundFeet()
+    {
+        float leftNeed = GroundFoot(AvatarIKGoal.LeftFoot);
+        float rightNeed = GroundFoot(AvatarIKGoal.RightFoot);
+
+        // If a planted foot can't reach the ground, drop the hips so it can (never raise above the animation)
+        float targetOffset = Mathf.Min(0f, Mathf.Min(leftNeed, rightNeed));
+        hipOffset = Mathf.Lerp(hipOffset, targetOffset, 1f - Mathf.Exp(-hipAdjustSpeed * Time.deltaTime));
+        animator.bodyPosition += Vector3.up * hipOffset;
+    }
+
+    // Pins the foot to the ground when it's close to it. Returns how far down the foot needs to go (negative = down).
+    float GroundFoot(AvatarIKGoal goal)
+    {
+        Vector3 animated = animator.GetIKPosition(goal);
+        float s = modelScale;
+
+        if (!GroundBelow(animated + Vector3.up * (0.6f * s), 2f * s, out RaycastHit hit))
+        {
+            animator.SetIKPositionWeight(goal, 0f);
+            animator.SetIKRotationWeight(goal, 0f);
+            return 0f;
+        }
+
+        float targetY = hit.point.y + ankleHeight * s;
+        float heightAbove = (animated.y - targetY) / s;                 // normal human meters
+        float weight = Mathf.Clamp01(1f - heightAbove / groundingZone); // 1 when planted, 0 mid-stride
+
+        Vector3 target = new Vector3(animated.x, targetY + Mathf.Max(0f, heightAbove) * s * (1f - weight), animated.z);
+        animator.SetIKPositionWeight(goal, weight);
+        animator.SetIKPosition(goal, target);
+
+        // Tilt the foot to match slopes
+        Quaternion slope = Quaternion.FromToRotation(Vector3.up, hit.normal);
+        animator.SetIKRotationWeight(goal, weight * 0.6f);
+        animator.SetIKRotation(goal, slope * animator.GetIKRotation(goal));
+
+        // Planted foot floating above the ground -> hips need to come down by that much
+        return weight > 0.5f ? Mathf.Min(0f, targetY - animated.y) : 0f;
+    }
+
+    // Raycast down, ignoring the giant's own colliders and players
+    bool GroundBelow(Vector3 from, float distance, out RaycastHit best)
+    {
+        best = default;
+        int count = Physics.RaycastNonAlloc(from, Vector3.down, rayHits, distance, groundLayers, QueryTriggerInteraction.Ignore);
+        float bestDist = float.MaxValue;
+        bool found = false;
+        for (int i = 0; i < count; i++)
+        {
+            var h = rayHits[i];
+            if (h.collider.transform.IsChildOf(root)) continue;
+            if (h.collider.GetComponentInParent<FirstPersonController>() != null) continue;
+            if (h.distance < bestDist) { bestDist = h.distance; best = h; found = true; }
+        }
+        return found;
     }
 
     // Called on every computer when it catches someone
