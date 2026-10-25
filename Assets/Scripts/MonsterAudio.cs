@@ -24,9 +24,9 @@ public class MonsterAudio : MonoBehaviour
     public AudioClip heartbeatLoop;
 
     [Header("Distances")]
-    public float hearDistance = 40f;       // how far its breathing/steps/growls carry
-    public float heartbeatRange = 25f;     // heartbeat starts when it's this close
-    public float chaseMusicRange = 45f;    // chase music only if the chase is near you
+    public float soundRange = 80f;         // how far its breathing/steps/growls carry (it's huge)
+    public float heartbeatDistance = 35f;  // heartbeat starts when it's this close
+    public float chaseMusicDistance = 60f; // chase music only if the chase is near you
 
     [Header("Volumes")]
     [Range(0f, 1f)] public float breathingVolume = 0.6f;
@@ -36,8 +36,14 @@ public class MonsterAudio : MonoBehaviour
     [Range(0f, 1f)] public float chaseMusicVolume = 0.6f;
     [Range(0f, 1f)] public float heartbeatVolume = 0.8f;
 
+    [Header("Camera shake")]
+    [Range(0f, 1f)] public float footstepShake = 0.35f;
+    [Range(0f, 1f)] public float screamShake = 0.5f;
+    [Range(0f, 1f)] public float grabShake = 1f;
+    public float shakeRange = 45f;
+
     [Header("Timing")]
-    public float strideLength = 1.6f;      // big creature, long strides
+    public float stepDistance = 3.5f;      // giant strides
     public Vector2 growlInterval = new Vector2(8f, 20f);
     [Tooltip("Minimum seconds between chase screams, so it doesn't scream every time it re-spots you.")]
     public float screamCooldown = 30f;
@@ -88,28 +94,34 @@ public class MonsterAudio : MonoBehaviour
         if (smoothedSpeed > 0.3f)
         {
             distanceSinceStep += smoothedSpeed * Time.deltaTime;
-            if (distanceSinceStep >= strideLength)
+            if (distanceSinceStep >= stepDistance)
             {
                 distanceSinceStep = 0f;
                 PlayRandom(steps, footstepClips, footstepVolume, 0.85f, 1.05f);
+                // Heavier shake when it's running
+                float runBoost = Mathf.Clamp01(smoothedSpeed / 7f) * 0.5f + 0.5f;
+                CameraShake.ShakeFrom(transform.position, footstepShake * runBoost, shakeRange);
             }
         }
 
         // Breathing gets faster and heavier while chasing
         bool chasing = state == MonsterState.Chase;
+        bool staring = state == MonsterState.Notice;   // it holds its breath while it stares at you
         breath.pitch = Mathf.MoveTowards(breath.pitch, chasing ? 1.3f : 1f, Time.deltaTime);
-        breath.volume = Mathf.MoveTowards(breath.volume, breathingVolume * (chasing ? 1f : 0.7f), Time.deltaTime);
+        float breathTarget = staring ? 0f : breathingVolume * (chasing ? 1f : 0.7f);
+        breath.volume = Mathf.MoveTowards(breath.volume, breathTarget, Time.deltaTime * (staring ? 3f : 1f));
 
         // Scream the moment a chase starts
         if (chasing && lastState != MonsterState.Chase && chaseScream != null && Time.time >= nextScreamAllowed)
         {
             voice.PlayOneShot(chaseScream, screamVolume);
+            CameraShake.ShakeFrom(transform.position, screamShake, shakeRange);
             nextScreamAllowed = Time.time + screamCooldown;
         }
         lastState = state;
 
         // Random growls while it's prowling
-        if (!chasing && Time.time >= nextGrowlTime)
+        if (!chasing && !staring && Time.time >= nextGrowlTime)
         {
             PlayRandom(voice, growlClips, growlVolume, 0.9f, 1.1f);
             ScheduleGrowl();
@@ -118,11 +130,11 @@ public class MonsterAudio : MonoBehaviour
         // Personal tension: heartbeat + chase music, based on how close it is to YOU
         float dist = Time.time < silencedUntil ? float.MaxValue : DistanceToLocalPlayer();
 
-        float closeness = Mathf.Clamp01(1f - dist / heartbeatRange);   // 0 far, 1 on top of you
+        float closeness = Mathf.Clamp01(1f - dist / heartbeatDistance);   // 0 far, 1 on top of you
         heartbeat.volume = Mathf.MoveTowards(heartbeat.volume, heartbeatVolume * closeness, Time.deltaTime);
         heartbeat.pitch = Mathf.Lerp(0.85f, 1.6f, closeness);
 
-        float musicTarget = (chasing && dist < chaseMusicRange) ? chaseMusicVolume : 0f;
+        float musicTarget = (chasing && dist < chaseMusicDistance) ? chaseMusicVolume : 0f;
         float fadeSpeed = musicTarget > music.volume ? 1.5f : 0.25f;   // fast in, slow out
         music.volume = Mathf.MoveTowards(music.volume, musicTarget, Time.deltaTime * fadeSpeed);
     }
@@ -131,6 +143,8 @@ public class MonsterAudio : MonoBehaviour
     public void PlayCatch(Vector3 victimPosition, bool iAmTheVictim)
     {
         PlayRandom(voice, attackClips, deathVolume, 0.9f, 1.05f);
+
+        CameraShake.ShakeFrom(victimPosition, grabShake, 15f);
 
         if (iAmTheVictim)
         {
@@ -148,7 +162,7 @@ public class MonsterAudio : MonoBehaviour
             s.spatialBlend = 1f;
             s.rolloffMode = AudioRolloffMode.Linear;
             s.minDistance = 3f;
-            s.maxDistance = hearDistance * 1.5f;   // screams carry
+            s.maxDistance = soundRange * 1.5f;   // screams carry
             s.dopplerLevel = 0f;
             s.PlayOneShot(clip, deathVolume);
             Destroy(go, clip.length + 0.1f);
@@ -194,7 +208,7 @@ public class MonsterAudio : MonoBehaviour
         s.spatialBlend = 1f;
         s.rolloffMode = AudioRolloffMode.Linear;
         s.minDistance = 2f;
-        s.maxDistance = hearDistance;
+        s.maxDistance = soundRange;
         s.dopplerLevel = 0f;
         return s;
     }
