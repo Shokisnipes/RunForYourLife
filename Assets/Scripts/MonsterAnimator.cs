@@ -389,50 +389,6 @@ public class MonsterAnimator : MonoBehaviour
         hasLastFeet = true;
     }
 
-    bool InAction()
-    {
-        if (!animator.GetCurrentAnimatorStateInfo(0).IsName("Locomotion")) return true;
-        return animator.IsInTransition(0) && !animator.GetNextAnimatorStateInfo(0).IsName("Locomotion");
-    }
-
-    void LateUpdate()
-    {
-        // Bones are posed by now: check for foot contacts
-        CheckFoot(leftFoot, ref leftPlanted);
-        CheckFoot(rightFoot, ref rightPlanted);
-        MeasureStride();
-    }
-
-    // An in-place run moves the planted foot backward at exactly the speed the body should travel.
-    // Measure that, and we know how fast to play the clip so the feet stick.
-    void MeasureStride()
-    {
-        if (leftFoot == null || rightFoot == null || Time.deltaTime <= 0f) return;
-
-        Vector3 l = root.InverseTransformPoint(leftFoot.position);
-        Vector3 r = root.InverseTransformPoint(rightFoot.position);
-
-        if (hasLastFeet && animator.speed > 0.05f && !InAction())
-        {
-            // Use whichever foot is lower (the one on the ground)
-            bool leftDown = l.y < r.y;
-            float backward = leftDown ? (leftLastLocal.z - l.z) : (rightLastLocal.z - r.z);
-            float footSpeed = backward / Time.deltaTime;                       // m/s at the current playback
-            float natural = footSpeed / animator.speed;                        // m/s at playback 1
-
-            if (natural > 0.3f * modelScale && natural < 15f * modelScale)
-            {
-                measuredNaturalSpeed = measuredNaturalSpeed < 0f
-                    ? natural
-                    : Mathf.Lerp(measuredNaturalSpeed, natural, 0.08f);
-            }
-        }
-
-        leftLastLocal = l;
-        rightLastLocal = r;
-        hasLastFeet = true;
-    }
-
     void CheckFoot(Transform foot, ref bool planted)
     {
         if (foot == null) return;
