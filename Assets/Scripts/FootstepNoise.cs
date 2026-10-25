@@ -82,6 +82,8 @@ public class FootstepNoise : NetworkBehaviour
         float speed;
         bool grounded;
 
+        if (player.IsGrabbed) { wasGrounded = true; return; }   // dangling in its hand: no steps
+
         if (IsOwner)
         {
             speed = player.CurrentSpeed;

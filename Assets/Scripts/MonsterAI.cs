@@ -65,7 +65,7 @@ public class MonsterAI : NetworkBehaviour
     public float grabRange = 5f;            // how far its hand reaches in the open
     public float grabWindup = 0.5f;         // stops, hand comes down... still there after this? caught
     public float grabEscapeRange = 7f;      // you must get this far away during the wind-up to dodge
-    public float grabHoldTime = 2f;         // stands still holding you after a catch
+    public float grabHoldTime = 3.5f;       // stands still holding you up after a catch
     public float catchCooldown = 4f;
 
     [Header("Reach (you're somewhere it can't walk, e.g. inside a building)")]
@@ -413,7 +413,7 @@ public class MonsterAI : NetworkBehaviour
 
         foreach (var player in FirstPersonController.All)
         {
-            if (!player.IsSpawned) continue;
+            if (!player.IsSpawned || player.IsGrabbed) continue;
 
             Vector3 chest = Chest(player);
             Vector3 toPlayer = chest - eye;
@@ -518,7 +518,7 @@ public class MonsterAI : NetworkBehaviour
     {
         Debug.Log($"Giant grabbed player {target.OwnerClientId}");
         CaughtFxRpc(target.transform.position, target.OwnerClientId);   // death sounds for everyone
-        target.Caught();                         // that player respawns at PlayerSpawn
+        target.Caught(NetworkObject);            // that player gets picked up, dies, then respawns
         target = null;
         ignorePlayersUntil = Time.time + catchCooldown;
         SetState(MonsterState.Patrol);
@@ -544,6 +544,8 @@ public class MonsterAI : NetworkBehaviour
         bool iAmTheVictim = NetworkManager.LocalClientId == victimClientId;
         var monsterAudio = GetComponent<MonsterAudio>();
         if (monsterAudio != null) monsterAudio.PlayCatch(victimPosition, iAmTheVictim);
+        var anim = GetComponentInChildren<MonsterAnimator>();
+        if (anim != null) anim.StartCarry(victimPosition);
     }
 
     // ---------- Debug drawing in the Scene view ----------

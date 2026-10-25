@@ -16,6 +16,8 @@ public class MonsterAnimator : MonoBehaviour
     public float accelerationDamping = 0.06f; // seconds to blend up when speeding up (low = legs react to the lunge instantly)
 
     [Header("Stride matching (stops the feet sliding)")]
+    [Tooltip("Measures the clip's real speed from the planted foot. Turn off to use the clip speeds below instead.")]
+    public bool autoStrideMatch = true;
     [Tooltip("How fast the walk clip moves a normal-sized human (m/s). Raise it if the feet slide forward, lower it if they slide back.")]
     public float walkClipSpeed = 1.3f;
     [Tooltip("Same, for the run clip.")]
@@ -36,6 +38,12 @@ public class MonsterAnimator : MonoBehaviour
     [Header("Reach (arm goes in after you at a doorway)")]
     public AvatarIKGoal reachHand = AvatarIKGoal.RightHand;
     public float reachSpeed = 2.5f;
+
+    [Header("Pick-up (after a catch)")]
+    public float liftTime = 1.2f;           // seconds to raise you from the ground to its face
+    public float carryDuration = 3f;        // how long it holds you up
+    [Tooltip("Where it holds you, in front of its face (normal human meters, scaled automatically).")]
+    public Vector3 holdOffset = new Vector3(0.05f, -0.05f, 0.3f);
 
     [Header("Foot plants (sound + shake land on contact)")]
     [Tooltip("Foot counts as planted below this height. In NORMAL human meters; scaled to the model automatically.")]
@@ -76,6 +84,30 @@ public class MonsterAnimator : MonoBehaviour
     float currentLookWeight;
     float currentReachWeight;
     float hipOffset;
+
+    // Auto stride
+    float measuredNaturalSpeed = -1f;       // m/s the current animation "wants" to move at playback 1
+    Vector3 leftLastLocal, rightLastLocal;
+    bool hasLastFeet;
+
+    // Carry
+    bool carrying;
+    float carryStart;
+    Vector3 carryFrom;
+    Vector3 carryTarget;
+    float carryWeight;
+    Transform head, leftHandBone, rightHandBone;
+
+    // Read by the player being carried
+    public Vector3 HandPosition
+    {
+        get
+        {
+            var hand = reachHand == AvatarIKGoal.LeftHand ? leftHandBone : rightHandBone;
+            return hand != null ? hand.position : root.position + Vector3.up * 8f;
+        }
+    }
+    public Vector3 HeadPosition => head != null ? head.position : root.position + Vector3.up * 13f;
     readonly RaycastHit[] rayHits = new RaycastHit[8];
 
     void Awake()
@@ -111,6 +143,9 @@ public class MonsterAnimator : MonoBehaviour
 
         leftFoot = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
         rightFoot = animator.GetBoneTransform(HumanBodyBones.RightFoot);
+        head = animator.GetBoneTransform(HumanBodyBones.Head);
+        leftHandBone = animator.GetBoneTransform(HumanBodyBones.LeftHand);
+        rightHandBone = animator.GetBoneTransform(HumanBodyBones.RightHand);
 
         ScaleBone(HumanBodyBones.LeftUpperArm, armScale);
         ScaleBone(HumanBodyBones.RightUpperArm, armScale);
@@ -150,6 +185,7 @@ public class MonsterAnimator : MonoBehaviour
             ? walkClipSpeed * (b / 0.5f)
             : Mathf.Lerp(walkClipSpeed, runClipSpeed, (b - 0.5f) / 0.5f);
         natural *= modelScale;
+        if (autoStrideMatch && measuredNaturalSpeed > 0f && b > 0.1f) natural = measuredNaturalSpeed;
         float cadence = Mathf.Lerp(1f, runCadence, Mathf.InverseLerp(0.5f, 1f, b));   // only boosts the run
         float playback = natural > 0.1f ? Mathf.Clamp(smoothedSpeed / natural * cadence, playbackLimits.x, playbackLimits.y) : 1f;
 
@@ -168,6 +204,42 @@ public class MonsterAnimator : MonoBehaviour
 
         // Arm slowly extends toward you during the reach wind-up
         currentReachWeight = Mathf.MoveTowards(currentReachWeight, ai.SyncedReaching ? 1f : 0f, dt * reachSpeed);
+
+        UpdateCarry(dt);
+    }
+
+    // ---------- Pick-up ----------
+
+    // Called on every computer when it catches someone
+    public void StartCarry(Vector3 victimPosition)
+    {
+        carrying = true;
+        carryStart = Time.time;
+        carryFrom = victimPosition + Vector3.up * 1f;
+        carryTarget = carryFrom;
+    }
+
+    void UpdateCarry(float dt)
+    {
+        if (carrying && Time.time - carryStart > carryDuration) carrying = false;
+
+        carryWeight = Mathf.MoveTowards(carryWeight, carrying ? 1f : 0f, dt * 3f);
+        if (!carrying && carryWeight <= 0f) return;
+
+        // Hand rises smoothly from where you were to in front of its face
+        float t = Mathf.SmoothStep(0f, 1f, (Time.time - carryStart) / liftTime);
+        Vector3 hold = HeadPosition
+            + root.right * holdOffset.x * modelScale
+            + Vector3.up * holdOffset.y * modelScale
+            + root.forward * holdOffset.z * modelScale;
+        carryTarget = Vector3.Lerp(carryFrom, hold, t);
+
+        // It watches what it's holding
+        if (carrying)
+        {
+            lookPos = Vector3.Lerp(lookPos, carryTarget, 1f - Mathf.Exp(-6f * dt));
+            currentLookWeight = Mathf.MoveTowards(currentLookWeight, lookWeight, dt * 3f);
+        }
     }
 
     bool InAction()
@@ -181,6 +253,37 @@ public class MonsterAnimator : MonoBehaviour
         // Bones are posed by now: check for foot contacts
         CheckFoot(leftFoot, ref leftPlanted);
         CheckFoot(rightFoot, ref rightPlanted);
+        MeasureStride();
+    }
+
+    // An in-place run moves the planted foot backward at exactly the speed the body should travel.
+    // Measure that, and we know how fast to play the clip so the feet stick.
+    void MeasureStride()
+    {
+        if (leftFoot == null || rightFoot == null || Time.deltaTime <= 0f) return;
+
+        Vector3 l = root.InverseTransformPoint(leftFoot.position);
+        Vector3 r = root.InverseTransformPoint(rightFoot.position);
+
+        if (hasLastFeet && animator.speed > 0.05f && !InAction())
+        {
+            // Use whichever foot is lower (the one on the ground)
+            bool leftDown = l.y < r.y;
+            float backward = leftDown ? (leftLastLocal.z - l.z) : (rightLastLocal.z - r.z);
+            float footSpeed = backward / Time.deltaTime;                       // m/s at the current playback
+            float natural = footSpeed / animator.speed;                        // m/s at playback 1
+
+            if (natural > 0.3f * modelScale && natural < 15f * modelScale)
+            {
+                measuredNaturalSpeed = measuredNaturalSpeed < 0f
+                    ? natural
+                    : Mathf.Lerp(measuredNaturalSpeed, natural, 0.08f);
+            }
+        }
+
+        leftLastLocal = l;
+        rightLastLocal = r;
+        hasLastFeet = true;
     }
 
     void CheckFoot(Transform foot, ref bool planted)
@@ -207,9 +310,17 @@ public class MonsterAnimator : MonoBehaviour
         animator.SetLookAtWeight(currentLookWeight, lookBodyWeight, lookHeadWeight, 1f, lookClamp);
         animator.SetLookAtPosition(lookPos);
 
-        animator.SetIKPositionWeight(reachHand, currentReachWeight);
-        if (currentReachWeight > 0f && ai != null)
-            animator.SetIKPosition(reachHand, ai.SyncedLookTarget);
+        if (carryWeight > 0f)
+        {
+            animator.SetIKPositionWeight(reachHand, carryWeight);
+            animator.SetIKPosition(reachHand, carryTarget);
+        }
+        else
+        {
+            animator.SetIKPositionWeight(reachHand, currentReachWeight);
+            if (currentReachWeight > 0f && ai != null)
+                animator.SetIKPosition(reachHand, ai.SyncedLookTarget);
+        }
     }
 
     // ---------- Foot grounding ----------

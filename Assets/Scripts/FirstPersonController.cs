@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
@@ -25,6 +26,12 @@ public class FirstPersonController : NetworkBehaviour
     public float mouseSensitivity = 0.1f;
     public float maxPitch = 85f;
 
+    [Header("Death")]
+    public float carriedTime = 3f;       // dangling in its hand before you die
+    public float fadeOutTime = 0.4f;
+    public float blackTime = 1.5f;
+    public float fadeInTime = 1f;
+
     [Header("Crouch")]
     public float standHeight = 1.8f;
     public float crouchHeight = 1.0f;
@@ -38,15 +45,20 @@ public class FirstPersonController : NetworkBehaviour
         false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     readonly NetworkVariable<float> netPitch = new NetworkVariable<float>(
         0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    readonly NetworkVariable<bool> netGrabbed = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
     CharacterController controller;
     float pitch;
     float verticalVelocity;
     bool isCrouching;
     readonly List<GameObject> hiddenSceneCameras = new List<GameObject>();
+    bool grabbed;
+    float fadeAlpha;
 
     // Read by other systems (footstep noise, monster)
     public float CurrentSpeed { get; private set; }
+    public bool IsGrabbed => netGrabbed.Value;   // synced, so the monster ignores whoever it's holding
     public bool IsCrouching => netCrouching.Value;
 
     void Awake()
@@ -110,6 +122,8 @@ public class FirstPersonController : NetworkBehaviour
             UpdateCrouchHeight(netCrouching.Value);
             return;
         }
+
+        if (grabbed) return;   // no control while it's holding you
 
         var kb = Keyboard.current;
         var mouse = Mouse.current;
@@ -227,12 +241,82 @@ public class FirstPersonController : NetworkBehaviour
     }
 
     // Called by the monster on the host
-    public void Caught() => CaughtRpc();
+    public void Caught(NetworkObject monster) => CaughtRpc(monster);
 
     [Rpc(SendTo.Owner)]
-    void CaughtRpc()
+    void CaughtRpc(NetworkObjectReference monsterRef)
+    {
+        if (grabbed) return;
+        MonsterAnimator monster = null;
+        if (monsterRef.TryGet(out NetworkObject obj)) monster = obj.GetComponentInChildren<MonsterAnimator>();
+        StartCoroutine(GrabbedSequence(monster));
+    }
+
+    IEnumerator GrabbedSequence(MonsterAnimator monster)
     {
         Debug.Log("You were caught!");
+        grabbed = true;
+        netGrabbed.Value = true;
+        CurrentSpeed = 0f;
+        isCrouching = false;
+        if (netCrouching.Value) netCrouching.Value = false;
+        controller.enabled = false;              // we move ourselves with the hand now
+
+        // Dangling in its hand, forced to look at its face
+        float start = Time.time;
+        while (Time.time - start < carriedTime)
+        {
+            if (monster != null)
+            {
+                Vector3 hold = monster.HandPosition - Vector3.up * (standHeight * 0.6f);
+                transform.position = Vector3.Lerp(transform.position, hold, 1f - Mathf.Exp(-10f * Time.deltaTime));
+
+                Vector3 toFace = monster.HeadPosition - cameraPivot.position;
+                Vector3 flat = new Vector3(toFace.x, 0f, toFace.z);
+                if (flat.sqrMagnitude > 0.01f)
+                    transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(flat), 1f - Mathf.Exp(-5f * Time.deltaTime));
+
+                float targetPitch = -Mathf.Atan2(toFace.y, flat.magnitude) * Mathf.Rad2Deg;
+                pitch = Mathf.Lerp(pitch, Mathf.Clamp(targetPitch, -maxPitch, maxPitch), 1f - Mathf.Exp(-5f * Time.deltaTime));
+                cameraPivot.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+                if (Mathf.Abs(netPitch.Value - pitch) > 0.5f) netPitch.Value = pitch;
+            }
+            yield return null;
+        }
+
+        // Death
+        yield return Fade(0f, 1f, fadeOutTime);
+        yield return new WaitForSeconds(blackTime);
+
+        pitch = 0f;
+        cameraPivot.localRotation = Quaternion.identity;
+        netPitch.Value = 0f;
         MoveToSpawn();
+        grabbed = false;
+        netGrabbed.Value = false;
+
+        yield return Fade(1f, 0f, fadeInTime);
+    }
+
+    IEnumerator Fade(float from, float to, float duration)
+    {
+        float t = 0f;
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            fadeAlpha = Mathf.Lerp(from, to, t / duration);
+            yield return null;
+        }
+        fadeAlpha = to;
+    }
+
+    // Black screen for fades (only drawn on your own screen)
+    void OnGUI()
+    {
+        if (!IsOwner || fadeAlpha <= 0f) return;
+        GUI.depth = -1000;
+        GUI.color = new Color(0f, 0f, 0f, fadeAlpha);
+        GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
+        GUI.color = Color.white;
     }
 }
