@@ -58,6 +58,8 @@ public class MonsterAnimator : MonoBehaviour
     [Tooltip("Foot counts as lifted once it's this much above its standing height (normal human meters). Lower it for shuffling walks.")]
     public float liftMargin = 0.06f;
     public bool showFootDebug = false;
+    [Tooltip("Prints a line in the Console every time a foot plants.")]
+    public bool logFootsteps = false;
 
     [Header("Foot grounding (IK keeps planted feet on the ground)")]
     public bool groundFeet = true;
@@ -160,6 +162,11 @@ public class MonsterAnimator : MonoBehaviour
 
     void Start()
     {
+        if (monsterAudio == null)
+            Debug.LogWarning("MonsterAnimator: no MonsterAudio found on the Monster root - footsteps will be silent. Add Monster Audio to the Monster object.");
+        else if (monsterAudio.footstepClips == null || monsterAudio.footstepClips.Length == 0)
+            Debug.LogWarning("MonsterAnimator: Monster Audio has no Footstep Clips - steps will shake the camera but make no sound.");
+
         modelScale = transform.lossyScale.y;
         lastRootPos = root.position;
         lookPos = root.position + root.forward * 10f + Vector3.up * 10f;
@@ -412,6 +419,7 @@ public class MonsterAnimator : MonoBehaviour
         if (!planted && h < plantMargin)
         {
             planted = true;
+            if (logFootsteps) Debug.Log($"Monster footstep ({foot.name}) speed {smoothedSpeed:0.0}");
             if (smoothedSpeed > 0.2f && monsterAudio != null)
                 monsterAudio.Footstep(foot.position);
         }
