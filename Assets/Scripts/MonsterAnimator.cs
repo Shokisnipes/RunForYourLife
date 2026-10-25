@@ -69,6 +69,12 @@ public class MonsterAnimator : MonoBehaviour
     public float hipAdjustSpeed = 6f;
     public LayerMask groundLayers = ~0;
 
+    [Header("Debug (read only, watch these in Play mode)")]
+    public float debugMoveSpeed;
+    public float debugAnimSpeed;
+    public float debugMeasuredClipSpeed;
+    public float debugFallbackClipSpeed;
+
     [Header("Uncanny proportions")]
     public float armScale = 1.25f;
     public float headScale = 1.1f;
@@ -96,6 +102,8 @@ public class MonsterAnimator : MonoBehaviour
     float measuredNaturalSpeed = -1f;       // m/s the current animation "wants" to move at playback 1
     Vector3 leftLastLocal, rightLastLocal;
     bool hasLastFeet;
+    float lastYaw;
+    float fallbackNatural;
 
     // Carry
     bool carrying;
@@ -212,6 +220,7 @@ public class MonsterAnimator : MonoBehaviour
             ? walkClipSpeed * (b / 0.5f)
             : Mathf.Lerp(walkClipSpeed, runClipSpeed, (b - 0.5f) / 0.5f);
         natural *= modelScale;
+        fallbackNatural = natural;
         if (autoStrideMatch && measuredNaturalSpeed > 0f && b > 0.1f) natural = measuredNaturalSpeed;
         float cadence = Mathf.Lerp(1f, runCadence, Mathf.InverseLerp(0.5f, 1f, b));   // only boosts the run
         float playback = natural > 0.1f ? Mathf.Clamp(smoothedSpeed / natural * cadence, playbackLimits.x, playbackLimits.y) : 1f;
@@ -219,6 +228,11 @@ public class MonsterAnimator : MonoBehaviour
         // Grab / Peek play at their own speed, not the walking speed
         if (InAction()) playback = actionPlaybackSpeed;
         animator.speed = Mathf.Lerp(animator.speed, playback, 1f - Mathf.Exp(-10f * dt));
+
+        debugMoveSpeed = smoothedSpeed;
+        debugAnimSpeed = animator.speed;
+        debugMeasuredClipSpeed = measuredNaturalSpeed;
+        debugFallbackClipSpeed = fallbackNatural;
 
         if (ai == null) return;
 
@@ -315,6 +329,64 @@ public class MonsterAnimator : MonoBehaviour
             lookPos = Vector3.Lerp(lookPos, carryTarget, 1f - Mathf.Exp(-6f * dt));
             currentLookWeight = Mathf.MoveTowards(currentLookWeight, lookWeight, dt * 3f);
         }
+    }
+
+    bool InAction()
+    {
+        if (!animator.GetCurrentAnimatorStateInfo(0).IsName("Locomotion")) return true;
+        return animator.IsInTransition(0) && !animator.GetNextAnimatorStateInfo(0).IsName("Locomotion");
+    }
+
+    void LateUpdate()
+    {
+        // Bones are posed by now: check for foot contacts
+        CheckFoot(leftFoot, ref leftPlanted);
+        CheckFoot(rightFoot, ref rightPlanted);
+        MeasureStride();
+    }
+
+    // An in-place run moves the planted foot backward at exactly the speed the body should travel.
+    // Measure that, and we know how fast to play the clip so the feet stick.
+    void MeasureStride()
+    {
+        if (leftFoot == null || rightFoot == null || Time.deltaTime <= 0f) return;
+
+        Vector3 l = root.InverseTransformPoint(leftFoot.position);
+        Vector3 r = root.InverseTransformPoint(rightFoot.position);
+        float yaw = root.eulerAngles.y;
+        float yawRate = Mathf.Abs(Mathf.DeltaAngle(lastYaw, yaw)) / Time.deltaTime;
+
+        bool usable = hasLastFeet
+            && animator.speed > 0.05f
+            && !InAction()
+            && yawRate < 20f                    // turning swings the feet sideways: ignore
+            && smoothedSpeed > 0.5f
+            && fallbackNatural > 0.1f;
+
+        if (usable)
+        {
+            // Only the foot that's actually on the ground tells us the stride speed
+            bool leftDown = l.y < r.y;
+            float footHeight = (leftDown ? l.y : r.y) / modelScale;   // normal human meters
+            if (footHeight < plantHeight * 1.5f)
+            {
+                float backward = leftDown ? (leftLastLocal.z - l.z) : (rightLastLocal.z - r.z);
+                float natural = (backward / Time.deltaTime) / animator.speed;   // m/s at playback 1
+
+                // Throw out anything wildly different from what the clip settings expect
+                if (natural > fallbackNatural * 0.4f && natural < fallbackNatural * 2.5f)
+                {
+                    measuredNaturalSpeed = measuredNaturalSpeed < 0f
+                        ? natural
+                        : Mathf.Lerp(measuredNaturalSpeed, natural, 0.05f);
+                }
+            }
+        }
+
+        leftLastLocal = l;
+        rightLastLocal = r;
+        lastYaw = yaw;
+        hasLastFeet = true;
     }
 
     bool InAction()
