@@ -40,7 +40,9 @@ public class MonsterAnimator : MonoBehaviour
     public float reachSpeed = 2.5f;         // how fast the arm blends into reaching
     public float handSmoothing = 12f;       // smooths the synced hand position
     [Tooltip("Max distance (normal human meters, scaled) it leans its body in when the hand is out of reach.")]
-    public float maxLean = 0.35f;
+    public float maxLean = 0.2f;
+    [Tooltip("How far the head stays outside the doorway while reaching (normal human meters, scaled).")]
+    public float headClearance = 0.1f;
 
     [Header("Pick-up (after a catch)")]
     public float pullTime = 0.9f;           // caught inside: seconds to drag you to the doorway
@@ -119,6 +121,10 @@ public class MonsterAnimator : MonoBehaviour
         }
     }
     public Vector3 HeadPosition => head != null ? head.position : root.position + Vector3.up * 13f;
+
+    // How far the reaching shoulder sits to the side of the body center (meters, + = right).
+    // The giant sidesteps by this much at a doorway so the arm goes straight through the opening.
+    public float ReachShoulderSide { get; private set; }
     readonly RaycastHit[] rayHits = new RaycastHit[8];
 
     void Awake()
@@ -169,6 +175,8 @@ public class MonsterAnimator : MonoBehaviour
         var hand = left ? leftHandBone : rightHandBone;
         if (shoulder != null && elbow != null && hand != null)
             armLength = Vector3.Distance(shoulder.position, elbow.position) + Vector3.Distance(elbow.position, hand.position);
+        if (shoulder != null)
+            ReachShoulderSide = root.InverseTransformPoint(shoulder.position).x;
     }
 
     void ScaleBone(HumanBodyBones bone, float scale)
@@ -406,14 +414,26 @@ public class MonsterAnimator : MonoBehaviour
             }
         }
 
-        // Lean the body in if the hand is past arm's length
+        // Lean the body in (horizontally only) if the hand is past arm's length,
+        // but never far enough to push the head through the wall above the door
         Vector3 targetLean = Vector3.zero;
-        if (currentReachWeight > 0f && shoulder != null && armLength > 0f)
+        if (currentReachWeight > 0f && shoulder != null && armLength > 0f && ai != null)
         {
             Vector3 toHand = smoothedHand - shoulder.position;
             float extra = toHand.magnitude - armLength * 0.95f;
-            if (extra > 0f)
-                targetLean = toHand.normalized * Mathf.Min(extra, maxLean * modelScale) * currentReachWeight;
+            Vector3 flat = new Vector3(toHand.x, 0f, toHand.z);
+            if (extra > 0f && flat.sqrMagnitude > 0.01f)
+                targetLean = flat.normalized * Mathf.Min(extra, maxLean * modelScale) * currentReachWeight;
+
+            Vector3 inward = ai.SyncedDoorPoint - root.position;
+            inward.y = 0f;
+            if (inward.sqrMagnitude > 0.01f && head != null)
+            {
+                inward.Normalize();
+                float headDepth = Vector3.Dot(head.position - lean + targetLean - ai.SyncedDoorPoint, inward);
+                float limit = -headClearance * modelScale;   // head stays this far outside the door
+                if (headDepth > limit) targetLean -= inward * (headDepth - limit);
+            }
         }
         lean = Vector3.Lerp(lean, targetLean, 1f - Mathf.Exp(-4f * Time.deltaTime));
         animator.bodyPosition += lean;
@@ -423,6 +443,18 @@ public class MonsterAnimator : MonoBehaviour
 
     void GroundFeet()
     {
+        // Kneeling / grabbing poses handle their own legs: let them, and ease the hips back
+        if (InAction())
+        {
+            animator.SetIKPositionWeight(AvatarIKGoal.LeftFoot, 0f);
+            animator.SetIKPositionWeight(AvatarIKGoal.RightFoot, 0f);
+            animator.SetIKRotationWeight(AvatarIKGoal.LeftFoot, 0f);
+            animator.SetIKRotationWeight(AvatarIKGoal.RightFoot, 0f);
+            hipOffset = Mathf.Lerp(hipOffset, 0f, 1f - Mathf.Exp(-hipAdjustSpeed * Time.deltaTime));
+            animator.bodyPosition += Vector3.up * hipOffset;
+            return;
+        }
+
         float leftNeed = GroundFoot(AvatarIKGoal.LeftFoot);
         float rightNeed = GroundFoot(AvatarIKGoal.RightFoot);
 

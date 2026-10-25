@@ -83,6 +83,8 @@ public class MonsterAI : NetworkBehaviour
     public float feelDuration = 8f;         // gives up after feeling around this long
     public float peekDuration = 6f;         // waits this long at the door without seeing you (before reaching)
     public float doorSearchRadius = 15f;    // only uses doorways (ReachPoints) this close to where you are
+    [Tooltip("Extra distance it stands back from doorways. Raise it for a lying-down peek pose.")]
+    public float peekStandBack = 0f;
 
     [Header("Search")]
     public float searchDuration = 15f;
@@ -390,7 +392,8 @@ public class MonsterAI : NetworkBehaviour
         }
 
         Vector3 door = currentReachPoint.DoorPoint;
-        FaceTowards(seesTarget ? pointOfInterest : currentReachPoint.LookInPoint);
+        // Face straight into the doorway so the shoulder stays lined up with it (the head/eyes still track you)
+        FaceTowards(transform.position + currentReachPoint.Inward * 10f);
 
         switch (reachPhase)
         {
@@ -637,9 +640,13 @@ public class MonsterAI : NetworkBehaviour
         return best;
     }
 
+    // Where to stand so the REACHING SHOULDER (not the body center) lines up with the door
     Vector3 StandPoint(ReachPoint rp)
     {
-        return NavMesh.SamplePosition(rp.transform.position, out var hit, 4f, Filter) ? hit.position : rp.transform.position;
+        var anim = GetComponentInChildren<MonsterAnimator>();
+        float side = anim != null ? anim.ReachShoulderSide : 0f;
+        Vector3 p = rp.transform.position - rp.transform.right * side - rp.Inward * peekStandBack;
+        return NavMesh.SamplePosition(p, out var hit, 4f, Filter) ? hit.position : p;
     }
 
     NavMeshQueryFilter Filter => new NavMeshQueryFilter { agentTypeID = agent.agentTypeID, areaMask = agent.areaMask };
