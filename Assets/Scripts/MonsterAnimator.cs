@@ -12,14 +12,17 @@ public class MonsterAnimator : MonoBehaviour
     [Header("Speed mapping (monster speed in m/s)")]
     public float walkSpeed = 2.5f;          // the walk clip plays fully at this speed
     public float runSpeed = 9f;             // fully running at this speed
-    public float speedDamping = 0.35f;      // seconds to blend idle/walk/run (higher = smoother)
+    public float speedDamping = 0.35f;      // seconds to blend down when slowing (higher = smoother)
+    public float accelerationDamping = 0.06f; // seconds to blend up when speeding up (low = legs react to the lunge instantly)
 
     [Header("Stride matching (stops the feet sliding)")]
     [Tooltip("How fast the walk clip moves a normal-sized human (m/s). Raise it if the feet slide forward, lower it if they slide back.")]
     public float walkClipSpeed = 1.3f;
     [Tooltip("Same, for the run clip.")]
     public float runClipSpeed = 3.6f;
-    public Vector2 playbackRange = new Vector2(0.25f, 1.5f);
+    [Tooltip("Extra leg speed while running. 1 = perfectly matched (no sliding). Higher = legs pump faster, more frantic.")]
+    [Range(1f, 2.5f)] public float runCadence = 1.3f;
+    public Vector2 playbackLimits = new Vector2(0.3f, 2.5f);
 
     [Header("Head tracking")]
     [Range(0f, 1f)] public float lookWeight = 1f;
@@ -115,14 +118,17 @@ public class MonsterAnimator : MonoBehaviour
         Vector3 delta = root.position - lastRootPos;
         delta.y = 0f;
         lastRootPos = root.position;
-        smoothedSpeed = Mathf.Lerp(smoothedSpeed, delta.magnitude / dt, 1f - Mathf.Exp(-6f * dt));
+        float rawSpeed = delta.magnitude / dt;
+        float speedRate = rawSpeed > smoothedSpeed ? 20f : 6f;   // react fast to a lunge, settle slowly
+        smoothedSpeed = Mathf.Lerp(smoothedSpeed, rawSpeed, 1f - Mathf.Exp(-speedRate * dt));
 
         // Speed parameter: 0 = idle, 0.5 = walk, 1 = run
         float blend;
         if (smoothedSpeed < 0.15f) blend = 0f;
         else if (smoothedSpeed <= walkSpeed) blend = 0.5f * smoothedSpeed / walkSpeed;
         else blend = 0.5f + 0.5f * Mathf.InverseLerp(walkSpeed, runSpeed, smoothedSpeed);
-        animator.SetFloat(SpeedId, blend, speedDamping, dt);
+        float current = animator.GetFloat(SpeedId);
+        animator.SetFloat(SpeedId, blend, blend > current ? accelerationDamping : speedDamping, dt);
 
         // Play the animation exactly as fast as the body moves, so feet stay planted
         float b = animator.GetFloat(SpeedId);
@@ -130,8 +136,9 @@ public class MonsterAnimator : MonoBehaviour
             ? walkClipSpeed * (b / 0.5f)
             : Mathf.Lerp(walkClipSpeed, runClipSpeed, (b - 0.5f) / 0.5f);
         natural *= modelScale;
-        float playback = natural > 0.1f ? Mathf.Clamp(smoothedSpeed / natural, playbackRange.x, playbackRange.y) : 1f;
-        animator.speed = Mathf.Lerp(animator.speed, playback, 1f - Mathf.Exp(-4f * dt));
+        float cadence = Mathf.Lerp(1f, runCadence, Mathf.InverseLerp(0.5f, 1f, b));   // only boosts the run
+        float playback = natural > 0.1f ? Mathf.Clamp(smoothedSpeed / natural * cadence, playbackLimits.x, playbackLimits.y) : 1f;
+        animator.speed = Mathf.Lerp(animator.speed, playback, 1f - Mathf.Exp(-10f * dt));
 
         if (ai == null) return;
 
