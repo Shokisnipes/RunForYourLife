@@ -20,14 +20,20 @@ public class FootstepNoise : NetworkBehaviour
     public float stopTime = 0.15f;
 
     [Header("Audio")]
+    [Tooltip("Used for both feet if the left/right lists below are empty.")]
     public AudioClip[] footstepClips;
+    public AudioClip[] leftFootClips;    // optional: alternates left, right, left, right...
+    public AudioClip[] rightFootClips;
+    [Tooltip("How far each foot sits from the center, in meters. Gives a subtle left/right pan.")]
+    public float footSpacing = 0.12f;
     public AudioClip landClip;           // optional
     [Range(0f, 1f)] public float volume = 0.7f;
     public float hearDistance = 25f;     // how far other players hear your steps
 
     FirstPersonController player;
     CharacterController controller;
-    AudioSource source;
+    AudioSource leftSource, rightSource;
+    bool nextIsLeft = true;
     float distanceSinceStep;
     bool wasGrounded = true;
     Vector3 lastPosition;
@@ -44,13 +50,24 @@ public class FootstepNoise : NetworkBehaviour
         player = GetComponent<FirstPersonController>();
         controller = GetComponent<CharacterController>();
 
-        source = gameObject.AddComponent<AudioSource>();
-        source.playOnAwake = false;
-        source.spatialBlend = 1f;                       // fully 3D
-        source.rolloffMode = AudioRolloffMode.Linear;
-        source.minDistance = 1f;
-        source.maxDistance = hearDistance;
-        source.dopplerLevel = 0f;
+        leftSource = MakeFootSource("Foot_L", -footSpacing);
+        rightSource = MakeFootSource("Foot_R", footSpacing);
+    }
+
+    AudioSource MakeFootSource(string name, float x)
+    {
+        var foot = new GameObject(name);
+        foot.transform.SetParent(transform, false);
+        foot.transform.localPosition = new Vector3(x, 0.05f, 0f);
+
+        var s = foot.AddComponent<AudioSource>();
+        s.playOnAwake = false;
+        s.spatialBlend = 1f;                       // fully 3D
+        s.rolloffMode = AudioRolloffMode.Linear;
+        s.minDistance = 1f;
+        s.maxDistance = hearDistance;
+        s.dopplerLevel = 0f;
+        return s;
     }
 
     public override void OnNetworkSpawn()
@@ -119,13 +136,25 @@ public class FootstepNoise : NetworkBehaviour
 
     void Step(float radius, bool landing)
     {
+        // Alternate feet: left, right, left, right...
+        bool left = nextIsLeft;
+        if (!landing) nextIsLeft = !nextIsLeft;
+        AudioSource src = left ? leftSource : rightSource;
+
+        AudioClip clip;
+        if (landing && landClip != null) clip = landClip;
+        else
+        {
+            var footClips = left ? leftFootClips : rightFootClips;
+            clip = RandomClip(footClips) ?? RandomClip(footstepClips);
+        }
+
         // Sound: louder steps for louder movement
-        AudioClip clip = landing && landClip != null ? landClip : RandomClip(footstepClips);
         if (clip != null)
         {
-            source.pitch = Random.Range(0.9f, 1.1f);
+            src.pitch = Random.Range(0.92f, 1.08f);
             float loudness = Mathf.Clamp01(radius / sprintRadius) * 0.75f + 0.25f;
-            source.PlayOneShot(clip, volume * loudness);
+            src.PlayOneShot(clip, volume * loudness);
         }
 
         // Noise for the monster (only the owner reports, so it isn't counted twice)
