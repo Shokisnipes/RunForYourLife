@@ -53,10 +53,14 @@ public class MonsterAnimator : MonoBehaviour
     public Vector3 holdOffset = new Vector3(0.05f, -0.05f, 0.3f);
 
     [Header("Foot plants (sound + shake land on contact)")]
-    [Tooltip("Foot counts as planted when it's within this much of its standing height (normal human meters).")]
-    public float plantMargin = 0.03f;
-    [Tooltip("Foot counts as lifted once it's this much above its standing height (normal human meters). Lower it for shuffling walks.")]
-    public float liftMargin = 0.06f;
+    [Tooltip("Steps are detected by learning each foot's lowest/highest point. A foot counts as planted in the bottom part of its swing (0-1).")]
+    [Range(0.05f, 0.5f)] public float plantPoint = 0.25f;
+    [Tooltip("...and as lifted once it rises past this part of its swing (0-1). Keep it above Plant Point.")]
+    [Range(0.2f, 0.9f)] public float liftPoint = 0.55f;
+    [Tooltip("Ignore feet that move less than this (normal human meters), so idle swaying isn't a step.")]
+    public float minimumSwing = 0.008f;
+    // Used by the stride measurement to decide if a foot is on the ground
+    float plantMargin = 0.03f;
     public bool showFootDebug = false;
     [Tooltip("Prints a line in the Console every time a foot plants.")]
     public bool logFootsteps = false;
@@ -95,6 +99,10 @@ public class MonsterAnimator : MonoBehaviour
     Transform root;
     Transform leftFoot, rightFoot;
     bool leftPlanted = true, rightPlanted = true;
+
+    // Learned swing range per foot (normal human meters above standing height)
+    class FootTrack { public float lo = 0f, hi = 0.05f; }
+    readonly FootTrack leftTrack = new FootTrack(), rightTrack = new FootTrack();
     float modelScale = 1f;
 
     Vector3 lastRootPos;
@@ -360,8 +368,8 @@ public class MonsterAnimator : MonoBehaviour
     void LateUpdate()
     {
         // Bones are posed by now: check for foot contacts
-        CheckFoot(leftFoot, ref leftPlanted);
-        CheckFoot(rightFoot, ref rightPlanted);
+        CheckFoot(leftFoot, ref leftPlanted, leftTrack);
+        CheckFoot(rightFoot, ref rightPlanted, rightTrack);
         MeasureStride();
     }
 
@@ -410,20 +418,27 @@ public class MonsterAnimator : MonoBehaviour
         hasLastFeet = true;
     }
 
-    void CheckFoot(Transform foot, ref bool planted)
+    void CheckFoot(Transform foot, ref bool planted, FootTrack track)
     {
         if (foot == null) return;
         // Height above its standing height, measured from the model itself (so lifting the model doesn't matter)
         float h = (foot.position.y - transform.position.y) / modelScale - ankleHeight;   // normal human meters
 
-        if (!planted && h < plantMargin)
+        // Learn how low and high this foot goes: snaps to new extremes, slowly forgets old ones
+        float forget = 1f - Mathf.Exp(-0.5f * Time.deltaTime);
+        track.lo = h < track.lo ? h : Mathf.Lerp(track.lo, h, forget);
+        track.hi = h > track.hi ? h : Mathf.Lerp(track.hi, h, forget);
+        float swing = track.hi - track.lo;
+        if (swing < minimumSwing) return;   // barely moving (idle sway)
+
+        if (!planted && h <= track.lo + swing * plantPoint)
         {
             planted = true;
-            if (logFootsteps) Debug.Log($"Monster footstep ({foot.name}) speed {smoothedSpeed:0.0}");
+            if (logFootsteps) Debug.Log($"Monster footstep ({foot.name}) speed {smoothedSpeed:0.0} swing {swing:0.000}");
             if (smoothedSpeed > 0.2f && monsterAudio != null)
                 monsterAudio.Footstep(foot.position);
         }
-        else if (planted && h > liftMargin)
+        else if (planted && h >= track.lo + swing * liftPoint)
         {
             planted = false;
         }
@@ -584,7 +599,8 @@ public class MonsterAnimator : MonoBehaviour
         Gizmos.DrawSphere(foot.position, 0.3f * modelScale / 8f + 0.2f);
 #if UNITY_EDITOR
         float h = (foot.position.y - transform.position.y) / modelScale - ankleHeight;
-        UnityEditor.Handles.Label(foot.position + Vector3.up, h.ToString("0.000"));
+        var track = foot == leftFoot ? leftTrack : rightTrack;
+        UnityEditor.Handles.Label(foot.position + Vector3.up, $"{h:0.000}  [{track.lo:0.000} - {track.hi:0.000}]");
 #endif
     }
 }
