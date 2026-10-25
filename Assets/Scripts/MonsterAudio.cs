@@ -39,6 +39,8 @@ public class MonsterAudio : MonoBehaviour
     [Header("Timing")]
     public float strideLength = 1.6f;      // big creature, long strides
     public Vector2 growlInterval = new Vector2(8f, 20f);
+    [Tooltip("Minimum seconds between chase screams, so it doesn't scream every time it re-spots you.")]
+    public float screamCooldown = 30f;
 
     MonsterAI ai;
     AudioSource breath, steps, voice, music, heartbeat;
@@ -48,6 +50,7 @@ public class MonsterAudio : MonoBehaviour
     float distanceSinceStep;
     float nextGrowlTime;
     float silencedUntil;
+    float nextScreamAllowed;
 
     void Awake()
     {
@@ -98,8 +101,11 @@ public class MonsterAudio : MonoBehaviour
         breath.volume = Mathf.MoveTowards(breath.volume, breathingVolume * (chasing ? 1f : 0.7f), Time.deltaTime);
 
         // Scream the moment a chase starts
-        if (chasing && lastState != MonsterState.Chase && chaseScream != null)
+        if (chasing && lastState != MonsterState.Chase && chaseScream != null && Time.time >= nextScreamAllowed)
+        {
             voice.PlayOneShot(chaseScream, screamVolume);
+            nextScreamAllowed = Time.time + screamCooldown;
+        }
         lastState = state;
 
         // Random growls while it's prowling
