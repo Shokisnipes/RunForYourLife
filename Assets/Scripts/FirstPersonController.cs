@@ -241,18 +241,18 @@ public class FirstPersonController : NetworkBehaviour
     }
 
     // Called by the monster on the host
-    public void Caught(NetworkObject monster) => CaughtRpc(monster);
+    public void Caught(NetworkObject monster, float extraTime = 0f) => CaughtRpc(monster, extraTime);
 
     [Rpc(SendTo.Owner)]
-    void CaughtRpc(NetworkObjectReference monsterRef)
+    void CaughtRpc(NetworkObjectReference monsterRef, float extraTime)
     {
         if (grabbed) return;
         MonsterAnimator monster = null;
         if (monsterRef.TryGet(out NetworkObject obj)) monster = obj.GetComponentInChildren<MonsterAnimator>();
-        StartCoroutine(GrabbedSequence(monster));
+        StartCoroutine(GrabbedSequence(monster, carriedTime + extraTime));
     }
 
-    IEnumerator GrabbedSequence(MonsterAnimator monster)
+    IEnumerator GrabbedSequence(MonsterAnimator monster, float holdTime)
     {
         Debug.Log("You were caught!");
         grabbed = true;
@@ -264,12 +264,12 @@ public class FirstPersonController : NetworkBehaviour
 
         // Dangling in its hand, forced to look at its face
         float start = Time.time;
-        while (Time.time - start < carriedTime)
+        while (Time.time - start < holdTime)
         {
             if (monster != null)
             {
                 Vector3 hold = monster.HandPosition - Vector3.up * (standHeight * 0.6f);
-                transform.position = Vector3.Lerp(transform.position, hold, 1f - Mathf.Exp(-10f * Time.deltaTime));
+                transform.position = Vector3.Lerp(transform.position, hold, 1f - Mathf.Exp(-14f * Time.deltaTime));
 
                 Vector3 toFace = monster.HeadPosition - cameraPivot.position;
                 Vector3 flat = new Vector3(toFace.x, 0f, toFace.z);

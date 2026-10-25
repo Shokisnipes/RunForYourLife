@@ -43,6 +43,8 @@ public class MonsterAnimator : MonoBehaviour
     public float maxLean = 0.35f;
 
     [Header("Pick-up (after a catch)")]
+    public float pullTime = 0.9f;           // caught inside: seconds to drag you to the doorway
+    public float throughDoorTime = 0.35f;   // seconds to pull you out through the frame
     public float liftTime = 1.2f;           // seconds to raise you from the ground to its face
     public float carryDuration = 3f;        // how long it holds you up
     [Tooltip("Where it holds you, in front of its face (normal human meters, scaled automatically).")]
@@ -99,6 +101,8 @@ public class MonsterAnimator : MonoBehaviour
     Vector3 carryFrom;
     Vector3 carryTarget;
     float carryWeight;
+    bool carryThroughDoor;
+    Vector3 carryDoor;
     Transform head, leftHandBone, rightHandBone;
     Transform shoulder, elbow;
     float armLength;
@@ -231,29 +235,71 @@ public class MonsterAnimator : MonoBehaviour
 
     // ---------- Pick-up ----------
 
+    // Extra time a doorway catch takes (drag to the door + out through it)
+    public float DoorPullExtraTime => pullTime + throughDoorTime;
+
     // Called on every computer when it catches someone
-    public void StartCarry(Vector3 victimPosition)
+    public void StartCarry(Vector3 victimPosition, bool throughDoor, Vector3 doorPoint)
     {
         carrying = true;
         carryStart = Time.time;
-        carryFrom = victimPosition + Vector3.up * 1f;
+        carryThroughDoor = throughDoor;
+        carryDoor = doorPoint;
+
+        // If the arm was already reaching, start the carry from where the hand is (no snapping)
+        bool handWasIn = currentReachWeight > 0.5f;
+        carryFrom = handWasIn ? smoothedHand : victimPosition + Vector3.up * 1f;
         carryTarget = carryFrom;
+        if (handWasIn) carryWeight = currentReachWeight;
     }
 
     void UpdateCarry(float dt)
     {
-        if (carrying && Time.time - carryStart > carryDuration) carrying = false;
+        float extra = carryThroughDoor ? DoorPullExtraTime : 0f;
+        if (carrying && Time.time - carryStart > carryDuration + extra) carrying = false;
 
         carryWeight = Mathf.MoveTowards(carryWeight, carrying ? 1f : 0f, dt * 3f);
         if (!carrying && carryWeight <= 0f) return;
 
-        // Hand rises smoothly from where you were to in front of its face
-        float t = Mathf.SmoothStep(0f, 1f, (Time.time - carryStart) / liftTime);
         Vector3 hold = HeadPosition
             + root.right * holdOffset.x * modelScale
             + Vector3.up * holdOffset.y * modelScale
             + root.forward * holdOffset.z * modelScale;
-        carryTarget = Vector3.Lerp(carryFrom, hold, t);
+
+        float e = Time.time - carryStart;
+
+        if (carryThroughDoor)
+        {
+            // Inward = from the giant toward the door
+            Vector3 inward = carryDoor - root.position;
+            inward.y = 0f;
+            inward = inward.sqrMagnitude > 0.01f ? inward.normalized : root.forward;
+            Vector3 outside = carryDoor - inward * 2.5f + Vector3.up * 0.5f;
+
+            if (e < pullTime)
+            {
+                // Dragged across the floor to the door: slow start, then a yank
+                float t = e / pullTime;
+                carryTarget = Vector3.Lerp(carryFrom, carryDoor, t * t);
+            }
+            else if (e < pullTime + throughDoorTime)
+            {
+                // Out through the frame
+                carryTarget = Vector3.Lerp(carryDoor, outside, (e - pullTime) / throughDoorTime);
+            }
+            else
+            {
+                // Up to its face
+                float t = Mathf.SmoothStep(0f, 1f, (e - pullTime - throughDoorTime) / liftTime);
+                carryTarget = Vector3.Lerp(outside, hold, t);
+            }
+        }
+        else
+        {
+            // Hand rises smoothly from where you were to in front of its face
+            float t = Mathf.SmoothStep(0f, 1f, e / liftTime);
+            carryTarget = Vector3.Lerp(carryFrom, hold, t);
+        }
 
         // It watches what it's holding
         if (carrying)

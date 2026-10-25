@@ -697,15 +697,21 @@ public class MonsterAI : NetworkBehaviour
     void CatchPlayer()
     {
         Debug.Log($"Giant grabbed player {target.OwnerClientId}");
-        CaughtFxRpc(target.transform.position, target.OwnerClientId);   // death sounds for everyone
-        target.Caught(NetworkObject);            // that player gets picked up, dies, then respawns
+        // Caught through a doorway? The hand drags you out through the frame first
+        bool throughDoor = state == MonsterState.Reach && currentReachPoint != null;
+        Vector3 door = throughDoor ? currentReachPoint.DoorPoint : Vector3.zero;
+        var anim = GetComponentInChildren<MonsterAnimator>();
+        float extra = throughDoor && anim != null ? anim.DoorPullExtraTime : 0f;
+
+        CaughtFxRpc(target.transform.position, target.OwnerClientId, throughDoor, door);   // sounds + carry for everyone
+        target.Caught(NetworkObject, extra);     // that player gets dragged out / picked up, dies, then respawns
         target = null;
         ignorePlayersUntil = Time.time + catchCooldown;
         SetState(MonsterState.Patrol);
 
         // Stand still while the grab plays out, then go back to patrolling
         holding = true;
-        holdUntil = Time.time + grabHoldTime;
+        holdUntil = Time.time + grabHoldTime + extra;
         agent.velocity = Vector3.zero;
         agent.isStopped = true;
         agent.updateRotation = false;
@@ -719,13 +725,13 @@ public class MonsterAI : NetworkBehaviour
     }
 
     [Rpc(SendTo.Everyone)]
-    void CaughtFxRpc(Vector3 victimPosition, ulong victimClientId)
+    void CaughtFxRpc(Vector3 victimPosition, ulong victimClientId, bool throughDoor, Vector3 doorPoint)
     {
         bool iAmTheVictim = NetworkManager.LocalClientId == victimClientId;
         var monsterAudio = GetComponent<MonsterAudio>();
         if (monsterAudio != null) monsterAudio.PlayCatch(victimPosition, iAmTheVictim);
-        var anim = GetComponentInChildren<MonsterAnimator>();
-        if (anim != null) anim.StartCarry(victimPosition);
+        var carryAnim = GetComponentInChildren<MonsterAnimator>();
+        if (carryAnim != null) carryAnim.StartCarry(victimPosition, throughDoor, doorPoint);
     }
 
     // ---------- Debug drawing in the Scene view ----------
