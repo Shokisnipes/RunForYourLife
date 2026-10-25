@@ -12,6 +12,13 @@ public class MonsterAudio : MonoBehaviour
     public AudioClip[] growlClips;
     public AudioClip chaseScream;          // plays when it spots someone
 
+    [Header("Death")]
+    public AudioClip[] attackClips;        // 3D on the monster: the roar/crunch when it gets someone
+    public AudioClip[] playerDeathScreams; // 3D where the victim was: what the other players hear
+    public AudioClip deathStinger;         // only the victim hears this, right in their head
+    [Range(0f, 1f)] public float deathVolume = 1f;
+    public float silenceAfterDeath = 3f;   // victim: heartbeat/music cut out for this long
+
     [Header("Your ears only")]
     public AudioClip chaseMusicLoop;
     public AudioClip heartbeatLoop;
@@ -40,6 +47,7 @@ public class MonsterAudio : MonoBehaviour
     float smoothedSpeed;
     float distanceSinceStep;
     float nextGrowlTime;
+    float silencedUntil;
 
     void Awake()
     {
@@ -102,7 +110,7 @@ public class MonsterAudio : MonoBehaviour
         }
 
         // Personal tension: heartbeat + chase music, based on how close it is to YOU
-        float dist = DistanceToLocalPlayer();
+        float dist = Time.time < silencedUntil ? float.MaxValue : DistanceToLocalPlayer();
 
         float closeness = Mathf.Clamp01(1f - dist / heartbeatRange);   // 0 far, 1 on top of you
         heartbeat.volume = Mathf.MoveTowards(heartbeat.volume, heartbeatVolume * closeness, Time.deltaTime);
@@ -111,6 +119,34 @@ public class MonsterAudio : MonoBehaviour
         float musicTarget = (chasing && dist < chaseMusicRange) ? chaseMusicVolume : 0f;
         float fadeSpeed = musicTarget > music.volume ? 1.5f : 0.25f;   // fast in, slow out
         music.volume = Mathf.MoveTowards(music.volume, musicTarget, Time.deltaTime * fadeSpeed);
+    }
+
+    // Called on every computer when the monster catches someone
+    public void PlayCatch(Vector3 victimPosition, bool iAmTheVictim)
+    {
+        PlayRandom(voice, attackClips, deathVolume, 0.9f, 1.05f);
+
+        if (iAmTheVictim)
+        {
+            if (deathStinger != null) music.PlayOneShot(deathStinger, deathVolume);   // 2D, in your head
+            heartbeat.volume = 0f;                    // sudden silence
+            music.volume = 0f;
+            silencedUntil = Time.time + silenceAfterDeath;
+        }
+        else if (playerDeathScreams != null && playerDeathScreams.Length > 0)
+        {
+            var clip = playerDeathScreams[Random.Range(0, playerDeathScreams.Length)];
+            var go = new GameObject("DeathScream");
+            go.transform.position = victimPosition + Vector3.up * 1.5f;
+            var s = go.AddComponent<AudioSource>();
+            s.spatialBlend = 1f;
+            s.rolloffMode = AudioRolloffMode.Linear;
+            s.minDistance = 3f;
+            s.maxDistance = hearDistance * 1.5f;   // screams carry
+            s.dopplerLevel = 0f;
+            s.PlayOneShot(clip, deathVolume);
+            Destroy(go, clip.length + 0.1f);
+        }
     }
 
     // ---------- Helpers ----------

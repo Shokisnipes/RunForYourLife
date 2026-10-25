@@ -266,10 +266,19 @@ public class MonsterAI : NetworkBehaviour
     void CatchPlayer()
     {
         Debug.Log($"Monster caught player {target.OwnerClientId}");
+        CaughtFxRpc(target.transform.position, target.OwnerClientId);   // death sounds for everyone
         target.Caught();                         // that player respawns at PlayerSpawn
         target = null;
         ignorePlayersUntil = Time.time + catchCooldown;
         SetState(MonsterState.Patrol);
+    }
+
+    [Rpc(SendTo.Everyone)]
+    void CaughtFxRpc(Vector3 victimPosition, ulong victimClientId)
+    {
+        bool iAmTheVictim = NetworkManager.LocalClientId == victimClientId;
+        var monsterAudio = GetComponent<MonsterAudio>();
+        if (monsterAudio != null) monsterAudio.PlayCatch(victimPosition, iAmTheVictim);
     }
 
     // ---------- Debug drawing in the Scene view ----------
