@@ -1,0 +1,207 @@
+using UnityEngine;
+
+// Put on the monster's MODEL (the child object with the Animator), under the Monster root.
+// Runs on every computer:
+// - Blends idle/walk/run smoothly from how fast the giant is actually moving
+// - Matches animation playback speed to movement so the feet don't slide
+// - Detects real foot contacts and fires MonsterAudio.Footstep() (sound + camera shake) on each plant
+// - Head slowly turns to track you, arm reaches for you when it's peeking into a building
+[RequireComponent(typeof(Animator))]
+public class MonsterAnimator : MonoBehaviour
+{
+    [Header("Speed mapping (monster speed in m/s)")]
+    public float walkSpeed = 2.5f;          // the walk clip plays fully at this speed
+    public float runSpeed = 9f;             // fully running at this speed
+    public float speedDamping = 0.35f;      // seconds to blend idle/walk/run (higher = smoother)
+
+    [Header("Stride matching (stops the feet sliding)")]
+    [Tooltip("How fast the walk clip moves a normal-sized human (m/s). Raise it if the feet slide forward, lower it if they slide back.")]
+    public float walkClipSpeed = 1.3f;
+    [Tooltip("Same, for the run clip.")]
+    public float runClipSpeed = 3.6f;
+    public Vector2 playbackRange = new Vector2(0.25f, 1.5f);
+
+    [Header("Head tracking")]
+    [Range(0f, 1f)] public float lookWeight = 1f;
+    [Range(0f, 1f)] public float lookBodyWeight = 0.3f;
+    [Range(0f, 1f)] public float lookHeadWeight = 1f;
+    [Range(0f, 1f)] public float lookClamp = 0.5f;
+    public float lookSmoothing = 2.5f;      // lower = slower, creepier head turns
+
+    [Header("Reach (arm goes in after you at a doorway)")]
+    public AvatarIKGoal reachHand = AvatarIKGoal.RightHand;
+    public float reachSpeed = 2.5f;
+
+    [Header("Foot plants (sound + shake land on contact)")]
+    [Tooltip("Foot counts as planted below this height. In NORMAL human meters; scaled to the model automatically.")]
+    public float plantHeight = 0.11f;
+    [Tooltip("Foot counts as lifted above this height (normal human meters). Keep it above Plant Height.")]
+    public float liftHeight = 0.18f;
+    public bool showFootDebug = false;
+
+    [Header("Uncanny proportions")]
+    public float armScale = 1.25f;
+    public float headScale = 1.1f;
+
+    static readonly int SpeedId = Animator.StringToHash("Speed");
+    static readonly int PeekingId = Animator.StringToHash("Peeking");
+    static readonly int GrabId = Animator.StringToHash("Grab");
+
+    Animator animator;
+    MonsterAI ai;
+    MonsterAudio monsterAudio;
+    Transform root;
+    Transform leftFoot, rightFoot;
+    bool leftPlanted = true, rightPlanted = true;
+    float modelScale = 1f;
+
+    Vector3 lastRootPos;
+    float smoothedSpeed;
+    Vector3 lookPos;
+    float currentLookWeight;
+    float currentReachWeight;
+
+    void Awake()
+    {
+        animator = GetComponent<Animator>();
+        animator.applyRootMotion = false;   // the NavMeshAgent moves the giant, not the animation
+        ai = GetComponentInParent<MonsterAI>();
+        monsterAudio = GetComponentInParent<MonsterAudio>();
+        root = ai != null ? ai.transform : transform;
+    }
+
+    void OnEnable()
+    {
+        if (monsterAudio != null) monsterAudio.AnimatedFeet = true;
+    }
+
+    void OnDisable()
+    {
+        if (monsterAudio != null) monsterAudio.AnimatedFeet = false;
+    }
+
+    void Start()
+    {
+        modelScale = transform.lossyScale.y;
+        lastRootPos = root.position;
+        lookPos = root.position + root.forward * 10f + Vector3.up * 10f;
+
+        if (!animator.isHuman)
+        {
+            Debug.LogWarning("MonsterAnimator: the model's Rig must be set to Humanoid for feet, head tracking and reach.");
+            return;
+        }
+
+        leftFoot = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
+        rightFoot = animator.GetBoneTransform(HumanBodyBones.RightFoot);
+
+        ScaleBone(HumanBodyBones.LeftUpperArm, armScale);
+        ScaleBone(HumanBodyBones.RightUpperArm, armScale);
+        ScaleBone(HumanBodyBones.Head, headScale);
+    }
+
+    void ScaleBone(HumanBodyBones bone, float scale)
+    {
+        var t = animator.GetBoneTransform(bone);
+        if (t != null && scale > 0f) t.localScale = Vector3.one * scale;
+    }
+
+    void Update()
+    {
+        float dt = Time.deltaTime;
+        if (dt <= 0f) return;
+
+        // How fast is the giant really moving? (works on every computer)
+        Vector3 delta = root.position - lastRootPos;
+        delta.y = 0f;
+        lastRootPos = root.position;
+        smoothedSpeed = Mathf.Lerp(smoothedSpeed, delta.magnitude / dt, 1f - Mathf.Exp(-6f * dt));
+
+        // Speed parameter: 0 = idle, 0.5 = walk, 1 = run
+        float blend;
+        if (smoothedSpeed < 0.15f) blend = 0f;
+        else if (smoothedSpeed <= walkSpeed) blend = 0.5f * smoothedSpeed / walkSpeed;
+        else blend = 0.5f + 0.5f * Mathf.InverseLerp(walkSpeed, runSpeed, smoothedSpeed);
+        animator.SetFloat(SpeedId, blend, speedDamping, dt);
+
+        // Play the animation exactly as fast as the body moves, so feet stay planted
+        float b = animator.GetFloat(SpeedId);
+        float natural = b <= 0.5f
+            ? walkClipSpeed * (b / 0.5f)
+            : Mathf.Lerp(walkClipSpeed, runClipSpeed, (b - 0.5f) / 0.5f);
+        natural *= modelScale;
+        float playback = natural > 0.1f ? Mathf.Clamp(smoothedSpeed / natural, playbackRange.x, playbackRange.y) : 1f;
+        animator.speed = Mathf.Lerp(animator.speed, playback, 1f - Mathf.Exp(-4f * dt));
+
+        if (ai == null) return;
+
+        animator.SetBool(PeekingId, ai.SyncedPeeking);
+
+        // Head turns slowly toward what it's looking at
+        bool hasLook = ai.SyncedHasLookTarget;
+        currentLookWeight = Mathf.MoveTowards(currentLookWeight, hasLook ? lookWeight : 0f, dt * 1.2f);
+        if (hasLook) lookPos = Vector3.Lerp(lookPos, ai.SyncedLookTarget, 1f - Mathf.Exp(-lookSmoothing * dt));
+
+        // Arm slowly extends toward you during the reach wind-up
+        currentReachWeight = Mathf.MoveTowards(currentReachWeight, ai.SyncedReaching ? 1f : 0f, dt * reachSpeed);
+    }
+
+    void LateUpdate()
+    {
+        // Bones are posed by now: check for foot contacts
+        CheckFoot(leftFoot, ref leftPlanted);
+        CheckFoot(rightFoot, ref rightPlanted);
+    }
+
+    void CheckFoot(Transform foot, ref bool planted)
+    {
+        if (foot == null) return;
+        float h = (foot.position.y - root.position.y) / modelScale;   // in normal human meters
+
+        if (!planted && h < plantHeight)
+        {
+            planted = true;
+            if (smoothedSpeed > 0.2f && monsterAudio != null)
+                monsterAudio.Footstep(foot.position);
+        }
+        else if (planted && h > liftHeight)
+        {
+            planted = false;
+        }
+    }
+
+    void OnAnimatorIK(int layerIndex)
+    {
+        animator.SetLookAtWeight(currentLookWeight, lookBodyWeight, lookHeadWeight, 1f, lookClamp);
+        animator.SetLookAtPosition(lookPos);
+
+        animator.SetIKPositionWeight(reachHand, currentReachWeight);
+        if (currentReachWeight > 0f && ai != null)
+            animator.SetIKPosition(reachHand, ai.SyncedLookTarget);
+    }
+
+    // Called on every computer when it catches someone
+    public void PlayGrab()
+    {
+        animator.SetTrigger(GrabId);
+    }
+
+    // Foot debug: green = planted, red = lifted, with height in normal human meters
+    void OnDrawGizmos()
+    {
+        if (!showFootDebug || !Application.isPlaying) return;
+        DrawFoot(leftFoot, leftPlanted);
+        DrawFoot(rightFoot, rightPlanted);
+    }
+
+    void DrawFoot(Transform foot, bool planted)
+    {
+        if (foot == null) return;
+        Gizmos.color = planted ? Color.green : Color.red;
+        Gizmos.DrawSphere(foot.position, 0.3f * modelScale / 8f + 0.2f);
+#if UNITY_EDITOR
+        float h = (foot.position.y - root.position.y) / modelScale;
+        UnityEditor.Handles.Label(foot.position + Vector3.up, h.ToString("0.00"));
+#endif
+    }
+}

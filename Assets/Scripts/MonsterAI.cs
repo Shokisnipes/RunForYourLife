@@ -21,6 +21,16 @@ public class MonsterAI : NetworkBehaviour
     readonly NetworkVariable<MonsterState> netState = new NetworkVariable<MonsterState>(MonsterState.Patrol);
     public MonsterState SyncedState => netState.Value;
 
+    // Synced for animation on every computer: where its head looks / its hand reaches
+    readonly NetworkVariable<Vector3> netLookTarget = new NetworkVariable<Vector3>();
+    readonly NetworkVariable<bool> netHasLookTarget = new NetworkVariable<bool>();
+    readonly NetworkVariable<bool> netPeeking = new NetworkVariable<bool>();
+    readonly NetworkVariable<bool> netReaching = new NetworkVariable<bool>();
+    public Vector3 SyncedLookTarget => netLookTarget.Value;
+    public bool SyncedHasLookTarget => netHasLookTarget.Value;
+    public bool SyncedPeeking => netPeeking.Value;
+    public bool SyncedReaching => netReaching.Value;
+
     [Header("Movement")]
     public float walkSpeed = 2.5f;        // slow, lumbering patrol
     public float huntSpeed = 4f;          // investigating / searching
@@ -101,7 +111,7 @@ public class MonsterAI : NetworkBehaviour
             agent.enabled = false;   // the host moves it; we just watch
             return;
         }
-        agent.angularSpeed = 120f;
+        agent.angularSpeed = 70f;   // slow, heavy turns
         SetState(MonsterState.Patrol);
     }
 
@@ -128,6 +138,35 @@ public class MonsterAI : NetworkBehaviour
             case MonsterState.Reach:       UpdateReach(); break;
             case MonsterState.Search:      UpdateSearch(); break;
         }
+
+        UpdateSyncedAnimationState();
+    }
+
+    void UpdateSyncedAnimationState()
+    {
+        Vector3 look = Vector3.zero;
+        bool hasLook = false;
+
+        bool recentlySeen = target != null && target.IsSpawned && Time.time - lastSeenTime < 2f;
+        if (recentlySeen && (state == MonsterState.Notice || state == MonsterState.Chase || state == MonsterState.Reach))
+        {
+            look = Chest(target);          // stares right at you
+            hasLook = true;
+        }
+        else if (state == MonsterState.Investigate || state == MonsterState.Search || state == MonsterState.Reach)
+        {
+            look = pointOfInterest + Vector3.up * 1.5f;   // looks where it thinks you are
+            hasLook = true;
+        }
+
+        if (netHasLookTarget.Value != hasLook) netHasLookTarget.Value = hasLook;
+        if (hasLook && (netLookTarget.Value - look).sqrMagnitude > 0.04f) netLookTarget.Value = look;
+
+        bool peeking = IsPeeking;
+        if (netPeeking.Value != peeking) netPeeking.Value = peeking;
+
+        bool reaching = state == MonsterState.Reach && windupStart >= 0f;
+        if (netReaching.Value != reaching) netReaching.Value = reaching;
     }
 
     // ---------- States ----------
@@ -457,6 +496,8 @@ public class MonsterAI : NetworkBehaviour
         bool iAmTheVictim = NetworkManager.LocalClientId == victimClientId;
         var monsterAudio = GetComponent<MonsterAudio>();
         if (monsterAudio != null) monsterAudio.PlayCatch(victimPosition, iAmTheVictim);
+        var anim = GetComponentInChildren<MonsterAnimator>();
+        if (anim != null) anim.PlayGrab();
     }
 
     // ---------- Debug drawing in the Scene view ----------

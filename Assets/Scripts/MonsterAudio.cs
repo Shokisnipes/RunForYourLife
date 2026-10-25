@@ -90,17 +90,14 @@ public class MonsterAudio : MonoBehaviour
         smoothedSpeed = Mathf.Lerp(smoothedSpeed, delta.magnitude / Time.deltaTime, Time.deltaTime * 8f);
         lastPosition = transform.position;
 
-        // Heavy footsteps
-        if (smoothedSpeed > 0.3f)
+        // Heavy footsteps. With a MonsterAnimator, its feet trigger Footstep() on contact instead.
+        if (!AnimatedFeet && smoothedSpeed > 0.3f)
         {
             distanceSinceStep += smoothedSpeed * Time.deltaTime;
             if (distanceSinceStep >= stepDistance)
             {
                 distanceSinceStep = 0f;
-                PlayRandom(steps, footstepClips, footstepVolume, 0.85f, 1.05f);
-                // Heavier shake when it's running
-                float runBoost = Mathf.Clamp01(smoothedSpeed / 7f) * 0.5f + 0.5f;
-                CameraShake.ShakeFrom(transform.position, footstepShake * runBoost, shakeRange);
+                Footstep(transform.position);
             }
         }
 
@@ -137,6 +134,17 @@ public class MonsterAudio : MonoBehaviour
         float musicTarget = (chasing && dist < chaseMusicDistance) ? chaseMusicVolume : 0f;
         float fadeSpeed = musicTarget > music.volume ? 1.5f : 0.25f;   // fast in, slow out
         music.volume = Mathf.MoveTowards(music.volume, musicTarget, Time.deltaTime * fadeSpeed);
+    }
+
+    // Set by MonsterAnimator: when true, real foot contacts drive the footsteps
+    [HideInInspector] public bool AnimatedFeet;
+
+    // One giant footfall: sound + camera shake
+    public void Footstep(Vector3 footPosition)
+    {
+        PlayRandom(steps, footstepClips, footstepVolume, 0.85f, 1.05f);
+        float runBoost = Mathf.Clamp01(smoothedSpeed / 7f) * 0.5f + 0.5f;   // heavier when running
+        CameraShake.ShakeFrom(footPosition, footstepShake * runBoost, shakeRange);
     }
 
     // Called on every computer when the monster catches someone
