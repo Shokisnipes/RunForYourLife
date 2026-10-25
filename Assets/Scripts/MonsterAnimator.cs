@@ -79,7 +79,14 @@ public class MonsterAnimator : MonoBehaviour
     public float hipAdjustSpeed = 6f;
     public LayerMask groundLayers = ~0;
 
+    [Header("Real floor (the NavMesh floats a bit above the actual ground)")]
+    [Tooltip("Keeps the model standing on the real floor instead of on the NavMesh.")]
+    public bool snapToRealFloor = true;
+    public float floorSnapSpeed = 8f;
+
     [Header("Debug (read only, watch these in Play mode)")]
+    [Tooltip("How far the NavMesh is above (+) or below (-) the real floor under the giant, in meters.")]
+    public float debugNavMeshGap;
     public float debugMoveSpeed;
     public float debugAnimSpeed;
     public float debugMeasuredClipSpeed;
@@ -111,6 +118,8 @@ public class MonsterAnimator : MonoBehaviour
     float currentLookWeight;
     float currentReachWeight;
     float hipOffset;
+    float baseLocalY;
+    float floorOffset;
 
     // Auto stride
     float measuredNaturalSpeed = -1f;       // m/s the current animation "wants" to move at playback 1
@@ -176,6 +185,7 @@ public class MonsterAnimator : MonoBehaviour
             Debug.LogWarning("MonsterAnimator: Monster Audio has no Footstep Clips - steps will shake the camera but make no sound.");
 
         modelScale = transform.lossyScale.y;
+        baseLocalY = transform.localPosition.y;
         lastRootPos = root.position;
         lookPos = root.position + root.forward * 10f + Vector3.up * 10f;
 
@@ -225,6 +235,8 @@ public class MonsterAnimator : MonoBehaviour
     {
         float dt = Time.deltaTime;
         if (dt <= 0f) return;
+
+        SnapToRealFloor(dt);
 
         // How fast is the giant really moving? (works on every computer)
         Vector3 delta = root.position - lastRootPos;
@@ -357,6 +369,22 @@ public class MonsterAnimator : MonoBehaviour
             lookPos = Vector3.Lerp(lookPos, carryTarget, 1f - Mathf.Exp(-6f * dt));
             currentLookWeight = Mathf.MoveTowards(currentLookWeight, lookWeight, dt * 3f);
         }
+    }
+
+    // The agent stands the giant on the NavMesh, which sits a little off the real floor.
+    // Find the real floor under it and shift the model to stand on that.
+    void SnapToRealFloor(float dt)
+    {
+        if (!GroundBelow(root.position + Vector3.up * 3f, 8f, out RaycastHit hit)) return;
+
+        float gap = root.position.y - hit.point.y;   // + = NavMesh above the floor
+        debugNavMeshGap = gap;
+        if (!snapToRealFloor) { floorOffset = 0f; }
+        else floorOffset = Mathf.Lerp(floorOffset, Mathf.Clamp(-gap, -2f, 2f), 1f - Mathf.Exp(-floorSnapSpeed * dt));
+
+        var lp = transform.localPosition;
+        lp.y = baseLocalY + floorOffset;
+        transform.localPosition = lp;
     }
 
     bool InAction()
