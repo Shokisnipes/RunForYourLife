@@ -29,6 +29,13 @@ public class BuildingTexturer : EditorWindow
         so.Update();
         scroll = EditorGUILayout.BeginScrollView(scroll);
 
+        GUILayout.Label("Quick start", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox("Uses the texture set in Assets/Textures (brick, plaster, concrete, interior paint, roof, " +
+                                "wood floor, sidewalk, asphalt, windows): makes the materials, fills the slots below, " +
+                                "textures the street and windows, and applies everything to all buildings.", MessageType.None);
+        if (GUILayout.Button("Use Texture Set (one click)", GUILayout.Height(34))) UseTextureSet();
+
+        GUILayout.Space(12);
         GUILayout.Label("1. Make materials from textures", EditorStyles.boldLabel);
         EditorGUILayout.PropertyField(so.FindProperty("textureFolder"));
         EditorGUILayout.HelpBox("Put each texture in its own subfolder (e.g. Assets/Textures/red_brick/). " +
@@ -63,6 +70,7 @@ public class BuildingTexturer : EditorWindow
 
         foreach (var folder in AssetDatabase.GetSubFolders(textureFolder))
         {
+            if (Path.GetFileName(folder).StartsWith("window")) continue;   // windows are handled separately
             Texture2D albedo = null, normal = null;
             foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { folder }))
             {
@@ -110,6 +118,83 @@ public class BuildingTexturer : EditorWindow
 
         AssetDatabase.SaveAssets();
         Debug.Log($"Created/updated {made} material(s) in Assets/Materials.");
+    }
+
+    // ---------- Quick start ----------
+
+    void UseTextureSet()
+    {
+        textureFolder = "Assets/Textures";
+        CreateMaterials();
+
+        wallMaterials = new List<Material>();
+        foreach (var n in new[] { "brick_wall", "plaster_wall", "concrete_wall" })
+            if (LoadMat(n) != null) wallMaterials.Add(LoadMat(n));
+        roofMaterial = LoadMat("roof_tar");
+        floorMaterial = LoadMat("wood_floor");
+        interiorWallMaterial = LoadMat("interior_paint");
+        sidewalkMaterial = LoadMat("sidewalk");
+
+        SetSmooth(roofMaterial, 0.25f);
+        SetSmooth(floorMaterial, 0.3f);
+
+        // Windows: grimy dark glass, and lit ones with half-drawn blinds that glow
+        var darkTex = LoadTex("window_dark");
+        var litTex = LoadTex("window_lit");
+        var dark = BuildingDetails.Mat("Window_Dark", new Color(0.03f, 0.035f, 0.045f), Color.black, 0.92f);
+        var lit = BuildingDetails.Mat("Window_Lit", new Color(1f, 0.85f, 0.6f), new Color(1f, 0.72f, 0.42f) * 1.6f, 0.6f);
+        if (darkTex != null)
+        {
+            dark.SetTexture("_BaseMap", darkTex);
+            dark.SetColor("_BaseColor", Color.white);
+            dark.SetFloat("_Smoothness", 0.92f);
+            EditorUtility.SetDirty(dark);
+        }
+        if (litTex != null)
+        {
+            lit.SetTexture("_BaseMap", litTex);
+            lit.SetColor("_BaseColor", Color.white);
+            lit.EnableKeyword("_EMISSION");
+            lit.SetTexture("_EmissionMap", litTex);
+            lit.SetColor("_EmissionColor", Color.white * 1.4f);
+            lit.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            EditorUtility.SetDirty(lit);
+        }
+
+        // Street: wet asphalt, tiled so one copy covers about 5 m
+        var asphalt = LoadMat("asphalt");
+        var plane = GameObject.Find("Plane");
+        if (asphalt != null && plane != null && plane.TryGetComponent(out Renderer pr))
+        {
+            Undo.RecordObject(pr, "Street Material");
+            pr.sharedMaterial = asphalt;
+            float tiles = Mathf.Max(1f, plane.transform.lossyScale.x * 10f / 5f);
+            asphalt.SetTextureScale("_BaseMap", new Vector2(tiles, tiles));
+            asphalt.SetFloat("_Smoothness", 0.55f);
+            EditorUtility.SetDirty(asphalt);
+        }
+
+        AssetDatabase.SaveAssets();
+        so.Update();
+        ApplyToBuildings();
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
+        Debug.Log("Texture set applied. Save the scene (Ctrl+S).");
+    }
+
+    static Material LoadMat(string name) => AssetDatabase.LoadAssetAtPath<Material>($"Assets/Materials/{name}.mat");
+
+    static Texture2D LoadTex(string folder)
+    {
+        foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { $"Assets/Textures/{folder}" }))
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(AssetDatabase.GUIDToAssetPath(guid));
+        return null;
+    }
+
+    static void SetSmooth(Material m, float v)
+    {
+        if (m == null) return;
+        m.SetFloat("_Smoothness", v);
+        EditorUtility.SetDirty(m);
     }
 
     // ---------- 2. Apply ----------
