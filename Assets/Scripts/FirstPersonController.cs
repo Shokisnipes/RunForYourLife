@@ -26,6 +26,13 @@ public class FirstPersonController : NetworkBehaviour
     public float mouseSensitivity = 0.1f;
     public float maxPitch = 85f;
 
+    [Header("Camera feel")]
+    public float fieldOfView = 72f;
+    public float sprintFovBoost = 6f;     // view widens a little when sprinting
+    public float bobAmount = 0.045f;      // meters the head dips per step
+    public float bobSway = 0.7f;          // degrees the head rolls side to side
+    public float bobStride = 0.75f;       // meters per step (matches the footstep sounds)
+
     [Header("Death")]
     public float carriedTime = 3f;       // dangling in its hand before you die
     public float fadeOutTime = 0.4f;
@@ -55,6 +62,9 @@ public class FirstPersonController : NetworkBehaviour
     readonly List<GameObject> hiddenSceneCameras = new List<GameObject>();
     bool grabbed;
     float fadeAlpha;
+    Camera ownCamera;
+    float bobPhase;
+    float bobBlend;
 
     // Read by other systems (footstep noise, monster)
     public float CurrentSpeed { get; private set; }
@@ -82,6 +92,9 @@ public class FirstPersonController : NetworkBehaviour
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
             if (body != null) body.enabled = false;   // don't see your own capsule
+
+            ownCamera = cameraPivot.GetComponentInChildren<Camera>(true);
+            if (ownCamera != null) ownCamera.fieldOfView = fieldOfView;
 
             // Turn off the lobby camera (any camera that isn't part of a player)
             foreach (var cam in Camera.allCameras)
@@ -132,23 +145,44 @@ public class FirstPersonController : NetworkBehaviour
         Look(mouse);
         Crouch(kb);
         Move(kb);
+        bool sprinting = kb.leftShiftKey.isPressed && kb.wKey.isPressed && !isCrouching;
+        UpdateCameraFeel(sprinting);
 
-        // Free the cursor with Esc, click back into the Game view to re-lock
-        if (kb.escapeKey.wasPressedThisFrame)
-        {
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-        }
-        if (mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked)
+        // Esc opens the pause menu (NetworkUI). If the cursor got freed some other way
+        // (e.g. alt-tab), clicking back into the game re-locks it.
+        if (!NetworkUI.MenuOpen && mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked)
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
     }
 
+    // Head bob, sway and a slight FOV kick when sprinting
+    void UpdateCameraFeel(bool sprinting)
+    {
+        float dt = Time.deltaTime;
+        bool moving = controller.isGrounded && CurrentSpeed > 0.3f;
+
+        bobBlend = Mathf.MoveTowards(bobBlend, moving ? Mathf.Clamp(CurrentSpeed / walkSpeed, 0f, 1.6f) : 0f, dt * 4f);
+        if (moving) bobPhase += CurrentSpeed * dt * Mathf.PI / bobStride;   // half a cycle per step
+
+        float damp = isCrouching ? 0.5f : 1f;
+        float amount = bobAmount * bobBlend * damp;
+        cameraPivot.localPosition += new Vector3(Mathf.Cos(bobPhase) * amount * 0.6f, -Mathf.Abs(Mathf.Sin(bobPhase)) * amount, 0f);
+
+        float roll = Mathf.Cos(bobPhase) * bobSway * bobBlend * damp;
+        cameraPivot.localRotation = Quaternion.Euler(pitch, 0f, roll);
+
+        if (ownCamera != null)
+        {
+            float target = fieldOfView + (sprinting && CurrentSpeed > walkSpeed ? sprintFovBoost : 0f);
+            ownCamera.fieldOfView = Mathf.Lerp(ownCamera.fieldOfView, target, 1f - Mathf.Exp(-6f * dt));
+        }
+    }
+
     void Look(Mouse mouse)
     {
-        if (Cursor.lockState != CursorLockMode.Locked) return;
+        if (NetworkUI.MenuOpen || Cursor.lockState != CursorLockMode.Locked) return;
 
         Vector2 delta = mouse.delta.ReadValue() * mouseSensitivity;
         transform.Rotate(0f, delta.x, 0f);              // body turns left/right

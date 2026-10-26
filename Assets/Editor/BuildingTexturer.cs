@@ -13,6 +13,7 @@ public class BuildingTexturer : EditorWindow
     [SerializeField] Material roofMaterial;
     [SerializeField] Material floorMaterial;
     [SerializeField] Material interiorWallMaterial;
+    [SerializeField] Material sidewalkMaterial;
     [SerializeField] float metersPerTile = 2.5f;
 
     SerializedObject so;
@@ -40,6 +41,7 @@ public class BuildingTexturer : EditorWindow
         EditorGUILayout.PropertyField(so.FindProperty("roofMaterial"));
         EditorGUILayout.PropertyField(so.FindProperty("floorMaterial"));
         EditorGUILayout.PropertyField(so.FindProperty("interiorWallMaterial"), new GUIContent("Interior Wall (optional)"));
+        EditorGUILayout.PropertyField(so.FindProperty("sidewalkMaterial"), new GUIContent("Sidewalk (optional)"));
         EditorGUILayout.PropertyField(so.FindProperty("metersPerTile"));
 
         if (GUILayout.Button("Apply To All Buildings", GUILayout.Height(26))) ApplyToBuildings();
@@ -127,16 +129,17 @@ public class BuildingTexturer : EditorWindow
             int pick = Mathf.Abs(Mathf.RoundToInt(p.x * 7.1f + p.z * 3.3f)) % wallMaterials.Count;
             Material wall = wallMaterials[pick];
 
-            foreach (Transform part in building)
+            foreach (var r in building.GetComponentsInChildren<MeshRenderer>(true))
             {
-                var r = part.GetComponent<MeshRenderer>();
-                if (r == null) continue;
+                var part = r.transform;
 
+                // Windows and rooftop props keep their own materials
                 Material m = null;
-                if (part.name.StartsWith("Wall_")) m = wall;
+                if (part.name.StartsWith("Wall_")) m = wall;                       // walls + roof edge
                 else if (part.name.StartsWith("Interior_")) m = interiorWallMaterial != null ? interiorWallMaterial : wall;
                 else if (part.name == "Roof") m = roofMaterial;
                 else if (part.name == "Floor") m = floorMaterial;
+                else if (part.name.StartsWith("Sidewalk")) m = sidewalkMaterial;
                 if (m == null) continue;
 
                 Undo.RecordObject(r, "Texture Building");
