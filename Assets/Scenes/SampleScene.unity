@@ -30014,9 +30014,17 @@ MonoBehaviour:
   reachHand: 3
   reachSpeed: 2.5
   handSmoothing: 12
-  maxLean: 0.35
-  leanSettleSpeed: 1.5
   headClearance: 0.1
+  doorwayPosture: 1
+  kneelHipHeight: 0.5
+  kneelFootBack: 0.35
+  kneelKneeForward: 0.25
+  maxBow: 75
+  maxLeanIn: 0.45
+  postureSpeed: 1.2
+  armRadius: 0.055
+  wallHalfThickness: 0.15
+  plantFreeHand: 1
   pullTime: 0.9
   throughDoorTime: 0.35
   liftTime: 1.2
@@ -30046,6 +30054,11 @@ MonoBehaviour:
   debugAnimSpeed: 0
   debugMeasuredClipSpeed: 0
   debugFallbackClipSpeed: 0
+  debugBow: 0
+  debugLeanIn: 0
+  debugReachShortfall: 0
+  debugLegLift: 0
+  debugArmMode: 0
   armScale: 1.25
   headScale: 1.1
 --- !u!1 &463664910

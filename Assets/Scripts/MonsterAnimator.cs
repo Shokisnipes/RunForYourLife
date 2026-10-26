@@ -48,7 +48,7 @@ public class MonsterAnimator : MonoBehaviour
              "The arm always passes through the door, never the wall; the hand only goes as deep as the pose allows.")]
     public bool doorwayPosture = true;
     [Tooltip("Hip height when kneeling (normal human meters).")]
-    public float kneelHipHeight = 0.45f;
+    public float kneelHipHeight = 0.5f;
     [Tooltip("How far behind the hips the feet go when kneeling (normal human meters).")]
     public float kneelFootBack = 0.35f;
     [Tooltip("How far in front of the hips the knees go when kneeling (normal human meters).")]
@@ -58,7 +58,7 @@ public class MonsterAnimator : MonoBehaviour
     [Tooltip("Most it shifts its whole body in toward the door (normal human meters).")]
     public float maxLeanIn = 0.45f;
     [Tooltip("How fast it gets into / out of the doorway posture (0-1 per second).")]
-    public float postureSpeed = 1.5f;
+    public float postureSpeed = 1.2f;
     [Tooltip("Thickness of its arm (normal human meters). The arm keeps this far from the door frame.")]
     public float armRadius = 0.055f;
     [Tooltip("Half the thickness of building walls, in meters.")]
@@ -99,6 +99,12 @@ public class MonsterAnimator : MonoBehaviour
     public float groundingZone = 0.2f;
     [Tooltip("How fast the hips move down/up to let both feet reach the ground.")]
     public float hipAdjustSpeed = 6f;
+    [Tooltip("Pin each planted foot to the exact spot it landed on until the animation lifts it (no sliding).")]
+    public bool lockPlantedFeet = true;
+    [Tooltip("A locked foot lets go if the body moves this far past it (normal human meters) - keeps the leg from overstretching.")]
+    public float maxLockStretch = 0.18f;
+    [Tooltip("Seconds a foot takes to blend back to the animation when it lets go.")]
+    public float lockReleaseTime = 0.12f;
     public LayerMask groundLayers = ~0;
 
     [Header("Real floor (the NavMesh floats a bit above the actual ground)")]
@@ -109,6 +115,8 @@ public class MonsterAnimator : MonoBehaviour
     public bool keepLegsAboveFloor = true;
     [Tooltip("Thickness of the knee/shin, in normal human meters (how far the joint sits above the floor when touching it).")]
     public float kneeThickness = 0.06f;
+    [Tooltip("How far the toe joint sits above the floor when the toes touch it (normal human meters).")]
+    public float toeThickness = 0.015f;
     public float liftSpeed = 10f;
 
     [Header("Debug (read only, watch these in Play mode)")]
@@ -125,6 +133,9 @@ public class MonsterAnimator : MonoBehaviour
     public float debugReachShortfall;
     [Tooltip("How far the leg lift is currently raising the body (meters).")]
     public float debugLegLift;
+    [Tooltip("Foot locking: is each foot pinned to the ground right now?")]
+    public bool debugLeftFootLocked, debugRightFootLocked;
+    [HideInInspector] public int debugLockReleasedByLift, debugLockReleasedByStretch, debugLockCount;
     [Tooltip("0 = not reaching, 1 = hand outside, 2 = arm threaded through the door, 3 = can't get through (hand rests at the threshold)")]
     public int debugArmMode;
 
@@ -146,6 +157,16 @@ public class MonsterAnimator : MonoBehaviour
     // Learned swing range per foot (normal human meters above standing height)
     class FootTrack { public float lo = 0f, hi = 0.05f; }
     readonly FootTrack leftTrack = new FootTrack(), rightTrack = new FootTrack();
+
+    // Foot locking (worked out from the animated feet, before IK, so a pinned foot can still tell when it lifts)
+    class FootLock
+    {
+        public bool locked, canLock = true, hasPrev;
+        public Vector3 pos, prevAnimated;
+        public float weight, groundSpeed;
+        public float lo = 0f, hi = 0.05f;
+    }
+    readonly FootLock leftLock = new FootLock(), rightLock = new FootLock();
     float modelScale = 1f;
 
     Vector3 lastRootPos;
@@ -159,6 +180,8 @@ public class MonsterAnimator : MonoBehaviour
     float liftOffset;
     float floorY;
     bool hasFloor;
+    float smoothedBaseY;
+    bool hasBaseHeight;
     Transform leftKnee, rightKnee, leftToes, rightToes;
 
     // Auto stride
@@ -450,8 +473,13 @@ public class MonsterAnimator : MonoBehaviour
         hasFloor = true;
         float gap = root.position.y - hit.point.y;   // + = NavMesh above the floor
         debugNavMeshGap = gap;
-        if (!snapToRealFloor) { floorOffset = 0f; }
-        else floorOffset = Mathf.Lerp(floorOffset, Mathf.Clamp(-gap, -2f, 2f), 1f - Mathf.Exp(-floorSnapSpeed * dt));
+
+        // Ease the body's height toward the floor in world space, so a curb or a NavMesh step under the
+        // root becomes a smooth rise instead of a one-frame hop
+        float target = snapToRealFloor ? hit.point.y : root.position.y;
+        if (!hasBaseHeight) { smoothedBaseY = target; hasBaseHeight = true; }
+        smoothedBaseY = Mathf.Lerp(smoothedBaseY, target, 1f - Mathf.Exp(-floorSnapSpeed * dt));
+        floorOffset = Mathf.Clamp(smoothedBaseY - root.position.y, -2f, 2f);
 
         var lp = transform.localPosition;
         lp.y = baseLocalY + floorOffset + liftOffset;
@@ -468,10 +496,15 @@ public class MonsterAnimator : MonoBehaviour
         float clearance = float.MaxValue;   // smallest gap between a joint and the floor (negative = sinking)
         clearance = Mathf.Min(clearance, Clearance(leftKnee, kneeThickness * s));
         clearance = Mathf.Min(clearance, Clearance(rightKnee, kneeThickness * s));
-        clearance = Mathf.Min(clearance, Clearance(leftFoot, ankleHeight * s * 0.9f));
-        clearance = Mathf.Min(clearance, Clearance(rightFoot, ankleHeight * s * 0.9f));
-        clearance = Mathf.Min(clearance, Clearance(leftToes, 0.015f * s));
-        clearance = Mathf.Min(clearance, Clearance(rightToes, 0.015f * s));
+        // Walking/running: foot IK keeps the feet on the floor and the toe clamp tips the feet, so a toe
+        // dipping at push-off doesn't lift the whole giant. Kneeling, grabbing, peeking: every joint counts.
+        if (postureWeight > 0f || InAction())
+        {
+            clearance = Mathf.Min(clearance, Clearance(leftFoot, ankleHeight * s * 0.9f));
+            clearance = Mathf.Min(clearance, Clearance(rightFoot, ankleHeight * s * 0.9f));
+            clearance = Mathf.Min(clearance, Clearance(leftToes, 0.015f * s));
+            clearance = Mathf.Min(clearance, Clearance(rightToes, 0.015f * s));
+        }
         if (clearance == float.MaxValue) return;
 
         float deadZone = 0.02f * s;
@@ -500,6 +533,7 @@ public class MonsterAnimator : MonoBehaviour
     void LateUpdate()
     {
         KneelFeet();       // before the leg lift measures anything
+        ClampToes();
         UpdateLegLift();
 
         // Bones are posed by now: check for foot contacts
@@ -522,6 +556,34 @@ public class MonsterAnimator : MonoBehaviour
         Vector3 want = (back * Mathf.Cos(15f * Mathf.Deg2Rad) + Vector3.down * Mathf.Sin(15f * Mathf.Deg2Rad)).normalized;
         LayFoot(leftFoot, leftToes, want);
         LayFoot(rightFoot, rightToes, want);
+    }
+
+    // A foot whose toes would dip into the floor (push-off, heel strike, blended clips) tips up at the
+    // ankle until the toes rest on the floor - like a real heel lifting - instead of sinking or lifting the body
+    void ClampToes()
+    {
+        float w = 1f - postureWeight;   // the kneel lays the feet itself
+        if (w <= 0f || !animator.isHuman) return;
+        ClampToe(leftFoot, leftToes, w);
+        ClampToe(rightFoot, rightToes, w);
+    }
+
+    void ClampToe(Transform foot, Transform toes, float w)
+    {
+        if (foot == null || toes == null) return;
+        float s = modelScale;
+        if (!GroundBelow(toes.position + Vector3.up * 0.5f * s, 1.5f * s, out RaycastHit hit)) return;
+        float minY = hit.point.y + toeThickness * s;
+        if (toes.position.y >= minY) return;
+
+        Vector3 dir = toes.position - foot.position;
+        float len = dir.magnitude;
+        float dy = minY - foot.position.y;            // how high the toes need to be relative to the ankle
+        if (len < 0.0001f || Mathf.Abs(dy) >= len) return;
+        Vector3 flat = new Vector3(dir.x, 0f, dir.z);
+        if (flat.sqrMagnitude < 0.0001f) return;
+        Vector3 want = flat.normalized * Mathf.Sqrt(len * len - dy * dy) + Vector3.up * dy;
+        foot.rotation = Quaternion.Slerp(Quaternion.identity, Quaternion.FromToRotation(dir, want), w) * foot.rotation;
     }
 
     void LayFoot(Transform foot, Transform toes, Vector3 want)
@@ -980,7 +1042,7 @@ public class MonsterAnimator : MonoBehaviour
 
     void OnAnimatorIK(int layerIndex)
     {
-        if (postureWeight > 0f && animator.isHuman) Kneel();
+        if (postureWeight > 0f && animator.isHuman) { ReleaseFootLocks(); Kneel(); }
         else if (groundFeet && animator.isHuman) GroundFeet();
         lastBodyPosition = animator.bodyPosition;   // only readable in here; KneelFeet uses it after the pose is applied
 
@@ -1058,11 +1120,12 @@ public class MonsterAnimator : MonoBehaviour
 
     void GroundFeet()
     {
-        // Kneeling / grabbing poses handle their own legs: let them, and ease the hips back
+        // Grab / peek poses handle their own legs: let them, except a foot never sinks into the floor
         if (InAction())
         {
-            animator.SetIKPositionWeight(AvatarIKGoal.LeftFoot, 0f);
-            animator.SetIKPositionWeight(AvatarIKGoal.RightFoot, 0f);
+            ReleaseFootLocks();
+            KeepFootAboveFloor(AvatarIKGoal.LeftFoot);
+            KeepFootAboveFloor(AvatarIKGoal.RightFoot);
             animator.SetIKRotationWeight(AvatarIKGoal.LeftFoot, 0f);
             animator.SetIKRotationWeight(AvatarIKGoal.RightFoot, 0f);
             hipOffset = Mathf.Lerp(hipOffset, 0f, 1f - Mathf.Exp(-hipAdjustSpeed * Time.deltaTime));
@@ -1078,6 +1141,73 @@ public class MonsterAnimator : MonoBehaviour
         targetOffset = Mathf.Max(targetOffset, -maxHipDrop * modelScale);
         hipOffset = Mathf.Lerp(hipOffset, targetOffset, 1f - Mathf.Exp(-hipAdjustSpeed * Time.deltaTime));
         animator.bodyPosition += Vector3.up * hipOffset;
+    }
+
+    void UpdateFootLock(FootLock fl, float heightAbove, Vector3 animated, float targetY)
+    {
+        float dt = Time.deltaTime;
+        if (!lockPlantedFeet || smoothedSpeed < 0.2f)
+        {
+            fl.locked = false;
+            fl.weight = Mathf.MoveTowards(fl.weight, 0f, dt / Mathf.Max(lockReleaseTime, 0.01f));
+            return;
+        }
+
+        // Learn this foot's swing from the animation (same idea as the footstep detection)
+        float forget = 1f - Mathf.Exp(-0.5f * dt);
+        fl.lo = heightAbove < fl.lo ? heightAbove : Mathf.Lerp(fl.lo, heightAbove, forget);
+        fl.hi = heightAbove > fl.hi ? heightAbove : Mathf.Lerp(fl.hi, heightAbove, forget);
+        float swing = Mathf.Max(fl.hi - fl.lo, 0.005f);
+
+        Vector3 flatAnim = new Vector3(animated.x, 0f, animated.z), flatLock = new Vector3(fl.pos.x, 0f, fl.pos.z);
+
+        // How fast the animated foot moves over the ground. A planted foot barely moves; a swinging one moves
+        // faster than the body. (Height alone can't tell them apart in a shuffling walk.)
+        if (fl.hasPrev && dt > 0f)
+        {
+            Vector3 v = animated - fl.prevAnimated; v.y = 0f;
+            fl.groundSpeed = Mathf.Lerp(fl.groundSpeed, v.magnitude / dt, 1f - Mathf.Exp(-20f * dt));
+        }
+        fl.prevAnimated = animated;
+        fl.hasPrev = true;
+        bool slowOnGround = fl.groundSpeed < smoothedSpeed * 0.55f;
+        bool swinging = fl.groundSpeed > smoothedSpeed * 1.1f;
+
+        bool lifted = heightAbove >= fl.lo + swing * liftPoint || swinging;
+        if (lifted) fl.canLock = true;   // a new step can lock once the foot has actually come up / swung
+        if (!fl.locked && fl.canLock && slowOnGround && heightAbove <= fl.lo + swing * 0.5f)
+        {
+            fl.locked = true;
+            fl.canLock = false;
+            fl.pos = new Vector3(animated.x, targetY, animated.z);
+            debugLockCount++;
+        }
+        else if (fl.locked && (lifted || Vector3.Distance(flatAnim, flatLock) > maxLockStretch * modelScale))
+        {
+            fl.locked = false;   // the animation is lifting it (or the leg would overstretch): let go smoothly
+            if (lifted) debugLockReleasedByLift++; else debugLockReleasedByStretch++;
+        }
+        fl.weight = fl.locked ? 1f : Mathf.MoveTowards(fl.weight, 0f, dt / Mathf.Max(lockReleaseTime, 0.01f));
+        debugLeftFootLocked = leftLock.locked;
+        debugRightFootLocked = rightLock.locked;
+    }
+
+    void ReleaseFootLocks()
+    {
+        leftLock.locked = rightLock.locked = false;
+        leftLock.weight = rightLock.weight = 0f;
+    }
+
+    void KeepFootAboveFloor(AvatarIKGoal goal)
+    {
+        Vector3 animated = animator.GetIKPosition(goal);
+        float s = modelScale;
+        if (GroundBelow(animated + Vector3.up * (0.6f * s), 2f * s, out RaycastHit hit) && animated.y < hit.point.y + ankleHeight * s)
+        {
+            animator.SetIKPositionWeight(goal, 1f);
+            animator.SetIKPosition(goal, new Vector3(animated.x, hit.point.y + ankleHeight * s, animated.z));
+        }
+        else animator.SetIKPositionWeight(goal, 0f);
     }
 
     // Pins the foot to the ground when it's close to it. Returns how far down the foot needs to go (negative = down).
@@ -1098,6 +1228,15 @@ public class MonsterAnimator : MonoBehaviour
         float weight = Mathf.Clamp01(1f - heightAbove / groundingZone); // 1 when planted, 0 mid-stride
 
         Vector3 target = new Vector3(animated.x, targetY + Mathf.Max(0f, heightAbove) * s * (1f - weight), animated.z);
+
+        // Planted: hold the foot where it landed until the animation lifts it
+        var fl = goal == AvatarIKGoal.LeftFoot ? leftLock : rightLock;
+        UpdateFootLock(fl, heightAbove, animated, targetY);
+        if (fl.weight > 0f)
+        {
+            target = Vector3.Lerp(target, new Vector3(fl.pos.x, targetY, fl.pos.z), fl.weight);
+            weight = Mathf.Max(weight, fl.weight);
+        }
         animator.SetIKPositionWeight(goal, weight);
         animator.SetIKPosition(goal, target);
 
