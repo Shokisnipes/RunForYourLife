@@ -41,6 +41,8 @@ public class MonsterAnimator : MonoBehaviour
     public float handSmoothing = 12f;       // smooths the synced hand position
     [Tooltip("Max distance (normal human meters, scaled) it leans its body in when the hand is out of reach.")]
     public float maxLean = 0.2f;
+    [Tooltip("How quickly it settles into its lean (lower = slower, steadier).")]
+    public float leanSettleSpeed = 1.5f;
     [Tooltip("How far the head stays outside the doorway while reaching (normal human meters, scaled).")]
     public float headClearance = 0.1f;
 
@@ -476,7 +478,9 @@ public class MonsterAnimator : MonoBehaviour
     {
         if (groundFeet && animator.isHuman) GroundFeet();
 
-        animator.SetLookAtWeight(currentLookWeight, lookBodyWeight, lookHeadWeight, 1f, lookClamp);
+        // While reaching, only the head follows the hand; the body stays still
+        float bodyWeight = lookBodyWeight * (1f - Mathf.Max(currentReachWeight, carryWeight));
+        animator.SetLookAtWeight(currentLookWeight, bodyWeight, lookHeadWeight, 1f, lookClamp);
         animator.SetLookAtPosition(lookPos);
 
         if (carryWeight > 0f)
@@ -508,28 +512,31 @@ public class MonsterAnimator : MonoBehaviour
             }
         }
 
-        // Lean the body in (horizontally only) if the hand is past arm's length,
-        // but never far enough to push the head through the wall above the door
+        // Lean the body in toward the DOORWAY (not the moving hand) so it settles into one pose and
+        // stays planted while the arm feels around. Horizontal only, and the head stays outside.
         Vector3 targetLean = Vector3.zero;
         if (currentReachWeight > 0f && shoulder != null && armLength > 0f && ai != null)
         {
-            Vector3 toHand = smoothedHand - shoulder.position;
-            float extra = toHand.magnitude - armLength * 0.95f;
-            Vector3 flat = new Vector3(toHand.x, 0f, toHand.z);
-            if (extra > 0f && flat.sqrMagnitude > 0.01f)
-                targetLean = flat.normalized * Mathf.Min(extra, maxLean * modelScale) * currentReachWeight;
-
             Vector3 inward = ai.SyncedDoorPoint - root.position;
             inward.y = 0f;
-            if (inward.sqrMagnitude > 0.01f && head != null)
+            if (inward.sqrMagnitude > 0.01f)
             {
                 inward.Normalize();
-                float headDepth = Vector3.Dot(head.position - lean + targetLean - ai.SyncedDoorPoint, inward);
-                float limit = -headClearance * modelScale;   // head stays this far outside the door
-                if (headDepth > limit) targetLean -= inward * (headDepth - limit);
+                Vector3 shoulderNoLean = shoulder.position - lean;
+                Vector3 reachInto = ai.SyncedDoorPoint + inward * 1.5f;      // just inside the door
+                float extra = Vector3.Distance(shoulderNoLean, reachInto) - armLength * 0.9f;
+                if (extra > 0f)
+                    targetLean = inward * Mathf.Min(extra, maxLean * modelScale) * currentReachWeight;
+
+                if (head != null)
+                {
+                    float headDepth = Vector3.Dot(head.position - lean + targetLean - ai.SyncedDoorPoint, inward);
+                    float limit = -headClearance * modelScale;   // head stays this far outside the door
+                    if (headDepth > limit) targetLean -= inward * (headDepth - limit);
+                }
             }
         }
-        lean = Vector3.Lerp(lean, targetLean, 1f - Mathf.Exp(-4f * Time.deltaTime));
+        lean = Vector3.Lerp(lean, targetLean, 1f - Mathf.Exp(-leanSettleSpeed * Time.deltaTime));
         animator.bodyPosition += lean;
     }
 
