@@ -9,7 +9,7 @@ public class BuildingGenerator : EditorWindow
     float depth = 10f;          // Z
     float height = 4f;          // Y (one storey ~ 3-4 m)
     float wallThickness = 0.25f;
-    float doorWidth = 1.4f;
+    float doorWidth = 2.2f;     // wide enough for the giant's forearm to reach through
     float doorHeight = 2.3f;
     float doorOffset = 0f;      // slide the door left/right along the front wall
     bool addInteriorWall = false;

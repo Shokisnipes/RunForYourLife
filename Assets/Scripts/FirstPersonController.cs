@@ -145,7 +145,7 @@ public class FirstPersonController : NetworkBehaviour
         Look(mouse);
         Crouch(kb);
         Move(kb);
-        bool sprinting = kb.leftShiftKey.isPressed && kb.wKey.isPressed && !isCrouching;
+        bool sprinting = !NetworkUI.MenuOpen && kb.leftShiftKey.isPressed && kb.wKey.isPressed && !isCrouching;
         UpdateCameraFeel(sprinting);
 
         // Esc opens the pause menu (NetworkUI). If the cursor got freed some other way
@@ -194,11 +194,15 @@ public class FirstPersonController : NetworkBehaviour
 
     void Move(Keyboard kb)
     {
+        bool hasInput = !NetworkUI.MenuOpen;   // pause menu open: stand still (gravity still applies)
         Vector2 input = Vector2.zero;
-        if (kb.wKey.isPressed) input.y += 1;
-        if (kb.sKey.isPressed) input.y -= 1;
-        if (kb.dKey.isPressed) input.x += 1;
-        if (kb.aKey.isPressed) input.x -= 1;
+        if (hasInput)
+        {
+            if (kb.wKey.isPressed) input.y += 1;
+            if (kb.sKey.isPressed) input.y -= 1;
+            if (kb.dKey.isPressed) input.x += 1;
+            if (kb.aKey.isPressed) input.x -= 1;
+        }
 
         Vector3 move = transform.right * input.x + transform.forward * input.y;
         if (move.sqrMagnitude > 1f) move.Normalize();
@@ -210,7 +214,7 @@ public class FirstPersonController : NetworkBehaviour
         if (controller.isGrounded && verticalVelocity < 0f)
             verticalVelocity = -2f; // keeps us snapped to the ground
 
-        if (controller.isGrounded && !isCrouching && kb.spaceKey.wasPressedThisFrame)
+        if (hasInput && controller.isGrounded && !isCrouching && kb.spaceKey.wasPressedThisFrame)
             verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
 
         verticalVelocity += gravity * Time.deltaTime;
@@ -223,7 +227,7 @@ public class FirstPersonController : NetworkBehaviour
 
     void Crouch(Keyboard kb)
     {
-        bool wantCrouch = kb.leftCtrlKey.isPressed;
+        bool wantCrouch = kb.leftCtrlKey.isPressed && !NetworkUI.MenuOpen;
 
         if (wantCrouch)
         {

@@ -139,6 +139,8 @@ public class MonsterAI : NetworkBehaviour
             agent.enabled = false;   // the host moves it; we just watch
             return;
         }
+        agent.enabled = true;       // may have been turned off by an earlier session as a client
+        holding = false;
         agent.angularSpeed = 70f;   // slow, heavy turns
         SetState(MonsterState.Patrol);
     }
@@ -556,6 +558,7 @@ public class MonsterAI : NetworkBehaviour
     void HearNoise(Vector3 position, float radius)
     {
         if (!IsServer || !IsSpawned) return;
+        if (holding) return;   // busy holding its victim; don't wander off mid-grab
         if (state == MonsterState.Chase || state == MonsterState.Notice) return;
 
         float dist = Vector3.Distance(transform.position, position);

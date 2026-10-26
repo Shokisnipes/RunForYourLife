@@ -112,3 +112,11 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# claude.ai data exports (personal chat history)
+/manifest-*.json
+/conversations-*.zip
+/light_metadata-*.zip
+/projects-*.zip
+/memories-*.zip
+/frames-*.zip

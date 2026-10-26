@@ -15,7 +15,8 @@ public class MenuButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
     Vector2 basePos;
     bool hovered;
 
-    void Awake()
+    // NetworkUI adds this component and only then assigns the label, so Awake is too early to set up
+    void Start()
     {
         if (label != null)
         {
@@ -42,7 +43,7 @@ public class MenuButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
 
     void Update()
     {
-        if (label == null) return;
+        if (label == null || labelRect == null) return;
         float t = 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime);
         label.color = Color.Lerp(label.color, hovered ? hoverColor : normalColor, t);
         labelRect.anchoredPosition = Vector2.Lerp(labelRect.anchoredPosition, basePos + (hovered ? Vector2.right * hoverShift : Vector2.zero), t);

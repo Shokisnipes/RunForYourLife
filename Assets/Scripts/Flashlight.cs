@@ -93,7 +93,7 @@ public class Flashlight : NetworkBehaviour
     {
         if (!IsOwner) return;
         var kb = Keyboard.current;
-        if (kb != null && kb.fKey.wasPressedThisFrame)
+        if (kb != null && kb.fKey.wasPressedThisFrame && !NetworkUI.MenuOpen)
             isOn.Value = !isOn.Value;
     }
 
