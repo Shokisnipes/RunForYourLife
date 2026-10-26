@@ -211,12 +211,10 @@ public class MonsterAI : NetworkBehaviour
 
         bool reaching = state == MonsterState.Reach && arrivedTime >= 0f && reachPhase != ReachPhase.Peek;
         if (netReaching.Value != reaching) netReaching.Value = reaching;
-        if (reaching)
-        {
-            if ((netHandTarget.Value - handPos).sqrMagnitude > 0.0025f) netHandTarget.Value = handPos;
-            if (currentReachPoint != null && (netDoorPoint.Value - currentReachPoint.DoorPoint).sqrMagnitude > 0.01f)
-                netDoorPoint.Value = currentReachPoint.DoorPoint;
-        }
+        if (reaching && (netHandTarget.Value - handPos).sqrMagnitude > 0.0025f) netHandTarget.Value = handPos;
+        // The doorway posture needs the door while peeking too, not just once the arm goes in
+        if ((peeking || reaching) && currentReachPoint != null && (netDoorPoint.Value - currentReachPoint.DoorPoint).sqrMagnitude > 0.01f)
+            netDoorPoint.Value = currentReachPoint.DoorPoint;
     }
 
     // ---------- States ----------
@@ -443,7 +441,8 @@ public class MonsterAI : NetworkBehaviour
                     return;
                 }
 
-                if (!knowsWhere && Time.time - reachPhaseStart > feelDuration)
+                // Gives up after a while; a bit longer if it can see/hear you (its arm may just not reach that far)
+                if (Time.time - reachPhaseStart > (knowsWhere ? feelDuration * 1.5f : feelDuration))
                     SetReachPhase(ReachPhase.Retract);
                 break;
 
@@ -514,19 +513,25 @@ public class MonsterAI : NetworkBehaviour
 
     FirstPersonController PlayerTouchedByHand()
     {
+        // Use the hand you can actually see: the arm can't always get as deep as the AI wants
+        var anim = GiantAnimator();
+        Vector3 hand = anim != null && anim.isActiveAndEnabled ? anim.HandPosition : handPos;
         foreach (var p in FirstPersonController.All)
         {
             if (!p.IsSpawned || p.IsGrabbed) continue;
             Vector3 chest = Chest(p);
             Vector3 feet = p.transform.position + Vector3.up * 0.3f;
             // Distance from the hand to the player's body (a line from feet to chest)
-            Vector3 closest = ClosestPointOnSegment(feet, chest, handPos);
-            if (Vector3.Distance(closest, handPos) > grabRadius) continue;
-            if (!LineClear(handPos, p)) continue;
+            Vector3 closest = ClosestPointOnSegment(feet, chest, hand);
+            if (Vector3.Distance(closest, hand) > grabRadius) continue;
+            if (!LineClear(hand, p)) continue;
             return p;
         }
         return null;
     }
+
+    MonsterAnimator cachedAnimator;
+    MonsterAnimator GiantAnimator() => cachedAnimator != null ? cachedAnimator : (cachedAnimator = GetComponentInChildren<MonsterAnimator>());
 
     static Vector3 ClosestPointOnSegment(Vector3 a, Vector3 b, Vector3 p)
     {

@@ -306,7 +306,11 @@ public class FirstPersonController : NetworkBehaviour
         {
             if (monster != null)
             {
-                Vector3 hold = monster.HandPosition - Vector3.up * (standHeight * 0.6f);
+                Vector3 hand = monster.HandPosition;
+                Vector3 hold = hand - Vector3.up * (standHeight * 0.6f);
+                // Dragged along the floor, never through it
+                if (Physics.Raycast(hand + Vector3.up * 0.5f, Vector3.down, out var floor, 4f, ~0, QueryTriggerInteraction.Ignore))
+                    hold.y = Mathf.Max(hold.y, floor.point.y);
                 transform.position = Vector3.Lerp(transform.position, hold, 1f - Mathf.Exp(-14f * Time.deltaTime));
 
                 Vector3 toFace = monster.HeadPosition - cameraPivot.position;

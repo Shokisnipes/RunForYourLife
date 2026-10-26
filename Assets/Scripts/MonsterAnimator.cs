@@ -7,6 +7,7 @@ using UnityEngine;
 // - Detects real foot contacts and fires MonsterAudio.Footstep() (sound + camera shake) on each plant
 // - Head slowly turns to track you, arm reaches for you when it's peeking into a building
 [RequireComponent(typeof(Animator))]
+[DefaultExecutionOrder(100)]   // after PoseAdjuster, so the doorway arm solve is the last word on the pose
 public class MonsterAnimator : MonoBehaviour
 {
     [Header("Speed mapping (monster speed in m/s)")]
@@ -39,12 +40,31 @@ public class MonsterAnimator : MonoBehaviour
     public AvatarIKGoal reachHand = AvatarIKGoal.RightHand;
     public float reachSpeed = 2.5f;         // how fast the arm blends into reaching
     public float handSmoothing = 12f;       // smooths the synced hand position
-    [Tooltip("Max distance (normal human meters, scaled) it leans its body in when the hand is out of reach.")]
-    public float maxLean = 0.2f;
-    [Tooltip("How quickly it settles into its lean (lower = slower, steadier).")]
-    public float leanSettleSpeed = 1.5f;
     [Tooltip("How far the head stays outside the doorway while reaching (normal human meters, scaled).")]
     public float headClearance = 0.1f;
+
+    [Header("Doorway posture (kneels, bows and threads its arm through the door)")]
+    [Tooltip("At a doorway it drops to its knees and bows so its arm can fit through the opening. " +
+             "The arm always passes through the door, never the wall; the hand only goes as deep as the pose allows.")]
+    public bool doorwayPosture = true;
+    [Tooltip("Hip height when kneeling (normal human meters).")]
+    public float kneelHipHeight = 0.45f;
+    [Tooltip("How far behind the hips the feet go when kneeling (normal human meters).")]
+    public float kneelFootBack = 0.35f;
+    [Tooltip("How far in front of the hips the knees go when kneeling (normal human meters).")]
+    public float kneelKneeForward = 0.25f;
+    [Tooltip("Most it bows its upper body forward (degrees).")]
+    public float maxBow = 75f;
+    [Tooltip("Most it shifts its whole body in toward the door (normal human meters).")]
+    public float maxLeanIn = 0.45f;
+    [Tooltip("How fast it gets into / out of the doorway posture (0-1 per second).")]
+    public float postureSpeed = 1.5f;
+    [Tooltip("Thickness of its arm (normal human meters). The arm keeps this far from the door frame.")]
+    public float armRadius = 0.055f;
+    [Tooltip("Half the thickness of building walls, in meters.")]
+    public float wallHalfThickness = 0.15f;
+    [Tooltip("Puts its other hand flat on the ground while it kneels at a door.")]
+    public bool plantFreeHand = true;
 
     [Header("Pick-up (after a catch)")]
     public float pullTime = 0.9f;           // caught inside: seconds to drag you to the doorway
@@ -98,6 +118,15 @@ public class MonsterAnimator : MonoBehaviour
     public float debugAnimSpeed;
     public float debugMeasuredClipSpeed;
     public float debugFallbackClipSpeed;
+    [Tooltip("Doorway posture: how far its bow / lean-in / reach currently are.")]
+    public float debugBow;
+    public float debugLeanIn;
+    [Tooltip("How far (meters) the hand is from where the AI wants it, because of the doorway. 0 = got there.")]
+    public float debugReachShortfall;
+    [Tooltip("How far the leg lift is currently raising the body (meters).")]
+    public float debugLegLift;
+    [Tooltip("0 = not reaching, 1 = hand outside, 2 = arm threaded through the door, 3 = can't get through (hand rests at the threshold)")]
+    public int debugArmMode;
 
     [Header("Uncanny proportions")]
     public float armScale = 1.25f;
@@ -151,7 +180,18 @@ public class MonsterAnimator : MonoBehaviour
     Transform shoulder, elbow;
     float armLength;
     Vector3 smoothedHand;
-    Vector3 lean;
+
+    // Doorway posture
+    Transform spine, chest, neck, freeShoulder, freeElbow, freeHand, hipsBone;
+    Vector3 hipsFromBody;   // hips bone relative to the IK body position (the body position is the center of mass)
+    Vector3 lastBodyPosition;
+    Vector3 headLocalForward;
+    float upperArmLength, foreArmLength;
+    float postureWeight, armWeight;
+    float bow, bowTarget, leanIn, leanInTarget;
+    Vector3 openingFor = new Vector3(float.NaN, 0f, 0f);
+    Vector3 openingCenter;
+    float openingHalfWidth, openingTop, openingBottom, roofTop, roomCeiling;
 
     // Read by the player being carried
     public Vector3 HandPosition
@@ -235,9 +275,23 @@ public class MonsterAnimator : MonoBehaviour
         elbow = animator.GetBoneTransform(left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm);
         var hand = left ? leftHandBone : rightHandBone;
         if (shoulder != null && elbow != null && hand != null)
-            armLength = Vector3.Distance(shoulder.position, elbow.position) + Vector3.Distance(elbow.position, hand.position);
+        {
+            upperArmLength = Vector3.Distance(shoulder.position, elbow.position);
+            foreArmLength = Vector3.Distance(elbow.position, hand.position);
+            armLength = upperArmLength + foreArmLength;
+        }
         if (shoulder != null)
             ReachShoulderSide = root.InverseTransformPoint(shoulder.position).x;
+
+        hipsBone = animator.GetBoneTransform(HumanBodyBones.Hips);
+        spine = animator.GetBoneTransform(HumanBodyBones.Spine);
+        chest = animator.GetBoneTransform(HumanBodyBones.Chest);
+        neck = animator.GetBoneTransform(HumanBodyBones.Neck);
+        freeShoulder = animator.GetBoneTransform(left ? HumanBodyBones.RightUpperArm : HumanBodyBones.LeftUpperArm);
+        freeElbow = animator.GetBoneTransform(left ? HumanBodyBones.RightLowerArm : HumanBodyBones.LeftLowerArm);
+        freeHand = left ? rightHandBone : leftHandBone;
+        // Still in the T-pose here, facing the root's forward: remember which way the face points in head space
+        if (head != null) headLocalForward = Quaternion.Inverse(head.rotation) * root.forward;
     }
 
     void ScaleBone(HumanBodyBones bone, float scale)
@@ -325,7 +379,7 @@ public class MonsterAnimator : MonoBehaviour
 
         // If the arm was already reaching, start the carry from where the hand is (no snapping)
         bool handWasIn = currentReachWeight > 0.5f;
-        carryFrom = handWasIn ? smoothedHand : victimPosition + Vector3.up * 1f;
+        carryFrom = handWasIn ? HandPosition : victimPosition + Vector3.up * 1f;   // where the hand really is
         carryTarget = carryFrom;
         if (handWasIn) carryWeight = currentReachWeight;
     }
@@ -428,6 +482,7 @@ public class MonsterAnimator : MonoBehaviour
         target = Mathf.Clamp(target, 0f, 2f * s);
         float rate = target > liftOffset ? liftSpeed : liftSpeed * 0.3f;   // rise fast, settle slowly
         liftOffset = Mathf.Lerp(liftOffset, target, 1f - Mathf.Exp(-rate * Time.deltaTime));
+        debugLegLift = liftOffset;
     }
 
     float Clearance(Transform bone, float thickness)
@@ -444,12 +499,412 @@ public class MonsterAnimator : MonoBehaviour
 
     void LateUpdate()
     {
+        KneelFeet();       // before the leg lift measures anything
         UpdateLegLift();
 
         // Bones are posed by now: check for foot contacts
         CheckFoot(leftFoot, ref leftPlanted, leftTrack);
         CheckFoot(rightFoot, ref rightPlanted, rightTrack);
         MeasureStride();
+
+        UpdateDoorwayPosture();
+    }
+
+    // ---------- Doorway posture: bow + arm through the door (after animation and IK) ----------
+
+    // Kneeling: lay the feet back along the ground (toes pointing behind, tops of the feet down),
+    // and remember where the hips sit relative to the IK body position for the next IK pass
+    void KneelFeet()
+    {
+        if (hipsBone != null) { hipsFromBody = hipsBone.position - lastBodyPosition; hipsFromBody.y = 0f; }
+        if (postureWeight <= 0f || !animator.isHuman) return;
+        Vector3 back = -Flat(root.forward);
+        Vector3 want = (back * Mathf.Cos(15f * Mathf.Deg2Rad) + Vector3.down * Mathf.Sin(15f * Mathf.Deg2Rad)).normalized;
+        LayFoot(leftFoot, leftToes, want);
+        LayFoot(rightFoot, rightToes, want);
+    }
+
+    void LayFoot(Transform foot, Transform toes, Vector3 want)
+    {
+        if (foot == null || toes == null) return;
+        Vector3 dir = toes.position - foot.position;
+        if (dir.sqrMagnitude < 0.0001f) return;
+        foot.rotation = Quaternion.Slerp(Quaternion.identity, Quaternion.FromToRotation(dir, want), postureWeight) * foot.rotation;
+    }
+
+    // Caught inside: the hand is dragging you to the door and out through it
+    bool DraggingThroughDoor => carrying && carryThroughDoor && Time.time - carryStart < pullTime + throughDoorTime + 0.25f;
+
+    void UpdateDoorwayPosture()
+    {
+        float dt = Time.deltaTime;
+        bool usable = doorwayPosture && animator.isHuman && ai != null && spine != null && shoulder != null && elbow != null && head != null;
+        bool dragging = DraggingThroughDoor;
+        bool hasDoor = dragging || ai == null || ai.SyncedDoorPoint != Vector3.zero;   // not synced yet = not at a door
+        usable &= hasDoor;
+        bool atDoor = usable && (ai.SyncedPeeking || ai.SyncedReaching || dragging);
+        postureWeight = Mathf.MoveTowards(postureWeight, atDoor ? 1f : 0f, dt * postureSpeed);
+        armWeight = Mathf.MoveTowards(armWeight, usable && (ai.SyncedReaching || dragging) ? 1f : 0f, dt * reachSpeed);
+        if (!usable || (postureWeight <= 0f && armWeight <= 0f))
+        {
+            bow = bowTarget = 0f;
+            leanIn = leanInTarget = 0f;
+            debugBow = debugLeanIn = debugReachShortfall = 0f;
+            return;
+        }
+
+        float s = modelScale;
+        Vector3 door = dragging ? carryDoor : ai.SyncedDoorPoint;
+        Vector3 n = Flat(root.forward), right = Vector3.Cross(Vector3.up, n);
+        MeasureOpening(door, n, right);
+        Vector3 handGoal = dragging ? carryTarget : smoothedHand;
+        bool reaching = armWeight > 0f;
+
+        // Search for the bow (and lean-in) that gets the hand where it wants to be without any
+        // part of the head, neck, chest or shoulders entering the building
+        Vector3 pivot = spine.position;
+        Vector3 s0 = shoulder.position, n0 = neck != null ? neck.position : head.position, c0 = chest != null ? chest.position : spine.position;
+        Vector3 h0 = head.position, f0 = freeShoulder != null ? freeShoulder.position : s0;
+        float step = 0.08f * s;
+        float bestCost = float.MaxValue, bestBow = 0f, bestLean = leanIn;
+        for (int li = -2; li <= 2; li++)
+        {
+            float lean = Mathf.Clamp(leanIn + li * step, 0f, maxLeanIn * s);
+            Vector3 shift = n * (lean - leanIn) * postureWeight;
+            for (float b = 0f; b <= maxBow + 0.01f; b += 5f)
+            {
+                Quaternion q = Quaternion.AngleAxis(b * postureWeight, right);
+                Vector3 S = pivot + shift + q * (s0 - pivot);
+                Vector3 N = pivot + shift + q * (n0 - pivot);
+                Vector3 C = pivot + shift + q * (c0 - pivot);
+                Vector3 F = pivot + shift + q * (f0 - pivot);
+                Vector3 H = pivot + shift + q * (h0 - pivot) + Vector3.up * 0.08f * s;   // middle of the skull
+                if (!Clear(door, n, S, 0.07f * s) || !Clear(door, n, F, 0.07f * s) || !Clear(door, n, N, 0.06f * s) ||
+                    !Clear(door, n, C, 0.13f * s) || !Clear(door, n, H, 0.11f * s * headScale + headClearance * s))
+                    continue;
+
+                float cost;
+                if (reaching)
+                {
+                    SolveArmThroughDoor(door, n, right, S, handGoal, out float shortfall, out _, out _);
+                    cost = shortfall;
+                }
+                else
+                {
+                    // Peeking: bring its eye down to the top of the doorway, just outside
+                    float eyeDepth = Vector3.Dot(H - door, n);
+                    cost = Mathf.Abs(eyeDepth + 0.25f * s) * 0.5f + Mathf.Abs(H.y - (openingTop + 0.1f * s));
+                }
+                cost += b * 0.004f + Mathf.Abs(lean - leanIn) * 0.05f;
+                if (cost < bestCost) { bestCost = cost; bestBow = b; bestLean = lean; }
+            }
+        }
+        bowTarget = bestBow;
+        leanInTarget = bestLean;
+        bow = Mathf.MoveTowards(bow, bowTarget, 70f * dt);
+        leanIn = Mathf.MoveTowards(leanIn, leanInTarget, 0.25f * s * dt);   // applied to the hips next IK pass
+
+        // Bow the upper body
+        spine.rotation = Quaternion.AngleAxis(bow * postureWeight, right) * spine.rotation;
+
+        // The free hand goes flat on the ground beside it, outside the building
+        if (plantFreeHand && freeShoulder != null && freeElbow != null && freeHand != null)
+        {
+            Vector3 fs = freeShoulder.position;
+            float sideSign = Mathf.Sign(Vector3.Dot(fs - shoulder.position, right));
+            Vector3 plant = fs + n * 0.1f * s + right * sideSign * 0.06f * s;
+            plant.y = transform.position.y + 0.04f * s;
+            float maxDepth = -(wallHalfThickness + 0.08f * s);
+            float pd = Vector3.Dot(plant - door, n);
+            if (pd > maxDepth) plant -= n * (pd - maxDepth);
+            Vector3 pole = fs + right * sideSign * 0.3f * s - n * 0.1f * s;
+            TwoBoneIK(freeShoulder, freeElbow, freeHand, plant, pole, postureWeight);
+        }
+
+        // The reaching arm. Every pose is checked against the wall (both bones, with their thickness):
+        // the arm may only pass through the door opening and stay under the ceiling once inside.
+        if (reaching)
+        {
+            Vector3 S = shoulder.position;
+            float shortfall = 0f;
+            bool found = false;
+            Vector3 elbowPos = default, handPos = default;
+
+            // 1. The ideal pose: forearm threaded through the opening toward the goal
+            if (SolveArmThroughDoor(door, n, right, S, handGoal, out shortfall, out elbowPos, out handPos) &&
+                ArmClear(door, n, right, S, elbowPos, handPos))
+            {
+                found = true;
+                debugArmMode = Vector3.Dot(handGoal - door, n) < NearDoorDepth ? 1 : 2;
+            }
+
+            // 2. Otherwise: try other elbow angles, easing the hand back toward the doorway, then outside it
+            if (!found)
+            {
+                Vector3 outside = new Vector3(openingCenter.x, Mathf.Clamp(handGoal.y, openingBottom + 0.3f, openingTop - 0.6f), openingCenter.z)
+                                  - n * (wallHalfThickness + armRadius * s + 0.3f);
+                Vector3 inDoor = outside + n * (wallHalfThickness + armRadius * s + 0.3f);
+                for (int k = 0; k <= 6 && !found; k++)
+                {
+                    // k 0..3: goal -> middle of the doorway, k 4..6: doorway -> just outside
+                    Vector3 h = k <= 3 ? Vector3.Lerp(handGoal, inDoor, k / 3f) : Vector3.Lerp(inDoor, outside, (k - 3) / 3f);
+                    if (k > 0 && k <= 3 &&
+                        SolveArmThroughDoor(door, n, right, S, h, out float sf, out Vector3 te, out Vector3 th) && ArmClear(door, n, right, S, te, th))
+                    {
+                        found = true;
+                        elbowPos = te; handPos = th;
+                        shortfall = Vector3.Distance(th, handGoal);
+                        debugArmMode = 2;
+                        break;
+                    }
+                    for (int sw = 0; sw < 12 && !found; sw++)
+                    {
+                        Vector3 axis = (h - S).normalized;
+                        Vector3 basePole = Vector3.down * s - n * 0.5f * s;
+                        Vector3 pole = S + Quaternion.AngleAxis(sw * 30f, axis) * basePole;
+                        Vector3 e = ElbowFor(S, h, upperArmLength, foreArmLength, pole);
+                        Vector3 hh = S + (h - S).normalized * Mathf.Min(Vector3.Distance(S, h), upperArmLength + foreArmLength - 0.001f);
+                        if (!ArmClear(door, n, right, S, e, hh)) continue;
+                        found = true;
+                        elbowPos = e; handPos = hh;
+                        shortfall = Vector3.Distance(hh, handGoal);
+                        debugArmMode = k <= 3 ? 2 : 3;
+                    }
+                }
+            }
+
+            // 3. Nothing fits from this pose: keep the hand outside, elbow low (it'll try again next frame)
+            if (!found)
+            {
+                Vector3 outside = openingCenter - n * (wallHalfThickness + armRadius * s + 0.6f);
+                Vector3 pole = S + Vector3.down * s - n * 0.5f * s;
+                elbowPos = ElbowFor(S, outside, upperArmLength, foreArmLength, pole);
+                handPos = S + (outside - S).normalized * Mathf.Min(Vector3.Distance(S, outside), upperArmLength + foreArmLength - 0.001f);
+                shortfall = Vector3.Distance(handPos, handGoal);
+                debugArmMode = 3;
+            }
+
+            ApplyArm(shoulder, elbow, HandBone, elbowPos, handPos, armWeight);
+            debugReachShortfall = shortfall;
+        }
+        else { debugReachShortfall = 0f; debugArmMode = 0; }
+
+        // Face whatever it's looking at (the bow pitched the head down with the body)
+        Vector3 lookAt = reaching ? HandPosition : lookPos;
+        AimHead(lookAt, postureWeight * 0.85f);
+
+        debugBow = bow * postureWeight;
+        debugLeanIn = leanIn * postureWeight;
+    }
+
+    Transform HandBone => reachHand == AvatarIKGoal.LeftHand ? leftHandBone : rightHandBone;
+    const float NearDoorDepth = 0.6f;   // goals shallower than this (meters past the wall) are reached directly
+
+    // Is this body part (a sphere) outside the building, or above its roof?
+    bool Clear(Vector3 door, Vector3 n, Vector3 p, float radius)
+    {
+        bool outside = Vector3.Dot(p - door, n) <= -(wallHalfThickness + radius);
+        bool overRoof = p.y >= roofTop + radius;
+        bool overFloor = p.y >= transform.position.y + radius * 0.5f;
+        return (outside || overRoof) && overFloor;
+    }
+
+    // Find where the arm can go: the forearm passes through a point in the door opening, the elbow
+    // stays outside, and the bones keep their real lengths. Returns false if the shoulder is too far
+    // away for the hand to get through at all. 'shortfall' = how far short of the goal the hand ends up.
+    bool SolveArmThroughDoor(Vector3 door, Vector3 n, Vector3 right, Vector3 S, Vector3 goal,
+                             out float shortfall, out Vector3 elbowPos, out Vector3 handPos)
+    {
+        float l1 = upperArmLength, l2 = foreArmLength, s = modelScale;
+        float rArm = armRadius * s;
+        elbowPos = handPos = goal;
+
+        float goalDepth = Vector3.Dot(goal - door, n);
+        if (goalDepth < NearDoorDepth)
+        {
+            // Hand outside or right in the doorway (coming in / pulling someone out): plain reach with the
+            // elbow low and outside, so the forearm runs out through the opening rather than over the lintel
+            shortfall = Mathf.Max(0f, Vector3.Distance(S, goal) - (l1 + l2));
+            Vector3 pole = goal - n * 2f * s * 0.1f + Vector3.down * 0.3f * s;
+            elbowPos = ElbowFor(S, goal, l1, l2, pole);
+            handPos = S + (goal - S).normalized * Mathf.Min(Vector3.Distance(S, goal), l1 + l2 - 0.001f);
+            return true;
+        }
+
+        // Where the shoulder->goal line crosses the wall, kept inside the opening (minus the arm's thickness)
+        float shoulderDepth = Vector3.Dot(S - door, n);
+        float t = shoulderDepth < 0f ? shoulderDepth / (shoulderDepth - goalDepth) : 0f;
+        Vector3 cross = S + (goal - S) * t;
+        // Close to the door, cross the wall at the goal's own height (so whatever it's holding fits through)
+        float nearDoor = Mathf.Clamp01(1f - goalDepth / 1.5f);
+        cross = Vector3.Lerp(cross, goal, nearDoor);
+        float side = Mathf.Clamp(Vector3.Dot(cross - openingCenter, right), -(openingHalfWidth - rArm), openingHalfWidth - rArm);
+        float y = Mathf.Clamp(cross.y, openingBottom + rArm, openingTop - rArm);
+        Vector3 P = openingCenter + right * side;
+        P.y = y;
+        P += n * Vector3.Dot(door - P, n);   // on the wall's center plane
+
+        Vector3 d = Vector3.forward;
+        float inward = 1f;
+        for (int i = 0; i < 3; i++)
+        {
+            d = (goal - P).normalized;
+            inward = Vector3.Dot(d, n);
+            if (inward < 0.3f) { d = (d + n * (0.3f - inward)).normalized; inward = Vector3.Dot(d, n); }
+            // A sloped arm is higher on one face of the wall than at its middle: keep both faces in the opening
+            float rise = Mathf.Abs(d.y) * (wallHalfThickness + rArm) / inward + 0.02f;
+            float yMax = openingTop - rArm - rise, yMin = openingBottom + rArm + rise;
+            if (yMax < yMin) { shortfall = 30f; return false; }   // opening too small for the arm at this angle
+            float clamped = Mathf.Clamp(P.y, yMin, yMax);
+            if (Mathf.Approximately(clamped, P.y)) break;
+            P.y = clamped;
+        }
+
+        // Elbow at distance a outside P along -d, with |S - elbow| = l1:  a^2 + 2a(d.w) + |w|^2 - l1^2 = 0
+        Vector3 w = S - P;
+        float bq = Vector3.Dot(d, w);
+        float disc = bq * bq - (w.sqrMagnitude - l1 * l1);
+        if (disc < 0f)
+        {
+            shortfall = 20f + (w.magnitude - l1);   // shoulder too far: hand can't get through
+            return false;
+        }
+        float root = Mathf.Sqrt(disc);
+        float aMin = (wallHalfThickness + rArm * 1.2f) / inward;   // elbow fully outside the wall
+        float want = Vector3.Distance(goal, P);
+        float wantA = l2 - want;
+        float best = float.NaN;
+        foreach (float a in new[] { -bq - root, -bq + root })
+        {
+            if (a < aMin || a > l2) continue;
+            if (float.IsNaN(best) || Mathf.Abs(a - wantA) < Mathf.Abs(best - wantA)) best = a;
+        }
+        if (float.IsNaN(best))
+        {
+            shortfall = 10f + want;   // elbow would have to be inside the wall: no good
+            return false;
+        }
+
+        float reach = l2 - best;
+        shortfall = Mathf.Max(0f, want - reach) + Mathf.Max(0f, reach - want) * 0.5f;
+        elbowPos = P - d * best;
+        handPos = P + d * reach;
+        return true;
+    }
+
+    // Does this arm pose stay out of the building? Each bone is a capsule; where it passes through the
+    // front wall it has to be inside the door opening, and inside the room it has to stay under the ceiling.
+    bool ArmClear(Vector3 door, Vector3 n, Vector3 right, Vector3 shoulderPos, Vector3 elbowPos, Vector3 handPos)
+    {
+        float r = armRadius * modelScale;
+        return BoneClear(door, n, right, shoulderPos, elbowPos, r * 1.15f) && BoneClear(door, n, right, elbowPos, handPos, r);
+    }
+
+    bool BoneClear(Vector3 door, Vector3 n, Vector3 right, Vector3 a, Vector3 b, float r)
+    {
+        float da = Vector3.Dot(a - door, n), db = Vector3.Dot(b - door, n);
+        float slab = wallHalfThickness + r;
+        // Portion of the bone inside the (thickened) wall: must be within the opening
+        if (RangeOnSegment(da, db, -slab, slab, out float t0, out float t1) &&
+            (!InOpening(a + (b - a) * t0, door, right, r) || !InOpening(a + (b - a) * t1, door, right, r)))
+            return false;
+        // Portion inside the room: under the ceiling
+        if (RangeOnSegment(da, db, slab, float.MaxValue, out t0, out t1))
+        {
+            float ya = Mathf.Lerp(a.y, b.y, t0), yb = Mathf.Lerp(a.y, b.y, t1);
+            if (Mathf.Max(ya, yb) > roomCeiling - r) return false;
+        }
+        return true;
+    }
+
+    bool InOpening(Vector3 p, Vector3 door, Vector3 right, float r)
+    {
+        float side = Vector3.Dot(p - openingCenter, right);
+        return Mathf.Abs(side) <= openingHalfWidth - r && p.y >= openingBottom + r * 0.5f && p.y <= openingTop - r;
+    }
+
+    // The part of a segment (parameter t in 0..1) where a linear value going from va to vb is within [lo, hi]
+    static bool RangeOnSegment(float va, float vb, float lo, float hi, out float t0, out float t1)
+    {
+        t0 = 0f; t1 = 1f;
+        if (Mathf.Approximately(va, vb)) return va >= lo && va <= hi;
+        float ta = (lo - va) / (vb - va), tb = (hi - va) / (vb - va);
+        if (ta > tb) { float tmp = ta; ta = tb; tb = tmp; }
+        t0 = Mathf.Max(0f, ta); t1 = Mathf.Min(1f, tb);
+        return t0 <= t1;
+    }
+
+    static Vector3 ElbowFor(Vector3 a, Vector3 target, float l1, float l2, Vector3 pole)
+    {
+        Vector3 toT = target - a;
+        float dist = Mathf.Clamp(toT.magnitude, 0.001f, l1 + l2 - 0.001f);
+        Vector3 dir = toT.normalized;
+        float cosA = Mathf.Clamp((l1 * l1 + dist * dist - l2 * l2) / (2f * l1 * dist), -1f, 1f);
+        Vector3 bend = Vector3.ProjectOnPlane(pole - a, dir);
+        bend = bend.sqrMagnitude > 0.0001f ? bend.normalized : Vector3.Cross(dir, Vector3.right).normalized;
+        return a + dir * (l1 * cosA) + bend * (l1 * Mathf.Sqrt(1f - cosA * cosA));
+    }
+
+    static void TwoBoneIK(Transform a, Transform b, Transform c, Vector3 target, Vector3 pole, float w)
+    {
+        float l1 = Vector3.Distance(a.position, b.position), l2 = Vector3.Distance(b.position, c.position);
+        Vector3 elbowPos = ElbowFor(a.position, target, l1, l2, pole);
+        Vector3 handPos = a.position + (target - a.position).normalized * Mathf.Min(Vector3.Distance(a.position, target), l1 + l2 - 0.001f);
+        ApplyArm(a, b, c, elbowPos, handPos, w);
+    }
+
+    // Rotate the upper bone so its joint lands on elbowPos, then the lower bone so its end lands on handPos
+    static void ApplyArm(Transform a, Transform b, Transform c, Vector3 elbowPos, Vector3 handPos, float w)
+    {
+        Quaternion qa = Quaternion.FromToRotation(b.position - a.position, elbowPos - a.position);
+        a.rotation = Quaternion.Slerp(Quaternion.identity, qa, w) * a.rotation;
+        Quaternion qb = Quaternion.FromToRotation(c.position - b.position, handPos - b.position);
+        b.rotation = Quaternion.Slerp(Quaternion.identity, qb, w) * b.rotation;
+    }
+
+    void AimHead(Vector3 target, float w)
+    {
+        if (head == null || w <= 0f || headLocalForward == Vector3.zero) return;
+        Vector3 fwd = head.rotation * headLocalForward;
+        Vector3 want = target - head.position;
+        if (want.sqrMagnitude < 0.01f) return;
+        Quaternion q = Quaternion.FromToRotation(fwd, want.normalized);
+        q.ToAngleAxis(out float angle, out Vector3 axis);
+        if (angle > 180f) angle -= 360f;
+        angle = Mathf.Clamp(angle, -70f, 70f);
+        head.rotation = Quaternion.AngleAxis(angle * w, axis) * head.rotation;
+    }
+
+    // Size of the doorway, found once per door: top of the opening, its width and the roof height
+    void MeasureOpening(Vector3 door, Vector3 n, Vector3 right)
+    {
+        if ((door - openingFor).sqrMagnitude < 0.01f) return;
+        openingFor = door;
+        float l = Cast(door, -right, 4f, out var hl) ? hl.distance : 1.1f;
+        float r = Cast(door, right, 4f, out var hr) ? hr.distance : 1.1f;
+        openingHalfWidth = (l + r) / 2f;
+        openingCenter = door + right * ((r - l) / 2f);
+        openingTop = Cast(door, Vector3.up, 8f, out var hu) ? hu.point.y : door.y + 1.1f;
+        openingBottom = Cast(door, Vector3.down, 4f, out var hd) ? hd.point.y : door.y - 1.2f;
+        roofTop = Cast(door + Vector3.up * 40f, Vector3.down, 40f, out var hroof) ? hroof.point.y : openingTop;
+        roomCeiling = Cast(door + n * 1f, Vector3.up, 10f, out var hc) ? hc.point.y : openingTop;
+    }
+
+    // Raycast ignoring the giant itself and players
+    bool Cast(Vector3 from, Vector3 dir, float distance, out RaycastHit best)
+    {
+        best = default;
+        int count = Physics.RaycastNonAlloc(from, dir, rayHits, distance, groundLayers, QueryTriggerInteraction.Ignore);
+        float bestDist = float.MaxValue;
+        bool found = false;
+        for (int i = 0; i < count; i++)
+        {
+            var h = rayHits[i];
+            if (h.collider.transform.IsChildOf(root)) continue;
+            if (h.collider.GetComponentInParent<FirstPersonController>() != null) continue;
+            if (h.distance < bestDist) { bestDist = h.distance; best = h; found = true; }
+        }
+        return found;
     }
 
     // An in-place run moves the planted foot backward at exactly the speed the body should travel.
@@ -525,7 +980,9 @@ public class MonsterAnimator : MonoBehaviour
 
     void OnAnimatorIK(int layerIndex)
     {
-        if (groundFeet && animator.isHuman) GroundFeet();
+        if (postureWeight > 0f && animator.isHuman) Kneel();
+        else if (groundFeet && animator.isHuman) GroundFeet();
+        lastBodyPosition = animator.bodyPosition;   // only readable in here; KneelFeet uses it after the pose is applied
 
         // While reaching, only the head follows the hand; the body stays still
         float bodyWeight = lookBodyWeight * (1f - Mathf.Max(currentReachWeight, carryWeight));
@@ -534,59 +991,67 @@ public class MonsterAnimator : MonoBehaviour
 
         if (carryWeight > 0f)
         {
-            animator.SetIKPositionWeight(reachHand, carryWeight);
+            // Lifting you to its face. While it's still dragging you out through a door, the
+            // doorway arm solver (LateUpdate) has the hand instead.
+            float w = carryWeight * (doorwayPosture ? 1f - armWeight : 1f);
+            animator.SetIKPositionWeight(reachHand, w);
             animator.SetIKPosition(reachHand, carryTarget);
+        }
+        else if (doorwayPosture)
+        {
+            animator.SetIKPositionWeight(reachHand, 0f);   // LateUpdate threads the arm through the door
         }
         else
         {
             animator.SetIKPositionWeight(reachHand, currentReachWeight);
-            if (currentReachWeight > 0f && ai != null)
-            {
-                animator.SetIKPosition(reachHand, smoothedHand);
-
-                // Palm faces where it's reaching
-                Vector3 dir = smoothedHand - ai.SyncedDoorPoint;
-                if (dir.sqrMagnitude > 0.01f)
-                {
-                    animator.SetIKRotationWeight(reachHand, currentReachWeight * 0.7f);
-                    animator.SetIKRotation(reachHand, Quaternion.LookRotation(dir.normalized, Vector3.up));
-                }
-
-                // Elbow goes through the door opening, not through the wall next to it
-                AvatarIKHint hint = reachHand == AvatarIKGoal.LeftHand ? AvatarIKHint.LeftElbow : AvatarIKHint.RightElbow;
-                Vector3 inward = dir; inward.y = 0f;
-                inward = inward.sqrMagnitude > 0.01f ? inward.normalized : root.forward;
-                animator.SetIKHintPositionWeight(hint, currentReachWeight);
-                animator.SetIKHintPosition(hint, ai.SyncedDoorPoint - inward * 1.5f + Vector3.up * 1.5f);
-            }
+            if (currentReachWeight > 0f && ai != null) animator.SetIKPosition(reachHand, smoothedHand);
         }
+    }
 
-        // Lean the body in toward the DOORWAY (not the moving hand) so it settles into one pose and
-        // stays planted while the arm feels around. Horizontal only, and the head stays outside.
-        Vector3 targetLean = Vector3.zero;
-        if (currentReachWeight > 0f && shoulder != null && armLength > 0f && ai != null)
-        {
-            Vector3 inward = ai.SyncedDoorPoint - root.position;
-            inward.y = 0f;
-            if (inward.sqrMagnitude > 0.01f)
-            {
-                inward.Normalize();
-                Vector3 shoulderNoLean = shoulder.position - lean;
-                Vector3 reachInto = ai.SyncedDoorPoint + inward * 1.5f;      // just inside the door
-                float extra = Vector3.Distance(shoulderNoLean, reachInto) - armLength * 0.9f;
-                if (extra > 0f)
-                    targetLean = inward * Mathf.Min(extra, maxLean * modelScale) * currentReachWeight;
+    // ---------- Doorway posture: kneel (IK pass) ----------
 
-                if (head != null)
-                {
-                    float headDepth = Vector3.Dot(head.position - lean + targetLean - ai.SyncedDoorPoint, inward);
-                    float limit = -headClearance * modelScale;   // head stays this far outside the door
-                    if (headDepth > limit) targetLean -= inward * (headDepth - limit);
-                }
-            }
-        }
-        lean = Vector3.Lerp(lean, targetLean, 1f - Mathf.Exp(-leanSettleSpeed * Time.deltaTime));
-        animator.bodyPosition += lean;
+    // Drops onto its knees and shifts in toward the door. Everything is relative to the model, so
+    // the floor snap and leg lift still work on top of it.
+    void Kneel()
+    {
+        float w = postureWeight, s = modelScale;
+        Vector3 n = Flat(root.forward), right = Vector3.Cross(Vector3.up, n);
+        float baseY = transform.position.y;
+
+        Vector3 bp = animator.bodyPosition;
+        Vector3 target = bp + n * leanIn;
+        target.y = baseY + kneelHipHeight * s;
+        Vector3 body = Vector3.Lerp(bp, target, w);
+        animator.bodyPosition = body;
+        Vector3 hips = body + hipsFromBody;   // where the hip joints actually are
+
+        KneelLeg(AvatarIKGoal.LeftFoot, AvatarIKHint.LeftKnee, bp, hips, n, right, baseY, w);
+        KneelLeg(AvatarIKGoal.RightFoot, AvatarIKHint.RightKnee, bp, hips, n, right, baseY, w);
+        hipOffset = Mathf.Lerp(hipOffset, 0f, 1f - Mathf.Exp(-hipAdjustSpeed * Time.deltaTime));
+    }
+
+    void KneelLeg(AvatarIKGoal foot, AvatarIKHint knee, Vector3 animatedHips, Vector3 hips, Vector3 n, Vector3 right, float baseY, float w)
+    {
+        float s = modelScale;
+        float side = Vector3.Dot(animator.GetIKPosition(foot) - animatedHips, right);
+        side = Mathf.Sign(side) * Mathf.Clamp(Mathf.Abs(side), 0.08f * s, 0.16f * s);   // knees a hip-width apart
+
+        Vector3 footPos = hips + right * side - n * kneelFootBack * s;
+        footPos.y = baseY + ankleHeight * s;
+        animator.SetIKPositionWeight(foot, w);
+        animator.SetIKPosition(foot, footPos);
+        animator.SetIKRotationWeight(foot, 0f);   // toes are laid flat from the toe bones in LateUpdate
+
+        Vector3 kneePos = hips + right * side * 1.1f + n * kneelKneeForward * s;
+        kneePos.y = baseY;
+        animator.SetIKHintPositionWeight(knee, w);
+        animator.SetIKHintPosition(knee, kneePos);
+    }
+
+    static Vector3 Flat(Vector3 v)
+    {
+        v.y = 0f;
+        return v.sqrMagnitude > 0.0001f ? v.normalized : Vector3.forward;
     }
 
     // ---------- Foot grounding ----------
