@@ -33,3 +33,17 @@ Set), Street Lamps, Monster Animator Builder, Make It Look Good. Prefer improvin
   Feet; rename clips from "mixamo.com" before using them.
 - ProBuilder shapes: change Shape Size, keep Transform scale at 1.
 - Git: always `git pull --no-edit` before `git push`. Binary assets (png/jpg/fbx/wav) go through Git LFS.
+
+## Assets: what exists and what's still needed
+Only ONE monster model exists: the giant (a Mixamo humanoid scaled 8x, Model child of the Monster object).
+**When a task needs a model, animation or sound that isn't in the project, stop and tell Petar exactly what to get,
+where from, and the import settings, before writing code that depends on it.**
+
+| For | Needed | Where / what to pick | Notes |
+| --- | --- | --- | --- |
+| Climber (prototype step 4) | Lanky humanoid + climb, crawl, drop-down, idle | Mixamo: a thin character; anims "Climbing", "Crawl", "Jumping Down", "Zombie Idle" | Humanoid rig, ~3-4 m tall (scale ~2). Same import settings as the giant. |
+| Scouts (prototype step 6) | Small creature + run, sniff/idle, attack, death | Mixamo crawling humanoid ("Crawl", "Zombie Crawl") scaled ~0.6, or a free animated creature from Quaternius (CC0) | Must visibly show the genome: eyes/ears variants via swapped materials or child meshes. |
+| Giant low peek | Prone / crawl pose | Mixamo "prone" or "crawl", frozen to 1-2 frames (Start/End in the clip settings) | Goes in the Peek state. |
+| Near miss / captured | Ground slam, struggle, scream sounds | freesound.org (CC0 filter) | Force To Mono for 3D sounds. |
+| Night job | Generator loop, refuel sounds; a generator model | freesound.org; Kenney or Quaternius props (CC0) | |
+| Burrower, swarm, phaser | Later, after the prototype | | Don't build these yet (see Docs/DESIGN.md, Scope). |
