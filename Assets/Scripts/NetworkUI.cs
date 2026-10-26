@@ -1,48 +1,369 @@
+using System.Net;
+using System.Net.Sockets;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.UI;
+using UnityEngine.UI;
 
-// Simple Host / Join menu. Put on the NetworkManager object.
+// Main menu + pause menu. Sits on the NetworkManager object and builds its own UI at startup.
+// Main menu: HOST / JOIN / QUIT over the foggy street. In game: Esc opens the pause menu.
 public class NetworkUI : MonoBehaviour
 {
+    public static bool MenuOpen { get; private set; }
+
+    [Header("Connection")]
     public string address = "127.0.0.1";
     public ushort port = 7777;
 
-    void OnGUI()
+    [Header("Look")]
+    public string title = "RUN FOR YOUR LIFE";
+    public string subtitle = "it can see over the rooftops";
+    [Tooltip("Optional: drag in a .ttf/.otf font for the title (e.g. a typewriter or horror font).")]
+    public Font titleFont;
+    [Tooltip("Optional: font for buttons and text.")]
+    public Font bodyFont;
+    public Color textColor = new Color(0.82f, 0.82f, 0.8f);
+    public Color accentColor = new Color(0.8f, 0.12f, 0.1f);
+    public bool driftLobbyCamera = true;
+
+    GameObject mainPanel, joinPanel, pausePanel, statusPanel;
+    Text statusText, pauseInfo, mainMessage;
+    InputField addressField;
+    Font defaultFont;
+    bool connecting;
+
+    // ---------- Lifecycle ----------
+
+    void Start()
+    {
+        defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        BuildUI();
+        ShowOnly(mainPanel);
+
+        var nm = NetworkManager.Singleton;
+        if (nm != null)
+        {
+            nm.OnClientConnectedCallback += OnClientConnected;
+            nm.OnClientDisconnectCallback += OnClientDisconnected;
+        }
+
+        if (driftLobbyCamera)
+        {
+            foreach (var cam in Camera.allCameras)
+                if (cam.GetComponentInParent<FirstPersonController>() == null && cam.GetComponent<LobbyCameraDrift>() == null)
+                    cam.gameObject.AddComponent<LobbyCameraDrift>();
+        }
+    }
+
+    void OnDestroy()
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm != null)
+        {
+            nm.OnClientConnectedCallback -= OnClientConnected;
+            nm.OnClientDisconnectCallback -= OnClientDisconnected;
+        }
+        MenuOpen = false;
+    }
+
+    void Update()
     {
         var nm = NetworkManager.Singleton;
         if (nm == null) return;
+        bool inGame = nm.IsServer || nm.IsConnectedClient;
 
-        GUILayout.BeginArea(new Rect(20, 20, 260, 220), GUI.skin.box);
-
-        if (!nm.IsClient && !nm.IsServer)
+        if (inGame && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
         {
-            GUILayout.Label("Run For Your Life");
-            GUILayout.Label("Host address (for Join):");
-            address = GUILayout.TextField(address);
-
-            if (GUILayout.Button("Host", GUILayout.Height(30)))
-            {
-                // Listen on all network cards so friends on your Wi-Fi can join
-                Transport(nm).SetConnectionData("127.0.0.1", port, "0.0.0.0");
-                nm.StartHost();
-            }
-            if (GUILayout.Button("Join", GUILayout.Height(30)))
-            {
-                Transport(nm).SetConnectionData(address, port);
-                nm.StartClient();
-            }
-        }
-        else
-        {
-            GUILayout.Label(nm.IsHost ? "Hosting" : nm.IsConnectedClient ? "Connected" : "Connecting...");
-            if (nm.IsServer) GUILayout.Label($"Players: {nm.ConnectedClientsIds.Count}");
-            GUILayout.Label("Esc frees the mouse");
-            if (GUILayout.Button("Leave")) nm.Shutdown();
+            if (pausePanel.activeSelf) Resume();
+            else OpenPause();
         }
 
-        GUILayout.EndArea();
+        if (pausePanel.activeSelf)
+        {
+            string info = nm.IsHost ? $"Hosting  ·  {nm.ConnectedClientsIds.Count} player(s)\nFriends join with: {LocalIP()}" : "Connected";
+            pauseInfo.text = info;
+        }
+
+        if (connecting && statusPanel.activeSelf)
+            statusText.text = "CONNECTING" + new string('.', 1 + (int)(Time.time * 2f) % 3);
     }
 
-    static UnityTransport Transport(NetworkManager nm) => (UnityTransport)nm.NetworkConfig.NetworkTransport;
+    // ---------- Actions ----------
+
+    void Host()
+    {
+        Transport().SetConnectionData("127.0.0.1", port, "0.0.0.0");   // listen on every network card
+        if (NetworkManager.Singleton.StartHost()) CloseMenus();
+        else ShowMessage("Couldn't start hosting (is the port in use?)");
+    }
+
+    void Join()
+    {
+        address = addressField.text.Trim();
+        if (string.IsNullOrEmpty(address)) address = "127.0.0.1";
+        Transport().SetConnectionData(address, port);
+        if (NetworkManager.Singleton.StartClient())
+        {
+            connecting = true;
+            ShowOnly(statusPanel);
+        }
+        else ShowMessage("Couldn't start the client.");
+    }
+
+    void Leave()
+    {
+        NetworkManager.Singleton.Shutdown();
+        connecting = false;
+        ShowOnly(mainPanel);
+        mainMessage.text = "";
+    }
+
+    void Quit()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
+    }
+
+    void OpenPause() => ShowOnly(pausePanel);
+
+    void Resume() => CloseMenus();
+
+    void OnClientConnected(ulong id)
+    {
+        if (id != NetworkManager.Singleton.LocalClientId) return;
+        connecting = false;
+        if (!NetworkManager.Singleton.IsHost) CloseMenus();
+    }
+
+    void OnClientDisconnected(ulong id)
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm.IsServer && id != nm.LocalClientId) return;   // someone else left; we're still hosting
+
+        bool wasConnecting = connecting;
+        connecting = false;
+        ShowOnly(mainPanel);
+        mainMessage.text = wasConnecting ? $"Couldn't connect to {address}" : "Disconnected from host";
+    }
+
+    void ShowMessage(string msg)
+    {
+        ShowOnly(mainPanel);
+        mainMessage.text = msg;
+    }
+
+    // ---------- Menu state ----------
+
+    void ShowOnly(GameObject panel)
+    {
+        mainPanel.SetActive(panel == mainPanel);
+        joinPanel.SetActive(panel == joinPanel);
+        pausePanel.SetActive(panel == pausePanel);
+        statusPanel.SetActive(panel == statusPanel);
+        MenuOpen = panel != null;
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+    }
+
+    void CloseMenus()
+    {
+        mainPanel.SetActive(false);
+        joinPanel.SetActive(false);
+        pausePanel.SetActive(false);
+        statusPanel.SetActive(false);
+        MenuOpen = false;
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
+
+    static UnityTransport Transport() => (UnityTransport)NetworkManager.Singleton.NetworkConfig.NetworkTransport;
+
+    static string LocalIP()
+    {
+        try
+        {
+            foreach (var ip in Dns.GetHostEntry(Dns.GetHostName()).AddressList)
+                if (ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip)) return ip.ToString();
+        }
+        catch { }
+        return "127.0.0.1";
+    }
+
+    // ---------- Building the UI ----------
+
+    void BuildUI()
+    {
+        if (FindAnyObjectByType<EventSystem>() == null)
+        {
+            var es = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
+            DontDestroyOnLoad(es);
+        }
+
+        var canvasGo = new GameObject("Menu Canvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        canvasGo.transform.SetParent(transform, false);
+        var canvas = canvasGo.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 100;
+        var scaler = canvasGo.GetComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        scaler.matchWidthOrHeight = 0.5f;
+        var root = canvasGo.transform;
+
+        // MAIN
+        mainPanel = AddPanel(root, "Main", 0.35f);
+        AddTitle(mainPanel.transform, title, subtitle);
+        float y = -60f;
+        AddButton(mainPanel.transform, "HOST", ref y, Host);
+        AddButton(mainPanel.transform, "JOIN", ref y, () => { ShowOnly(joinPanel); addressField.text = address; });
+        AddButton(mainPanel.transform, "QUIT", ref y, Quit);
+        mainMessage = AddLabel(mainPanel.transform, "", 24, new Vector2(140, y - 30), accentColor, TextAnchor.UpperLeft, 900);
+
+        // JOIN
+        joinPanel = AddPanel(root, "Join", 0.55f);
+        AddTitle(joinPanel.transform, "JOIN A GAME", "host's address (same Wi-Fi: their local IP)");
+        addressField = AddInput(joinPanel.transform, new Vector2(140, -40));
+        y = -140f;
+        AddButton(joinPanel.transform, "CONNECT", ref y, Join);
+        AddButton(joinPanel.transform, "BACK", ref y, () => ShowOnly(mainPanel));
+
+        // STATUS
+        statusPanel = AddPanel(root, "Status", 0.65f);
+        statusText = AddLabel(statusPanel.transform, "CONNECTING", 44, new Vector2(140, 60), textColor, TextAnchor.UpperLeft, 900);
+        y = -40f;
+        AddButton(statusPanel.transform, "CANCEL", ref y, Leave);
+
+        // PAUSE
+        pausePanel = AddPanel(root, "Pause", 0.7f);
+        AddTitle(pausePanel.transform, "PAUSED", "");
+        pauseInfo = AddLabel(pausePanel.transform, "", 24, new Vector2(140, -10), new Color(0.6f, 0.6f, 0.6f), TextAnchor.UpperLeft, 900);
+        y = -110f;
+        AddButton(pausePanel.transform, "RESUME", ref y, Resume);
+        AddButton(pausePanel.transform, "LEAVE GAME", ref y, Leave);
+        AddButton(pausePanel.transform, "QUIT", ref y, Quit);
+    }
+
+    GameObject AddPanel(Transform parent, string name, float darkness)
+    {
+        var go = new GameObject(name, typeof(RectTransform), typeof(Image));
+        go.transform.SetParent(parent, false);
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+        go.GetComponent<Image>().color = new Color(0f, 0f, 0f, darkness);
+
+        // Darker band on the left so the text always reads over the scene
+        var band = new GameObject("Band", typeof(RectTransform), typeof(Image));
+        band.transform.SetParent(go.transform, false);
+        var brt = band.GetComponent<RectTransform>();
+        brt.anchorMin = new Vector2(0f, 0f); brt.anchorMax = new Vector2(0.45f, 1f);
+        brt.offsetMin = Vector2.zero; brt.offsetMax = Vector2.zero;
+        band.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.45f);
+        return go;
+    }
+
+    void AddTitle(Transform parent, string text, string sub)
+    {
+        var t = AddLabel(parent, text, 92, new Vector2(140, 260), textColor, TextAnchor.LowerLeft, 1400);
+        if (titleFont != null) t.font = titleFont;
+        t.rectTransform.pivot = new Vector2(0f, 0f);
+
+        // Thin red rule under the title
+        var rule = new GameObject("Rule", typeof(RectTransform), typeof(Image));
+        rule.transform.SetParent(parent, false);
+        var rrt = rule.GetComponent<RectTransform>();
+        rrt.anchorMin = rrt.anchorMax = new Vector2(0f, 0.5f);
+        rrt.pivot = new Vector2(0f, 0.5f);
+        rrt.anchoredPosition = new Vector2(144, 240);
+        rrt.sizeDelta = new Vector2(120, 3);
+        rule.GetComponent<Image>().color = accentColor;
+
+        if (!string.IsNullOrEmpty(sub))
+            AddLabel(parent, sub.ToUpperInvariant(), 22, new Vector2(144, 200), new Color(0.55f, 0.55f, 0.55f), TextAnchor.UpperLeft, 1200);
+    }
+
+    Text AddLabel(Transform parent, string text, int size, Vector2 pos, Color color, TextAnchor anchor, float width)
+    {
+        var go = new GameObject("Text", typeof(RectTransform), typeof(Text));
+        go.transform.SetParent(parent, false);
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(0f, 0.5f);
+        rt.pivot = new Vector2(0f, 1f);
+        rt.anchoredPosition = pos;
+        rt.sizeDelta = new Vector2(width, size * 2.2f);
+        var t = go.GetComponent<Text>();
+        t.text = text;
+        t.font = bodyFont != null ? bodyFont : defaultFont;
+        t.fontSize = size;
+        t.color = color;
+        t.alignment = anchor;
+        t.horizontalOverflow = HorizontalWrapMode.Overflow;
+        t.verticalOverflow = VerticalWrapMode.Overflow;
+        return t;
+    }
+
+    void AddButton(Transform parent, string text, ref float y, UnityEngine.Events.UnityAction onClick)
+    {
+        var go = new GameObject(text, typeof(RectTransform), typeof(Image), typeof(Button));
+        go.transform.SetParent(parent, false);
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(0f, 0.5f);
+        rt.pivot = new Vector2(0f, 1f);
+        rt.anchoredPosition = new Vector2(130, y);
+        rt.sizeDelta = new Vector2(520, 62);
+        go.GetComponent<Image>().color = new Color(0, 0, 0, 0);   // invisible hit area
+
+        var b = go.GetComponent<Button>();
+        b.transition = Selectable.Transition.None;
+        b.onClick.AddListener(onClick);
+
+        var label = AddLabel(go.transform, text, 40, new Vector2(10, 0), textColor, TextAnchor.MiddleLeft, 500);
+        var lrt = label.rectTransform;
+        lrt.anchorMin = new Vector2(0f, 0f); lrt.anchorMax = new Vector2(1f, 1f);
+        lrt.pivot = new Vector2(0f, 0.5f);
+        lrt.offsetMin = new Vector2(10, 0); lrt.offsetMax = Vector2.zero;
+
+        var mb = go.AddComponent<MenuButton>();
+        mb.label = label;
+        mb.normalColor = textColor;
+        mb.hoverColor = accentColor;
+
+        y -= 70f;
+    }
+
+    InputField AddInput(Transform parent, Vector2 pos)
+    {
+        var go = new GameObject("Address", typeof(RectTransform), typeof(Image), typeof(InputField));
+        go.transform.SetParent(parent, false);
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(0f, 0.5f);
+        rt.pivot = new Vector2(0f, 1f);
+        rt.anchoredPosition = pos;
+        rt.sizeDelta = new Vector2(520, 64);
+        go.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.06f);
+
+        var text = AddLabel(go.transform, "", 34, Vector2.zero, textColor, TextAnchor.MiddleLeft, 500);
+        var trt = text.rectTransform;
+        trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
+        trt.offsetMin = new Vector2(18, 0); trt.offsetMax = new Vector2(-18, 0);
+        text.supportRichText = false;
+
+        var ph = AddLabel(go.transform, "127.0.0.1", 34, Vector2.zero, new Color(1f, 1f, 1f, 0.25f), TextAnchor.MiddleLeft, 500);
+        var prt = ph.rectTransform;
+        prt.anchorMin = Vector2.zero; prt.anchorMax = Vector2.one;
+        prt.offsetMin = new Vector2(18, 0); prt.offsetMax = new Vector2(-18, 0);
+
+        var field = go.GetComponent<InputField>();
+        field.textComponent = text;
+        field.placeholder = ph;
+        field.caretColor = accentColor;
+        field.selectionColor = new Color(accentColor.r, accentColor.g, accentColor.b, 0.4f);
+        return field;
+    }
 }

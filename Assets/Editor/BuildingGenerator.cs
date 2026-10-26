@@ -15,6 +15,7 @@ public class BuildingGenerator : EditorWindow
     bool addInteriorWall = false;
     bool addReverb = true;
     Material wallMaterial;
+    BuildingDetails.Options details = BuildingDetails.Options.Default;
 
     [MenuItem("Tools/RunForYourLife/Building Generator")]
     static void Open() => GetWindow<BuildingGenerator>("Building Generator");
@@ -37,6 +38,26 @@ public class BuildingGenerator : EditorWindow
         addInteriorWall = EditorGUILayout.Toggle("Interior Wall", addInteriorWall);
         addReverb = EditorGUILayout.Toggle("Indoor Echo (Reverb)", addReverb);
         wallMaterial = (Material)EditorGUILayout.ObjectField("Material", wallMaterial, typeof(Material), false);
+
+        GUILayout.Space(6);
+        GUILayout.Label("Details", EditorStyles.boldLabel);
+        details.windows = EditorGUILayout.Toggle("Windows", details.windows);
+        if (details.windows)
+        {
+            EditorGUI.indentLevel++;
+            details.litChance = EditorGUILayout.Slider("Lit Window Chance", details.litChance, 0f, 1f);
+            details.flickerChance = EditorGUILayout.Slider("Flickering Chance", details.flickerChance, 0f, 1f);
+            EditorGUI.indentLevel--;
+        }
+        details.parapet = EditorGUILayout.Toggle("Roof Edge (Parapet)", details.parapet);
+        details.roofClutter = EditorGUILayout.Toggle("Rooftop Clutter", details.roofClutter);
+        details.sidewalk = EditorGUILayout.Toggle("Sidewalk", details.sidewalk);
+        if (details.sidewalk)
+        {
+            EditorGUI.indentLevel++;
+            details.sidewalkWidth = EditorGUILayout.FloatField("Sidewalk Width", details.sidewalkWidth);
+            EditorGUI.indentLevel--;
+        }
 
         GUILayout.Space(10);
         if (GUILayout.Button("Create Building", GUILayout.Height(30)))
@@ -97,6 +118,9 @@ public class BuildingGenerator : EditorWindow
             Box(root, "Interior_L", new Vector3(-innerW / 2f + segment / 2f, height / 2f, z), new Vector3(segment, height, t));
             Box(root, "Interior_R", new Vector3(innerW / 2f - segment / 2f, height / 2f, z), new Vector3(segment, height, t));
         }
+
+        // Windows, roof edge, rooftop clutter, sidewalk
+        BuildingDetails.Add(root.transform, width, depth, height, t, doorOffset, doorWidth, details);
 
         // Doorway marker for the giant: it crouches here and reaches in
         AddReachPoint(root.transform, doorOffset, frontZ);
