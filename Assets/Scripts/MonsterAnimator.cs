@@ -404,31 +404,36 @@ public class MonsterAnimator : MonoBehaviour
         transform.localPosition = lp;
     }
 
-    // How far is the lowest leg joint below where it should be? Lift the body by that much (never lower it).
+    // Lift the body just enough that no leg joint sinks below the floor, and ease back down
+    // once there's room again (with a small dead zone so it doesn't bob).
     void UpdateLegLift()
     {
         if (!keepLegsAboveFloor || !hasFloor) { liftOffset = Mathf.MoveTowards(liftOffset, 0f, Time.deltaTime); return; }
 
         float s = modelScale;
-        float need = 0f;
-        need = Mathf.Max(need, Sink(leftKnee, kneeThickness * s));
-        need = Mathf.Max(need, Sink(rightKnee, kneeThickness * s));
-        need = Mathf.Max(need, Sink(leftFoot, ankleHeight * s * 0.9f));
-        need = Mathf.Max(need, Sink(rightFoot, ankleHeight * s * 0.9f));
-        need = Mathf.Max(need, Sink(leftToes, 0.015f * s));
-        need = Mathf.Max(need, Sink(rightToes, 0.015f * s));
+        float clearance = float.MaxValue;   // smallest gap between a joint and the floor (negative = sinking)
+        clearance = Mathf.Min(clearance, Clearance(leftKnee, kneeThickness * s));
+        clearance = Mathf.Min(clearance, Clearance(rightKnee, kneeThickness * s));
+        clearance = Mathf.Min(clearance, Clearance(leftFoot, ankleHeight * s * 0.9f));
+        clearance = Mathf.Min(clearance, Clearance(rightFoot, ankleHeight * s * 0.9f));
+        clearance = Mathf.Min(clearance, Clearance(leftToes, 0.015f * s));
+        clearance = Mathf.Min(clearance, Clearance(rightToes, 0.015f * s));
+        if (clearance == float.MaxValue) return;
 
-        // 'need' is measured on a pose that already includes the current lift, so add to it
-        float target = Mathf.Clamp(liftOffset + need, 0f, 2f * s);
-        // Rise quickly when sinking, settle back down slowly
-        float rate = target > liftOffset ? liftSpeed : liftSpeed * 0.2f;
-        liftOffset = Mathf.Lerp(liftOffset, need > 0.001f ? target : Mathf.Max(0f, liftOffset - 0.02f * s), 1f - Mathf.Exp(-rate * Time.deltaTime));
+        float deadZone = 0.02f * s;
+        float target = liftOffset;
+        if (clearance < 0f) target = liftOffset - clearance;                          // sinking: rise by the overlap
+        else if (clearance > deadZone) target = Mathf.Max(0f, liftOffset - (clearance - deadZone));   // room to spare: come back down
+
+        target = Mathf.Clamp(target, 0f, 2f * s);
+        float rate = target > liftOffset ? liftSpeed : liftSpeed * 0.3f;   // rise fast, settle slowly
+        liftOffset = Mathf.Lerp(liftOffset, target, 1f - Mathf.Exp(-rate * Time.deltaTime));
     }
 
-    float Sink(Transform bone, float thickness)
+    float Clearance(Transform bone, float thickness)
     {
-        if (bone == null) return 0f;
-        return Mathf.Max(0f, floorY + thickness - bone.position.y);
+        if (bone == null) return float.MaxValue;
+        return bone.position.y - (floorY + thickness);
     }
 
     bool InAction()
