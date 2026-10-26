@@ -5,8 +5,7 @@ When it's done and tested, Claude Code ticks the box, commits and pushes.
 
 ## Token rules (paste-free: Claude Code, follow these on every task)
 - Read only the files the task names. Use Grep to find things instead of opening whole folders.
-- Don't re-read a file you just edited. Don't take scene/camera captures unless the task says to; check the
-  Unity console for errors instead. At most 2 captures per task.
+- Don't re-read a file you just edited. Don't take scene/camera captures unless the task says to unless absolutely neccessary; check the Unity console for errors instead. At most 3 captures per task.
 - Make the change, play-test once, fix errors, then report in 3-5 lines. No long explanations.
 - If a model/animation/sound is missing, stop and tell Petar what to get (see CLAUDE.md Assets) - don't build around it.
 - Stop and ask before anything not in the task.
