@@ -20,7 +20,7 @@ When it's done and tested, Claude Code ticks the box, commits and pushes.
 ## Prototype tasks (in order)
 Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
 
-- [ ] **1. Monster genome (S, Sonnet).** MonsterGenome ScriptableObject: Sense (Sight/Hearing) and Access
+- [x] **1. Monster genome (S, Sonnet).** MonsterGenome ScriptableObject: Sense (Sight/Hearing) and Access
   (Reacher/Climber, Climber stubbed). Sight = high sightRange, low hearingMultiplier; Hearing = the opposite.
   GenomeManager on the NetworkManager object: host picks a random genome at game start and applies it to MonsterAI.
   Log the pick. Files: MonsterAI.cs, NetworkUI.cs.

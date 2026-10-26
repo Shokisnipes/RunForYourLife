@@ -30041,6 +30041,9 @@ MonoBehaviour:
   maxHipDrop: 0.1
   groundingZone: 0.2
   hipAdjustSpeed: 6
+  lockPlantedFeet: 1
+  maxLockStretch: 0.18
+  lockReleaseTime: 0.12
   groundLayers:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -30048,6 +30051,7 @@ MonoBehaviour:
   floorSnapSpeed: 8
   keepLegsAboveFloor: 1
   kneeThickness: 0.06
+  toeThickness: 0.015
   liftSpeed: 10
   debugNavMeshGap: 0
   debugMoveSpeed: 0
@@ -30058,6 +30062,11 @@ MonoBehaviour:
   debugLeanIn: 0
   debugReachShortfall: 0
   debugLegLift: 0
+  debugLeftFootLocked: 0
+  debugRightFootLocked: 0
+  debugLockReleasedByLift: 0
+  debugLockReleasedByStretch: 0
+  debugLockCount: 0
   debugArmMode: 0
   armScale: 1.25
   headScale: 1.1
@@ -49794,6 +49803,7 @@ GameObject:
   - component: {fileID: 765556349}
   - component: {fileID: 765556348}
   - component: {fileID: 765556347}
+  - component: {fileID: 765556351}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -49909,6 +49919,20 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &765556351
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 765556346}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 07261ed32e75f854eaf64fcda597a5a3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GenomeManager
+  genomes: []
+  allowClimber: 0
 --- !u!1 &766424683
 GameObject:
   m_ObjectHideFlags: 0

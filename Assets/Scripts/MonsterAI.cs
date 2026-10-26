@@ -129,6 +129,25 @@ public class MonsterAI : NetworkBehaviour
         homePosition = transform.position;
     }
 
+    // Base senses are remembered the first time, so applying a new genome each run never stacks multipliers.
+    bool baseSensesSaved;
+    float baseSight, baseFlashSight, baseLitSight, baseHearing;
+
+    // Host only: called by GenomeManager at game start.
+    public void ApplyGenome(MonsterGenome genome)
+    {
+        if (!baseSensesSaved)
+        {
+            baseSight = sightRange; baseFlashSight = flashlightSightRange;
+            baseLitSight = litSightRange; baseHearing = hearingMultiplier;
+            baseSensesSaved = true;
+        }
+        sightRange = baseSight * genome.sightRangeMultiplier;
+        flashlightSightRange = baseFlashSight * genome.sightRangeMultiplier;
+        litSightRange = baseLitSight * genome.sightRangeMultiplier;
+        hearingMultiplier = baseHearing * genome.hearingMultiplier;
+    }
+
     void OnEnable() => NoiseSystem.OnNoise += HearNoise;
     void OnDisable() => NoiseSystem.OnNoise -= HearNoise;
 
