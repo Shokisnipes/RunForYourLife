@@ -24,7 +24,7 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   (Reacher/Climber, Climber stubbed). Sight = high sightRange, low hearingMultiplier; Hearing = the opposite.
   GenomeManager on the NetworkManager object: host picks a random genome at game start and applies it to MonsterAI.
   Log the pick. Files: MonsterAI.cs, NetworkUI.cs.
-- [ ] **2. Prep and night timers (S, Sonnet).** GameFlow (host-run, synced): Prep phase (Inspector length, default
+- [x] **2. Prep and night timers (S, Sonnet).** GameFlow (host-run, synced): Prep phase (Inspector length, default
   6 min, monster disabled) then Night until dawn (default 10 min). Win screen at dawn; lose screen when every player is
   dead. Small top-of-screen timer. Files: NetworkUI.cs, MonsterAI.cs, FirstPersonController.cs.
 - [ ] **3. Barricades (M, Sonnet).** Players hold E at a doorway/window to board it during prep (limited planks,

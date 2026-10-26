@@ -55,6 +55,9 @@ public class FirstPersonController : NetworkBehaviour
     readonly NetworkVariable<bool> netGrabbed = new NetworkVariable<bool>(
         false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
+    readonly NetworkVariable<bool> netDead = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+
     CharacterController controller;
     float pitch;
     float verticalVelocity;
@@ -70,6 +73,7 @@ public class FirstPersonController : NetworkBehaviour
     public float CurrentSpeed { get; private set; }
     public bool IsGrabbed => netGrabbed.Value;   // synced, so the monster ignores whoever it's holding
     public bool IsCrouching => netCrouching.Value;
+    public bool IsDead => netDead.Value;         // stays dead for the rest of the night (task 8 adds rescue)
 
     void Awake()
     {
@@ -136,7 +140,7 @@ public class FirstPersonController : NetworkBehaviour
             return;
         }
 
-        if (grabbed) return;   // no control while it's holding you
+        if (grabbed || netDead.Value) return;   // no control while it's holding you, or once you're dead
 
         var kb = Keyboard.current;
         var mouse = Mouse.current;
@@ -329,6 +333,14 @@ public class FirstPersonController : NetworkBehaviour
         // Death
         yield return Fade(0f, 1f, fadeOutTime);
         yield return new WaitForSeconds(blackTime);
+
+        // During the night you stay dead (screen stays black); the run ends when everyone is
+        var flow = GameFlow.Instance;
+        if (flow != null && flow.IsSpawned && flow.Phase == GamePhase.Night)
+        {
+            netDead.Value = true;
+            yield break;
+        }
 
         pitch = 0f;
         cameraPivot.localRotation = Quaternion.identity;

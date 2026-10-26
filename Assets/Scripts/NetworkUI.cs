@@ -30,7 +30,7 @@ public class NetworkUI : MonoBehaviour
     public bool driftLobbyCamera = true;
 
     GameObject mainPanel, joinPanel, pausePanel, statusPanel;
-    Text statusText, pauseInfo, mainMessage;
+    Text statusText, pauseInfo, mainMessage, timerText, endText;
     InputField addressField;
     Font defaultFont;
     bool connecting;
@@ -87,8 +87,35 @@ public class NetworkUI : MonoBehaviour
             pauseInfo.text = info;
         }
 
+        UpdateRunHud(inGame);
+
         if (connecting && statusPanel.activeSelf)
             statusText.text = "CONNECTING" + new string('.', 1 + (int)(Time.time * 2f) % 3);
+    }
+
+    // Top-of-screen timer and the win / lose screen
+    void UpdateRunHud(bool inGame)
+    {
+        var flow = GameFlow.Instance;
+        bool show = inGame && flow != null && flow.IsSpawned && !mainPanel.activeSelf && !joinPanel.activeSelf && !statusPanel.activeSelf;
+        timerText.gameObject.SetActive(show);
+        endText.gameObject.SetActive(show && flow.RunOver);
+        if (!show) return;
+
+        float t = flow.SecondsLeft;
+        string clock = $"{(int)t / 60}:{(int)t % 60:00}";
+        switch (flow.Phase)
+        {
+            case GamePhase.Prep:  timerText.text = $"PREPARE  {clock}"; break;
+            case GamePhase.Night: timerText.text = $"NIGHT  {clock}"; break;
+            default:              timerText.text = ""; break;
+        }
+        if (flow.RunOver)
+        {
+            bool won = flow.Phase == GamePhase.Won;
+            endText.text = won ? "YOU SURVIVED THE NIGHT" : "EVERYONE IS DEAD";
+            endText.color = won ? textColor : accentColor;
+        }
     }
 
     // ---------- Actions ----------
@@ -216,6 +243,10 @@ public class NetworkUI : MonoBehaviour
         scaler.matchWidthOrHeight = 0.5f;
         var root = canvasGo.transform;
 
+        // Run HUD (timer at the top, big end-of-run message)
+        timerText = AddHudText(root, "Timer", 40, new Vector2(0.5f, 1f), new Vector2(0, -30), TextAnchor.UpperCenter);
+        endText = AddHudText(root, "EndText", 90, new Vector2(0.5f, 0.5f), Vector2.zero, TextAnchor.MiddleCenter);
+
         // MAIN
         mainPanel = AddPanel(root, "Main", 0.35f);
         AddTitle(mainPanel.transform, title, subtitle);
@@ -247,6 +278,18 @@ public class NetworkUI : MonoBehaviour
         AddButton(pausePanel.transform, "RESUME", ref y, Resume);
         AddButton(pausePanel.transform, "LEAVE GAME", ref y, Leave);
         AddButton(pausePanel.transform, "QUIT", ref y, Quit);
+    }
+
+    Text AddHudText(Transform parent, string name, int size, Vector2 anchor, Vector2 pos, TextAnchor align)
+    {
+        var t = AddLabel(parent, "", size, pos, textColor, align, 1600);
+        t.name = name;
+        var rt = t.rectTransform;
+        rt.anchorMin = rt.anchorMax = anchor;
+        rt.pivot = new Vector2(0.5f, anchor.y);
+        rt.anchoredPosition = pos;
+        t.gameObject.SetActive(false);
+        return t;
     }
 
     GameObject AddPanel(Transform parent, string name, float darkness)

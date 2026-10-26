@@ -164,9 +164,28 @@ public class MonsterAI : NetworkBehaviour
         SetState(MonsterState.Patrol);
     }
 
+    bool shownActive = true;
+
+    // During the prep phase the monster is asleep: hidden and silent on every client, frozen on the host.
+    void UpdateAsleep(bool active)
+    {
+        if (active == shownActive) return;
+        shownActive = active;
+        foreach (var r in GetComponentsInChildren<Renderer>(true)) r.enabled = active;
+        foreach (var a in GetComponentsInChildren<AudioSource>(true)) a.mute = !active;
+        if (IsServer && agent.enabled && agent.isOnNavMesh)
+        {
+            agent.isStopped = !active;
+            if (active) SetState(MonsterState.Patrol);
+        }
+    }
+
     void Update()
     {
-        if (!IsServer || !IsSpawned) return;
+        var flow = GameFlow.Instance;
+        bool active = flow == null || flow.MonsterActive;
+        if (IsSpawned) UpdateAsleep(active);
+        if (!IsServer || !IsSpawned || !active) return;
 
         // Standing still holding its victim after a catch
         if (holding)
@@ -581,7 +600,7 @@ public class MonsterAI : NetworkBehaviour
 
     void HearNoise(Vector3 position, float radius)
     {
-        if (!IsServer || !IsSpawned) return;
+        if (!IsServer || !IsSpawned || !shownActive) return;
         if (holding) return;   // busy holding its victim; don't wander off mid-grab
         if (state == MonsterState.Chase || state == MonsterState.Notice) return;
 
