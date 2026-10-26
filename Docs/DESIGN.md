@@ -16,7 +16,7 @@ fade) -> next run. Win = survive until dawn (the only win). Lose = every player 
 ## Decisions
 - One night per run; ends at dawn or when every player is dead.
 - Grabbed players aren't dead: the monster hides them in the city. Clues: drag marks and their voice calling out
-  (a Mimic can fake it). A hidden player dies for good 10 minutes after capture. Teammates who free them revive them.
+  (a Mimic can fake it). A hidden player dies 8 minutes after capture and stays dead until the next run (next day). Teammates who free them revive them.
   The monster guards, baits with, or ignores the spot depending on its behavior trait.
 - A weakness only repels the monster for a while; dawn is still the only way out.
 - Lineage saved per friend group on the host's PC.

@@ -41,7 +41,7 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   run; winning monster's traits +weight, beaten -weight, min floor and max cap (Inspector). Quitting/disconnecting
   counts as a monster win. GenomeManager uses the weights.
 - [ ] **8. Captured, hidden, rescued (L, Opus).** Split: 8a) on catch, the giant carries the player to a random hiding
-  spot (empty markers placed in the scene), 10-min death timer synced to everyone; 8b) drag-mark decals from catch to
+  spot (empty markers placed in the scene), 8-min death timer synced to everyone (Inspector value; after it runs out they are dead until the next run); 8b) drag-mark decals from catch to
   spot + the captured player's voice is their clue; teammates hold E to free them (revive); 8c) struggle key slows the
   timer but emits noise. Replaces the current fade-to-black respawn.
 - [ ] **9. Generator night job (M, Sonnet).** Generator powers nearby street lamps/lights; fuel runs out every few
