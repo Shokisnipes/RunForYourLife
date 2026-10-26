@@ -75,7 +75,7 @@ public class NetworkUI : MonoBehaviour
         if (nm == null) return;
         bool inGame = nm.IsServer || nm.IsConnectedClient;
 
-        if (inGame && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+        if (inGame && !endUi && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
         {
             if (pausePanel.activeSelf) Resume();
             else OpenPause();
@@ -100,7 +100,7 @@ public class NetworkUI : MonoBehaviour
         bool show = inGame && flow != null && flow.IsSpawned && !mainPanel.activeSelf && !joinPanel.activeSelf && !statusPanel.activeSelf;
         timerText.gameObject.SetActive(show);
         endMessage = "";
-        if (!show) return;
+        if (!show) { endUi = false; return; }
 
         float t = flow.SecondsLeft;
         string clock = $"{(int)t / 60}:{(int)t % 60:00}";
@@ -126,7 +126,24 @@ public class NetworkUI : MonoBehaviour
 
     string endMessage = "";
     Color endColor;
-    GUIStyle endStyle;
+    GUIStyle endStyle, endButtonStyle;
+    bool endUi;   // the end / death screen is up, with its own buttons (the canvas menu would be hidden behind the black fade)
+
+    void LateUpdate()
+    {
+        if (!string.IsNullOrEmpty(endMessage) && !endUi)
+        {
+            endUi = true;
+            MenuOpen = true;
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+        else if (string.IsNullOrEmpty(endMessage) && endUi)
+        {
+            endUi = false;
+            if (!pausePanel.activeSelf && !mainPanel.activeSelf) CloseMenus();
+        }
+    }
 
     // Drawn with IMGUI, in front of the black death fade (which is IMGUI too, depth -1000)
     void OnGUI()
@@ -139,6 +156,14 @@ public class NetworkUI : MonoBehaviour
         endStyle.fontSize = Mathf.RoundToInt(Screen.height * 0.09f);
         endStyle.normal.textColor = endColor;
         GUI.Label(new Rect(0, 0, Screen.width, Screen.height), endMessage, endStyle);
+
+        if (endButtonStyle == null)
+            endButtonStyle = new GUIStyle(GUI.skin.button) { alignment = TextAnchor.MiddleCenter };
+        if (bodyFont != null) endButtonStyle.font = bodyFont;
+        endButtonStyle.fontSize = Mathf.RoundToInt(Screen.height * 0.035f);
+        float w = Screen.height * 0.4f, h = Screen.height * 0.08f, x = (Screen.width - w) / 2f, y = Screen.height * 0.62f;
+        if (GUI.Button(new Rect(x, y, w, h), "MAIN MENU", endButtonStyle)) Leave();
+        if (GUI.Button(new Rect(x, y + h * 1.2f, w, h), "QUIT", endButtonStyle)) Quit();
     }
 
     // ---------- Actions ----------
