@@ -57,6 +57,14 @@ Stare (silence, ~1 s) -> scream and sprint, far faster than players in the open 
 can't fit alleys, slows at doorways) -> near miss slams the ground -> catch: hand fills the screen, sound drops out.
 Player feel: tunnel vision, muffled hearing except its footsteps, racing heartbeat, building shake, look-back key.
 
+## Losing a teammate
+Every capture is a crisis: the team gets weaker and the monster stronger. Build 1 and 2 first.
+1. Two-person jobs (carry fuel, hold a door while boarding, lift heavy barricades); solo versions are slow/risky or impossible.
+2. It feeds: each capture makes the monster faster, sharper and more aggressive for the rest of the night.
+3. Safety in numbers: alone, heartbeat louder, screen edges darker, sounds play tricks.
+4. Their gear goes with them (radio, toolkit, generator key) until they're rescued.
+5. The Mimic gets the captured player's voice.
+
 ## Risks and fixes
 - Camping until dawn (Prototype): night jobs outside (refuel generator, rescue, recover supplies), barricades wear down,
   lineages drift toward climbers/burrowers.
