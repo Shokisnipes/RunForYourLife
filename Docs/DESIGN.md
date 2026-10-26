@@ -60,7 +60,7 @@ Player feel: tunnel vision, muffled hearing except its footsteps, racing heartbe
 ## Risks and fixes
 - Camping until dawn (Prototype): night jobs outside (refuel generator, rescue, recover supplies), barricades wear down,
   lineages drift toward climbers/burrowers.
-- Boring capture (Prototype): struggle to slow the timer (makes noise), call out, glimpses through the monster's eyes.
+- Boring capture (Prototype): struggle to slow the timer (makes noise), call out, glimpses through the monster's eyes,   roll around if possible.
 - Steering evolution (Prototype): quits = monster wins, capped weights, mutation floor.
 - Solved meta (Later): sometimes-unreliable clues, trait strengths vary, every defense has a counter.
 - Lure spam (Later): it habituates to repeated lures.
