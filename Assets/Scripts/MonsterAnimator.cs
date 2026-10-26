@@ -85,6 +85,11 @@ public class MonsterAnimator : MonoBehaviour
     [Tooltip("Keeps the model standing on the real floor instead of on the NavMesh.")]
     public bool snapToRealFloor = true;
     public float floorSnapSpeed = 8f;
+    [Tooltip("Never let knees, shins, ankles or toes sink below the floor (lifts the body just enough). Works in every pose, including kneeling.")]
+    public bool keepLegsAboveFloor = true;
+    [Tooltip("Thickness of the knee/shin, in normal human meters (how far the joint sits above the floor when touching it).")]
+    public float kneeThickness = 0.06f;
+    public float liftSpeed = 10f;
 
     [Header("Debug (read only, watch these in Play mode)")]
     [Tooltip("How far the NavMesh is above (+) or below (-) the real floor under the giant, in meters.")]
@@ -122,6 +127,10 @@ public class MonsterAnimator : MonoBehaviour
     float hipOffset;
     float baseLocalY;
     float floorOffset;
+    float liftOffset;
+    float floorY;
+    bool hasFloor;
+    Transform leftKnee, rightKnee, leftToes, rightToes;
 
     // Auto stride
     float measuredNaturalSpeed = -1f;       // m/s the current animation "wants" to move at playback 1
@@ -199,6 +208,10 @@ public class MonsterAnimator : MonoBehaviour
 
         leftFoot = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
         rightFoot = animator.GetBoneTransform(HumanBodyBones.RightFoot);
+        leftKnee = animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);    // the knee joint
+        rightKnee = animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
+        leftToes = animator.GetBoneTransform(HumanBodyBones.LeftToes);       // may be null on some rigs
+        rightToes = animator.GetBoneTransform(HumanBodyBones.RightToes);
         head = animator.GetBoneTransform(HumanBodyBones.Head);
         leftHandBone = animator.GetBoneTransform(HumanBodyBones.LeftHand);
         rightHandBone = animator.GetBoneTransform(HumanBodyBones.RightHand);
@@ -379,14 +392,43 @@ public class MonsterAnimator : MonoBehaviour
     {
         if (!GroundBelow(root.position + Vector3.up * 3f, 8f, out RaycastHit hit)) return;
 
+        floorY = hit.point.y;
+        hasFloor = true;
         float gap = root.position.y - hit.point.y;   // + = NavMesh above the floor
         debugNavMeshGap = gap;
         if (!snapToRealFloor) { floorOffset = 0f; }
         else floorOffset = Mathf.Lerp(floorOffset, Mathf.Clamp(-gap, -2f, 2f), 1f - Mathf.Exp(-floorSnapSpeed * dt));
 
         var lp = transform.localPosition;
-        lp.y = baseLocalY + floorOffset;
+        lp.y = baseLocalY + floorOffset + liftOffset;
         transform.localPosition = lp;
+    }
+
+    // How far is the lowest leg joint below where it should be? Lift the body by that much (never lower it).
+    void UpdateLegLift()
+    {
+        if (!keepLegsAboveFloor || !hasFloor) { liftOffset = Mathf.MoveTowards(liftOffset, 0f, Time.deltaTime); return; }
+
+        float s = modelScale;
+        float need = 0f;
+        need = Mathf.Max(need, Sink(leftKnee, kneeThickness * s));
+        need = Mathf.Max(need, Sink(rightKnee, kneeThickness * s));
+        need = Mathf.Max(need, Sink(leftFoot, ankleHeight * s * 0.9f));
+        need = Mathf.Max(need, Sink(rightFoot, ankleHeight * s * 0.9f));
+        need = Mathf.Max(need, Sink(leftToes, 0.015f * s));
+        need = Mathf.Max(need, Sink(rightToes, 0.015f * s));
+
+        // 'need' is measured on a pose that already includes the current lift, so add to it
+        float target = Mathf.Clamp(liftOffset + need, 0f, 2f * s);
+        // Rise quickly when sinking, settle back down slowly
+        float rate = target > liftOffset ? liftSpeed : liftSpeed * 0.2f;
+        liftOffset = Mathf.Lerp(liftOffset, need > 0.001f ? target : Mathf.Max(0f, liftOffset - 0.02f * s), 1f - Mathf.Exp(-rate * Time.deltaTime));
+    }
+
+    float Sink(Transform bone, float thickness)
+    {
+        if (bone == null) return 0f;
+        return Mathf.Max(0f, floorY + thickness - bone.position.y);
     }
 
     bool InAction()
@@ -397,6 +439,8 @@ public class MonsterAnimator : MonoBehaviour
 
     void LateUpdate()
     {
+        UpdateLegLift();
+
         // Bones are posed by now: check for foot contacts
         CheckFoot(leftFoot, ref leftPlanted, leftTrack);
         CheckFoot(rightFoot, ref rightPlanted, rightTrack);
