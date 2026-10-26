@@ -165,13 +165,25 @@ public class MonsterAI : NetworkBehaviour
     }
 
     bool shownActive = true;
+    readonly System.Collections.Generic.List<Renderer> hiddenRenderers = new System.Collections.Generic.List<Renderer>();
 
     // During the prep phase the monster is asleep: hidden and silent on every client, frozen on the host.
     void UpdateAsleep(bool active)
     {
         if (active == shownActive) return;
         shownActive = active;
-        foreach (var r in GetComponentsInChildren<Renderer>(true)) r.enabled = active;
+        // Only bring back the renderers that were on before (some, like a debug cylinder, are off on purpose)
+        if (!active)
+        {
+            hiddenRenderers.Clear();
+            foreach (var r in GetComponentsInChildren<Renderer>(true))
+                if (r.enabled) { hiddenRenderers.Add(r); r.enabled = false; }
+        }
+        else
+        {
+            foreach (var r in hiddenRenderers) if (r != null) r.enabled = true;
+            hiddenRenderers.Clear();
+        }
         foreach (var a in GetComponentsInChildren<AudioSource>(true)) a.mute = !active;
         if (IsServer && agent.enabled && agent.isOnNavMesh)
         {

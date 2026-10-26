@@ -30,7 +30,7 @@ public class NetworkUI : MonoBehaviour
     public bool driftLobbyCamera = true;
 
     GameObject mainPanel, joinPanel, pausePanel, statusPanel;
-    Text statusText, pauseInfo, mainMessage, timerText, endText;
+    Text statusText, pauseInfo, mainMessage, timerText;
     InputField addressField;
     Font defaultFont;
     bool connecting;
@@ -99,7 +99,7 @@ public class NetworkUI : MonoBehaviour
         var flow = GameFlow.Instance;
         bool show = inGame && flow != null && flow.IsSpawned && !mainPanel.activeSelf && !joinPanel.activeSelf && !statusPanel.activeSelf;
         timerText.gameObject.SetActive(show);
-        endText.gameObject.SetActive(show && flow.RunOver);
+        endMessage = "";
         if (!show) return;
 
         float t = flow.SecondsLeft;
@@ -113,9 +113,32 @@ public class NetworkUI : MonoBehaviour
         if (flow.RunOver)
         {
             bool won = flow.Phase == GamePhase.Won;
-            endText.text = won ? "YOU SURVIVED THE NIGHT" : "EVERYONE IS DEAD";
-            endText.color = won ? textColor : accentColor;
+            endMessage = won ? "YOU SURVIVED THE NIGHT" : "EVERYONE IS DEAD";
+            endColor = won ? textColor : accentColor;
         }
+        else
+        {
+            // Dead but teammates still alive
+            foreach (var p in FirstPersonController.All)
+                if (p.IsOwner && p.IsDead) { endMessage = "YOU DIED"; endColor = accentColor; }
+        }
+    }
+
+    string endMessage = "";
+    Color endColor;
+    GUIStyle endStyle;
+
+    // Drawn with IMGUI, in front of the black death fade (which is IMGUI too, depth -1000)
+    void OnGUI()
+    {
+        if (string.IsNullOrEmpty(endMessage)) return;
+        GUI.depth = -2000;
+        if (endStyle == null)
+            endStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
+        if (bodyFont != null) endStyle.font = bodyFont;
+        endStyle.fontSize = Mathf.RoundToInt(Screen.height * 0.09f);
+        endStyle.normal.textColor = endColor;
+        GUI.Label(new Rect(0, 0, Screen.width, Screen.height), endMessage, endStyle);
     }
 
     // ---------- Actions ----------
@@ -245,7 +268,6 @@ public class NetworkUI : MonoBehaviour
 
         // Run HUD (timer at the top, big end-of-run message)
         timerText = AddHudText(root, "Timer", 40, new Vector2(0.5f, 1f), new Vector2(0, -30), TextAnchor.UpperCenter);
-        endText = AddHudText(root, "EndText", 90, new Vector2(0.5f, 0.5f), Vector2.zero, TextAnchor.MiddleCenter);
 
         // MAIN
         mainPanel = AddPanel(root, "Main", 0.35f);
