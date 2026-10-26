@@ -4,7 +4,8 @@ Co-op first-person survival horror in **Unity 6 (6000.5.9f1), URP, Netcode for G
 before night; an unknown monster arrives. Today's monster is a 14 m giant that stalks foggy streets, can't fit inside
 buildings, peeks and reaches through doorways, and grabs players. The full game design (monster genome, evolution
 across runs, scouts, the Mimic, base building, risks, prototype plan) is in `Docs/DESIGN.md` - read it when a task
-touches gameplay design.
+touches gameplay design. The build plan is `Docs/TASKS.md`: always follow its **Token rules**, and tick a task
+when it's done and tested.
 
 ## How the code fits together (Assets/Scripts)
 - **Networking:** host runs all monster logic. Player prefab = `FirstPersonController` (owner moves itself via
