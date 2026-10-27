@@ -941,8 +941,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GenomeManager
   genomes: []
-  allowClimber: 1
-  alwaysClimber: 1
+  allowClimber: 0
+  alwaysClimber: 0
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -1067,7 +1067,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameFlow
   ShowTopMostFoldoutHeaderGroup: 1
-  prepSeconds: 360
+  prepSeconds: 10
   nightSeconds: 360
 --- !u!114 &1018997749
 MonoBehaviour:
@@ -1896,6 +1896,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eedfb208190a4c6a849d45bd5ac7fff2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AmbientAudio
+  nightFade: {x: 0.35, y: 0.9}
+  distantSoundsFrom: 0.75
   ambienceLoop: {fileID: 8300000, guid: 3481c7e2c555b024f94814c1f6ccb60e, type: 3}
   ambienceVolume: 0.133
   crossfadeTime: 4
