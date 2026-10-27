@@ -16,9 +16,8 @@ using UnityEngine;
 //   climber crawl steps           -24 dB         (climbing steps -27)
 //   giant breathing               -24 dB
 //   player footsteps              -29 dB         (your own steps should sit under everything)
-//   ambience bed (2D)             -31 dB         (night drone; fades in with the dark)
-//   dusk ambience bed (2D)        -29 dB         (sparse birds, so its loudest moments sit a bit higher; the
-//                                                 file itself is gain-staged so volume 1 hits this)
+//   ambience bed (2D)             -37 dB         (night drone; fades in with the dark)
+//   dusk ambience bed (2D)        -35 dB         (sparse birds; the file is gain-staged to -29 at volume 1, played at 0.5)
 public static class AudioMix
 {
     static readonly Dictionary<(float, float), AnimationCurve> curves = new Dictionary<(float, float), AnimationCurve>();
