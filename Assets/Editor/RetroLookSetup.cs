@@ -66,7 +66,7 @@ public static class RetroLookSetup
             bloom.scatter.Override(0.75f);
             var grain = Add<FilmGrain>(profile);
             grain.type.Override(FilmGrainLookup.Medium3);
-            grain.intensity.Override(0.55f);
+            grain.intensity.Override(0.3f);
             grain.response.Override(0.7f);
             var vig = Add<Vignette>(profile);
             vig.intensity.Override(0.45f);

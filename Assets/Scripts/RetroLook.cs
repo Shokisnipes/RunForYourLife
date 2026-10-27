@@ -17,9 +17,9 @@ public class RetroLook : MonoBehaviour
 
     [Header("Colour")]
     [Tooltip("Colour steps per channel. Lower = stronger banding.")]
-    [Range(4, 64)] public float colourSteps = 22f;
+    [Range(4, 64)] public float colourSteps = 32f;
     [Tooltip("0 = hard colour bands, 1 = bands broken up with a fine dither pattern.")]
-    [Range(0f, 1f)] public float dither = 0.7f;
+    [Range(0f, 1f)] public float dither = 0.35f;
 
     [Header("Glow and grain")]
     [Tooltip("Global Volume with the retro profile (more bloom, grain, vignette). Weight is set by this script.")]

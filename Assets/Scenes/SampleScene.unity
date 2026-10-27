@@ -1898,8 +1898,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RetroLook
   pixelHeight: 300
-  colourSteps: 22
-  dither: 0.7
+  colourSteps: 32
+  dither: 0.35
   retroVolume: {fileID: 2014776696}
   forceOnAtStart: 0
 --- !u!114 &2014776696
