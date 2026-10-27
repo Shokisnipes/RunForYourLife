@@ -414,8 +414,8 @@ MonoBehaviour:
   maxPitch: 85
   fieldOfView: 72
   sprintFovBoost: 6
-  bobAmount: 0.045
-  bobSway: 0.7
+  bobAmount: 0.02
+  bobSway: 0.25
   bobStride: 0.75
   carriedTime: 3
   fadeOutTime: 0.4

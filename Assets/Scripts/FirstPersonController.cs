@@ -29,8 +29,12 @@ public class FirstPersonController : NetworkBehaviour
     [Header("Camera feel")]
     public float fieldOfView = 72f;
     public float sprintFovBoost = 6f;     // view widens a little when sprinting
-    public float bobAmount = 0.045f;      // meters the head dips per step
-    public float bobSway = 0.7f;          // degrees the head rolls side to side
+    [Tooltip("Meters the head dips per step at walking speed.")]
+    public float bobAmount = 0.02f;
+    [Tooltip("Degrees the head rolls side to side per step.")]
+    public float bobSway = 0.25f;
+    [Tooltip("How much stronger the bob gets when sprinting (1 = same as walking).")]
+    public float sprintBobBoost = 1.25f;
     public float bobStride = 0.75f;       // meters per step (matches the footstep sounds)
 
     [Header("Death")]
@@ -169,12 +173,12 @@ public class FirstPersonController : NetworkBehaviour
         float dt = Time.deltaTime;
         bool moving = controller.isGrounded && CurrentSpeed > 0.3f;
 
-        bobBlend = Mathf.MoveTowards(bobBlend, moving ? Mathf.Clamp(CurrentSpeed / walkSpeed, 0f, 1.6f) : 0f, dt * 4f);
+        bobBlend = Mathf.MoveTowards(bobBlend, moving ? Mathf.Clamp(CurrentSpeed / walkSpeed, 0f, sprintBobBoost) : 0f, dt * 4f);
         if (moving) bobPhase += CurrentSpeed * dt * Mathf.PI / bobStride;   // half a cycle per step
 
         float damp = isCrouching ? 0.5f : 1f;
         float amount = bobAmount * bobBlend * damp;
-        cameraPivot.localPosition += new Vector3(Mathf.Cos(bobPhase) * amount * 0.6f, -Mathf.Abs(Mathf.Sin(bobPhase)) * amount, 0f);
+        cameraPivot.localPosition += new Vector3(Mathf.Cos(bobPhase) * amount * 0.4f, -Mathf.Abs(Mathf.Sin(bobPhase)) * amount, 0f);
 
         float roll = Mathf.Cos(bobPhase) * bobSway * bobBlend * damp;
         cameraPivot.localRotation = Quaternion.Euler(pitch, 0f, roll);
