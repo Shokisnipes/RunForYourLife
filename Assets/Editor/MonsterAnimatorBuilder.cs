@@ -9,7 +9,7 @@ public class MonsterAnimatorBuilder : EditorWindow
 {
     AnimationClip idle, walk, run, peek, grab;
     Animator targetAnimator;
-    string savePath = "Assets/Monster/MonsterAnimator.controller";
+    string savePath = "Assets/Monsters/Monster/MonsterAnimator.controller";
 
     [MenuItem("Tools/RunForYourLife/Monster Animator Builder")]
     static void Open() => GetWindow<MonsterAnimatorBuilder>("Monster Animator");
