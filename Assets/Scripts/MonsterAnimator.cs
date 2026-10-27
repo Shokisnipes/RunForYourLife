@@ -73,6 +73,17 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     public float carryDuration = 3f;        // how long it holds you up
     [Tooltip("Where it holds you, in front of its face (normal human meters, scaled automatically).")]
     public Vector3 holdOffset = new Vector3(0.05f, -0.05f, 0.3f);
+    [Tooltip("How fast the hand closes around you on a catch and opens when it lets go (full close per second).")]
+    public float gripCloseSpeed = 4f;
+    [Tooltip("How far each finger joint bends toward the palm when gripping (degrees: knuckle, middle, tip). " +
+             "A full fist is ~90; less wraps around a body instead of crushing through it.")]
+    public Vector3 gripFingerCurl = new Vector3(55f, 65f, 45f);
+    [Tooltip("Same for the thumb, which folds across the front of the grip.")]
+    public Vector3 gripThumbCurl = new Vector3(20f, 30f, 25f);
+    [Tooltip("Where the held body sits along the hand: 0 = wrist, 1 = knuckles.")]
+    [Range(0f, 1.5f)] public float gripAlongPalm = 0.8f;
+    [Tooltip("How far out from the palm the held body sits (normal human meters, scaled automatically).")]
+    public float gripPalmDepth = 0.04f;
 
     [Header("Foot plants (sound + shake land on contact)")]
     [Tooltip("Steps are detected by learning each foot's lowest/highest point. A foot counts as planted in the bottom part of its swing (0-1).")]
@@ -226,6 +237,16 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         }
     }
     public Vector3 HeadPosition => head != null ? head.position : root.position + Vector3.up * 13f;
+
+    // Where the held body sits: in the middle of the palm, not at the wrist (on a giant that's nearly a metre apart)
+    public Vector3 GripPosition
+    {
+        get
+        {
+            if (!PalmFrame(out Transform hand, out Transform middle, out Vector3 palm)) return HandPosition;
+            return Vector3.Lerp(hand.position, middle.position, gripAlongPalm) + palm * gripPalmDepth * modelScale;
+        }
+    }
 
     // How far the reaching shoulder sits to the side of the body center (meters, + = right).
     // The giant sidesteps by this much at a doorway so the arm goes straight through the opening.
@@ -542,6 +563,70 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         MeasureStride();
 
         UpdateDoorwayPosture();
+        CloseHand();
+    }
+
+    // ---------- Grip: the holding hand closes around its victim (after the arm is placed) ----------
+
+    float gripWeight;
+    static readonly HumanBodyBones[] LeftFingers =
+    {
+        HumanBodyBones.LeftIndexProximal, HumanBodyBones.LeftIndexIntermediate, HumanBodyBones.LeftIndexDistal,
+        HumanBodyBones.LeftMiddleProximal, HumanBodyBones.LeftMiddleIntermediate, HumanBodyBones.LeftMiddleDistal,
+        HumanBodyBones.LeftRingProximal, HumanBodyBones.LeftRingIntermediate, HumanBodyBones.LeftRingDistal,
+        HumanBodyBones.LeftLittleProximal, HumanBodyBones.LeftLittleIntermediate, HumanBodyBones.LeftLittleDistal,
+        HumanBodyBones.LeftThumbProximal, HumanBodyBones.LeftThumbIntermediate, HumanBodyBones.LeftThumbDistal,
+    };
+    static readonly HumanBodyBones[] RightFingers =
+    {
+        HumanBodyBones.RightIndexProximal, HumanBodyBones.RightIndexIntermediate, HumanBodyBones.RightIndexDistal,
+        HumanBodyBones.RightMiddleProximal, HumanBodyBones.RightMiddleIntermediate, HumanBodyBones.RightMiddleDistal,
+        HumanBodyBones.RightRingProximal, HumanBodyBones.RightRingIntermediate, HumanBodyBones.RightRingDistal,
+        HumanBodyBones.RightLittleProximal, HumanBodyBones.RightLittleIntermediate, HumanBodyBones.RightLittleDistal,
+        HumanBodyBones.RightThumbProximal, HumanBodyBones.RightThumbIntermediate, HumanBodyBones.RightThumbDistal,
+    };
+
+    // The holding hand's wrist, middle knuckle and which way its palm faces, from the hand's own shape:
+    // fingers point out of the hand, index to little spans it, the palm is perpendicular to both
+    // (mirrored between left and right hands). The knuckles don't move when the fingers curl.
+    bool PalmFrame(out Transform hand, out Transform middle, out Vector3 palm)
+    {
+        bool left = reachHand == AvatarIKGoal.LeftHand;
+        var ids = left ? LeftFingers : RightFingers;
+        hand = HandBone;
+        middle = animator != null && animator.isHuman ? animator.GetBoneTransform(ids[3]) : null;
+        Transform index = middle != null ? animator.GetBoneTransform(ids[0]) : null;
+        Transform little = middle != null ? animator.GetBoneTransform(ids[9]) : null;
+        palm = Vector3.zero;
+        if (hand == null || middle == null || index == null || little == null) return false;
+        Vector3 across = index.position - little.position;
+        palm = Vector3.Cross(across, middle.position - hand.position).normalized * (left ? 1f : -1f);
+        return true;
+    }
+
+    void CloseHand()
+    {
+        gripWeight = Mathf.MoveTowards(gripWeight, carrying ? 1f : 0f, Time.deltaTime * gripCloseSpeed);
+        if (gripWeight <= 0f || !animator.isHuman) return;
+
+        if (!PalmFrame(out _, out _, out Vector3 palm)) return;
+        var ids = reachHand == AvatarIKGoal.LeftHand ? LeftFingers : RightFingers;
+
+        float w = Mathf.SmoothStep(0f, 1f, gripWeight);
+        for (int f = 0; f < 5; f++)
+        {
+            Vector3 curl = f == 4 ? gripThumbCurl : gripFingerCurl;
+            for (int j = 0; j < 3; j++)
+            {
+                Transform bone = animator.GetBoneTransform(ids[f * 3 + j]);
+                if (bone == null) continue;
+                // This joint's direction: toward its child, or carried on from its parent for the tip
+                Vector3 dir = bone.childCount > 0 ? bone.GetChild(0).position - bone.position : bone.position - bone.parent.position;
+                Vector3 axis = Vector3.Cross(dir, palm);   // turning about this swings the joint toward the palm
+                if (axis.sqrMagnitude < 1e-8f) continue;
+                bone.rotation = Quaternion.AngleAxis(curl[j] * w, axis.normalized) * bone.rotation;
+            }
+        }
     }
 
     // ---------- Doorway posture: bow + arm through the door (after animation and IK) ----------

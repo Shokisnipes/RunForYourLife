@@ -34,6 +34,9 @@ public class PlayerCover : NetworkBehaviour
     public float peekRoll = 8f;
     [Tooltip("How fast you lean out and back (full lean per second).")]
     public float peekSpeed = 3f;
+    [Tooltip("While leaning out, how far (degrees from straight out of the wall) you can look on the corner side. " +
+             "180 = straight back along the wall's other face, around the corner.")]
+    public float peekLookAngle = 175f;
 
     // Owner-written, read by everyone (PlayerAnimator turns the body; the camera lean is shown on other players)
     readonly NetworkVariable<bool> netInCover = new NetworkVariable<bool>(
@@ -100,15 +103,22 @@ public class PlayerCover : NetworkBehaviour
             edgeRight = !WallBeside(WallRight);
             edgeLeft = !WallBeside(-WallRight);
 
+            // Push toward the end of the wall to lean out. Once out, the lean holds while you're still at that end,
+            // even if you stop pushing or turn the mouse (turning changes which way your keys point).
+            // Step back along the wall and the end isn't beside you any more, so the lean goes.
             float along = Vector3.Dot(lastMove, WallRight);
-            float target = edgeRight && along > 0.3f ? 1f : edgeLeft && along < -0.3f ? -1f : 0f;
+            float target = edgeRight && (along > 0.3f || peek > 0f) ? 1f
+                         : edgeLeft && (along < -0.3f || peek < 0f) ? -1f : 0f;
             peek = Mathf.MoveTowards(peek, target, peekSpeed * dt);
 
-            // You can look along the wall and out, but the view eases away from staring into the wall
+            // You can look along the wall and out, but the view eases away from staring into the wall.
+            // On the side you're leaning out, you can look right around the corner.
             float angle = Vector3.SignedAngle(wallNormal, Vector3.ProjectOnPlane(transform.forward, Vector3.up), Vector3.up);
-            if (Mathf.Abs(angle) > maxLookAngle)
+            bool peekSide = peek != 0f && Mathf.Sign(angle) == Mathf.Sign(peek);   // + angle = toward WallRight
+            float limit = peekSide ? Mathf.Lerp(maxLookAngle, peekLookAngle, Mathf.Abs(peek)) : maxLookAngle;
+            if (Mathf.Abs(angle) > limit)
             {
-                float over = angle - Mathf.Sign(angle) * maxLookAngle;
+                float over = angle - Mathf.Sign(angle) * limit;
                 transform.Rotate(0f, -over * (1f - Mathf.Exp(-lookEaseSpeed * dt)), 0f);
             }
         }

@@ -64,6 +64,12 @@ public class FirstPersonController : NetworkBehaviour
     readonly NetworkVariable<bool> netDead = new NetworkVariable<bool>(
         false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
+    // The monster holding us (NoCarrier when nobody is). Every computer pins the body to its own copy of that
+    // monster's hand: our synced position arrives late and smoothed, so it wouldn't line up with the hand there.
+    const ulong NoCarrier = ulong.MaxValue;
+    readonly NetworkVariable<ulong> netCarrierId = new NetworkVariable<ulong>(
+        NoCarrier, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+
     CharacterController controller;
     PlayerCover cover;
     float pitch;
@@ -77,12 +83,22 @@ public class FirstPersonController : NetworkBehaviour
     Camera ownCamera;
     float bobPhase;
     float bobBlend;
+    Coroutine falling;
+
+    // The monster holding this player, looked up from netCarrierId
+    ulong carrierId = NoCarrier;
+    IMonsterGrabber carrier;
+    // Someone else's player held by a monster (on our screen)
+    bool shownCarrying;
+    Vector3 shownCarryPos;
 
     // Read by other systems (footstep noise, monster)
     public float CurrentSpeed { get; private set; }
     public bool IsGrabbed => netGrabbed.Value;   // synced, so the monster ignores whoever it's holding
     public bool IsCrouching => netCrouching.Value;
     public bool IsDead => netDead.Value;         // stays dead for the rest of the night (task 8 adds rescue)
+    public bool IsInMonsterHand => netCarrierId.Value != NoCarrier;
+    public bool IsDropped => IsGrabbed && !IsInMonsterHand;   // the monster let go: the body lies on the floor
 
     void Awake()
     {
@@ -311,14 +327,15 @@ public class FirstPersonController : NetworkBehaviour
         if (grabbed) return;
         IMonsterGrabber monster = null;   // the giant's MonsterAnimator or the climber's ClimberAnimator
         if (monsterRef.TryGet(out NetworkObject obj)) monster = obj.GetComponentInChildren<IMonsterGrabber>();
-        StartCoroutine(GrabbedSequence(monster, carriedTime + extraTime));
+        StartCoroutine(GrabbedSequence(monster, monster != null ? obj.NetworkObjectId : NoCarrier, carriedTime + extraTime));
     }
 
-    IEnumerator GrabbedSequence(IMonsterGrabber monster, float holdTime)
+    IEnumerator GrabbedSequence(IMonsterGrabber monster, ulong monsterId, float holdTime)
     {
         Debug.Log("You were caught!");
         grabbed = true;
         netGrabbed.Value = true;
+        netCarrierId.Value = monsterId;
         CurrentSpeed = 0f;
         isCrouching = false;
         if (netCrouching.Value) netCrouching.Value = false;
@@ -330,12 +347,7 @@ public class FirstPersonController : NetworkBehaviour
         {
             if (monster != null)
             {
-                Vector3 hand = monster.HandPosition;
-                Vector3 hold = hand - Vector3.up * (standHeight * 0.6f);
-                // Dragged along the floor, never through it
-                if (Physics.Raycast(hand + Vector3.up * 0.5f, Vector3.down, out var floor, 4f, ~0, QueryTriggerInteraction.Ignore))
-                    hold.y = Mathf.Max(hold.y, floor.point.y);
-                transform.position = Vector3.Lerp(transform.position, hold, 1f - Mathf.Exp(-14f * Time.deltaTime));
+                transform.position = Vector3.Lerp(transform.position, CarryPoint(monster), 1f - Mathf.Exp(-14f * Time.deltaTime));
 
                 Vector3 toFace = monster.HeadPosition - cameraPivot.position;
                 Vector3 flat = new Vector3(toFace.x, 0f, toFace.z);
@@ -349,6 +361,10 @@ public class FirstPersonController : NetworkBehaviour
             }
             yield return null;
         }
+
+        // It lets go: the body drops to the floor (and lies there, see PlayerAnimator) while the screen goes black
+        netCarrierId.Value = NoCarrier;
+        falling = StartCoroutine(FallToFloor());
 
         // Death
         yield return Fade(0f, 1f, fadeOutTime);
@@ -366,11 +382,85 @@ public class FirstPersonController : NetworkBehaviour
         pendingYaw = 0f;
         cameraPivot.localRotation = Quaternion.identity;
         netPitch.Value = 0f;
+        if (falling != null) StopCoroutine(falling);
         MoveToSpawn();
         grabbed = false;
         netGrabbed.Value = false;
 
         yield return Fade(1f, 0f, fadeInTime);
+    }
+
+    // Where the body hangs below the monster's hand: dragged along the floor, never through it
+    Vector3 CarryPoint(IMonsterGrabber monster)
+    {
+        Vector3 hand = monster.GripPosition;
+        Vector3 hold = hand - Vector3.up * (standHeight * 0.6f);
+        if (FloorBelow(hand + Vector3.up * 0.5f, 4f, out float floorY)) hold.y = Mathf.Max(hold.y, floorY);
+        return hold;
+    }
+
+    // Nearest floor straight down: not a monster, a player or a ragdolled body
+    static bool FloorBelow(Vector3 from, float range, out float floorY)
+    {
+        floorY = from.y;
+        float nearest = float.MaxValue;
+        foreach (var hit in Physics.RaycastAll(from, Vector3.down, range, ~0, QueryTriggerInteraction.Ignore))
+        {
+            if (hit.distance >= nearest || hit.collider.GetComponentInParent<NetworkObject>() != null ||
+                PlayerRagdoll.IsBodyPart(hit.collider)) continue;
+            nearest = hit.distance;
+            floorY = hit.point.y;
+        }
+        return nearest < float.MaxValue;
+    }
+
+    // Dropped from the monster's hand: fall straight down onto whatever is below
+    // (the ragdoll falls on its own; this keeps the player object, and so the synced position, with it)
+    IEnumerator FallToFloor()
+    {
+        FloorBelow(transform.position + Vector3.up * 0.5f, 80f, out float floorY);
+        float speed = 0f;
+        while (transform.position.y > floorY)
+        {
+            speed -= gravity * Time.deltaTime;   // gravity is negative
+            Vector3 p = transform.position;
+            p.y = Mathf.Max(floorY, p.y - speed * Time.deltaTime);
+            transform.position = p;
+            yield return null;
+        }
+        falling = null;
+    }
+
+    // The monster holding this player, on this computer (null when nobody is)
+    public IMonsterGrabber Carrier
+    {
+        get
+        {
+            ulong id = netCarrierId.Value;
+            if (id != carrierId)
+            {
+                carrierId = id;
+                carrier = null;
+                if (id != NoCarrier && IsSpawned && NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(id, out var obj))
+                    carrier = obj.GetComponentInChildren<IMonsterGrabber>();
+            }
+            return (carrier as Object) != null ? carrier : null;
+        }
+    }
+
+    // Someone else held by a monster: pin them to the hand of our own copy of that monster
+    // (runs after NetworkTransform has placed them from the network, so this wins)
+    void LateUpdate()
+    {
+        if (!IsSpawned || IsOwner) return;
+
+        var monster = Carrier;
+        if (monster == null) { shownCarrying = false; return; }
+        if (!shownCarrying) shownCarryPos = transform.position;   // ease in from where they were
+        shownCarrying = true;
+
+        shownCarryPos = Vector3.Lerp(shownCarryPos, CarryPoint(monster), 1f - Mathf.Exp(-14f * Time.deltaTime));
+        transform.position = shownCarryPos;
     }
 
     IEnumerator Fade(float from, float to, float duration)

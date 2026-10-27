@@ -423,6 +423,9 @@ public static class PlayerModelSetup
             anim.runtimeAnimatorController = controller;
             anim.applyRootMotion = false;
 
+            // Caught players go limp (builds its rigidbodies and joints from the skeleton at runtime)
+            if (go.GetComponent<PlayerRagdoll>() == null) go.AddComponent<PlayerRagdoll>();
+
             var pa = go.GetComponent<PlayerAnimator>();
             if (pa == null) pa = go.AddComponent<PlayerAnimator>();
             pa.standForwardSpeed = rims.stand.forward;

@@ -67,6 +67,7 @@ public class PlayerAnimator : MonoBehaviour
     Vector3 lastPos;
     Vector3 smoothVelocity;
     float crouchBlend;
+    PlayerRagdoll ragdoll;
 
     void Awake()
     {
@@ -74,6 +75,7 @@ public class PlayerAnimator : MonoBehaviour
         animator.applyRootMotion = false;
         player = GetComponentInParent<FirstPersonController>();
         cover = GetComponentInParent<PlayerCover>();
+        ragdoll = GetComponent<PlayerRagdoll>();
         // Shrinking from the neck (not the head) folds the collar away too, so looking down shows no stump
         head = animator.GetBoneTransform(HumanBodyBones.Neck);
         if (head == null) head = animator.GetBoneTransform(HumanBodyBones.Head);
@@ -90,6 +92,7 @@ public class PlayerAnimator : MonoBehaviour
     void Update()
     {
         if (player == null) return;
+        if (ragdoll != null && ragdoll.Active) return;   // caught: physics moves the body now
         float dt = Time.deltaTime;
         if (dt <= 0f) return;
 

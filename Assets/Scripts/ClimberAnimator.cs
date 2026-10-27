@@ -66,6 +66,7 @@ public class ClimberAnimator : MonoBehaviour, IMonsterGrabber
             return (l > r ? leftHand : rightHand).position;
         }
     }
+    public Vector3 GripPosition => HandPosition;   // human-sized hand: holding at the wrist is close enough
     public Vector3 HeadPosition => head != null ? head.position : (ai != null ? ai.transform.position : transform.position) + Vector3.up * 1.5f;
 
     // Read by ClimberAudio to time the steps
