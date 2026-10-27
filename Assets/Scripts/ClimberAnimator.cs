@@ -29,6 +29,8 @@ public class ClimberAnimator : MonoBehaviour, IMonsterGrabber
     public float climbRecentre = 2f;
     [Tooltip("How fast the drop clip's forward lunge is cancelled (it would carry the body ~2 m forward).")]
     public float dropRecentre = 14f;
+    [Tooltip("Height of its body above its feet point while dropping through a hatch (the clip alone sinks it into the floor).")]
+    public float dropBodyHeight = 1.0f;
 
     [Header("Limb collision (hands and feet)")]
     [Tooltip("Hands/feet stop this far from walls and floors.")]
@@ -149,10 +151,10 @@ public class ClimberAnimator : MonoBehaviour, IMonsterGrabber
         float follow = Mode == 3 ? dropRecentre : climbRecentre;
         smoothedBody = Vector3.Lerp(smoothedBody, body, 1f - Mathf.Exp(-follow * dt));
 
-        // Climbing: body held at a set height and depth on the wall. Dropping: no forward lunge.
+        // Climbing: body held at a set height and depth on the wall. Dropping: no forward lunge, no sinking.
         Vector3 offset = Vector3.zero;
         if (Mode == 1 || Mode == 2) offset = new Vector3(0f, climbBodyHeight, climbBodyDepth) - smoothedBody;
-        else if (Mode == 3) offset = new Vector3(-smoothedBody.x, 0f, -smoothedBody.z);
+        else if (Mode == 3) offset = new Vector3(0f, dropBodyHeight, 0f) - smoothedBody;
         bodyOffset = Vector3.Lerp(bodyOffset, offset, 1f - Mathf.Exp(-8f * dt));
         Vector3 delta = root.TransformVector(bodyOffset);
         anim.bodyPosition += delta;
