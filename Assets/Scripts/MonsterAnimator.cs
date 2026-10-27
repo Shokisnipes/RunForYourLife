@@ -265,6 +265,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         ai = GetComponentInParent<MonsterAI>();
         monsterAudio = GetComponentInParent<MonsterAudio>();
         root = ai != null ? ai.transform : transform;
+        groundLayers &= FenceBuilder.AllButFences;   // it steps over fences, never onto them
     }
 
     void OnEnable()

@@ -24,4 +24,5 @@ MonoBehaviour:
   windowDark: {fileID: 2100000, guid: b062900e5bfd44d428ac7812c230329e, type: 2}
   windowLit: {fileID: 2100000, guid: 6fa5fa2cb3fcebe43b2803607c40cdee, type: 2}
   propMetal: {fileID: 2100000, guid: 4b0f081122d28de4abea8cf8694617c7, type: 2}
+  decalMaterial: {fileID: 2100000, guid: e03f62c21eb077e42a5aad1bebbf1a57, type: 2}
   metersPerTile: 2.5

@@ -1009,7 +1009,8 @@ public class ClimberAI : NetworkBehaviour
         Vector3 to = Chest(player) - from;
         float dist = to.magnitude;
         if (dist < 0.01f) return true;
-        if (Physics.Raycast(from, to / dist, out var hit, dist + 0.5f, ~0, QueryTriggerInteraction.Ignore))
+        // Fences are see-through
+        if (Physics.Raycast(from, to / dist, out var hit, dist + 0.5f, FenceBuilder.AllButFences, QueryTriggerInteraction.Ignore))
             return hit.collider.GetComponentInParent<FirstPersonController>() == player;
         return true;
     }

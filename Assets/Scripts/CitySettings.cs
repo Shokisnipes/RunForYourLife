@@ -40,11 +40,23 @@ public class CitySettings : ScriptableObject
     [Header("Buildings")]
     [Tooltip("Relative chance of each kind for a lot (House, Shop, Warehouse).")]
     public Vector3 kindWeights = new Vector3(0.5f, 0.3f, 0.2f);
+    [Tooltip("Relative chance of an Eastern European apartment block (3-4 storeys; needs a lot 14 m wide, 10 m deep).")]
+    public float apartmentWeight = 0.3f;
     [Range(0f, 1f), Tooltip("Chance a lot along a street is left empty (rubble, a dumpster).")]
     public float emptyLotChance = 0.1f;
     [Range(0f, 1f), Tooltip("Chance the gap after a building is wide enough to walk through.")]
     public float passageChance = 0.3f;
     public BuildingPalette palette;
+
+    [Header("Fences (the giant steps over them; they stop players and the Climber)")]
+    [Tooltip("Iron railings round parks, with an open gate where each path comes in.")]
+    public bool parkFences = true;
+    [Tooltip("Wire fencing round parking lots, with two wide openings.")]
+    public bool parkingFences = true;
+    [Range(0f, 1f), Tooltip("Chance a walk-through gap next to a shop or warehouse gets a wire fence and an open gate.")]
+    public float shopPassageFenceChance = 0.6f;
+    [Range(0f, 1f), Tooltip("Same for gaps next to other buildings.")]
+    public float passageFenceChance = 0.2f;
 
     [Header("Street lamps")]
     [Tooltip("Made from a scene lamp by the City Preview tool (Assets/Prefabs/StreetLamp.prefab).")]

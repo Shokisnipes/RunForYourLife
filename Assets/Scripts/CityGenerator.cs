@@ -292,7 +292,13 @@ public static class CityGenerator
                                                  root, s.palette, rng);   // building +Z points into the block, door to the street
             city.buildings.Add(building);
 
-            t += spec.width + (Rand() < s.passageChance ? Range(2f, 3.2f) : Range(0.3f, 1f));
+            bool passage = Rand() < s.passageChance;
+            float gap = passage ? Range(2f, 3.2f) : Range(0.3f, 1f);
+            // Some walk-through gaps get a wire fence across them with a gate left open (more beside shops)
+            float fenceChance = kind == BuildingKind.Shop || kind == BuildingKind.Warehouse ? s.shopPassageFenceChance : s.passageFenceChance;
+            if (passage && backLine <= 0f && Rand() < fenceChance)
+                PassageFence(p0 + along * (t + spec.width) + inward * (sw + 1.2f), along, inward, gap);
+            t += spec.width + gap;
         }
     }
 
@@ -307,13 +313,45 @@ public static class CityGenerator
     {
         float wh = s.kindWeights.x, ws = room >= 10f && maxDepth >= 9f ? s.kindWeights.y : 0f;
         float ww = room >= 14f && maxDepth >= 14f ? s.kindWeights.z : 0f;
+        float wa = room >= 14f && maxDepth >= 10f ? s.apartmentWeight : 0f;
         if (room < 7f || maxDepth < 8f) wh = 0f;
         kind = BuildingKind.House;
-        float total = wh + ws + ww;
+        float total = wh + ws + ww + wa;
         if (total <= 0f) return false;
         float r = Rand() * total;
-        kind = r < wh ? BuildingKind.House : r < wh + ws ? BuildingKind.Shop : BuildingKind.Warehouse;
+        kind = r < wh ? BuildingKind.House : r < wh + ws ? BuildingKind.Shop : r < wh + ws + ww ? BuildingKind.Warehouse : BuildingKind.Apartment;
         return true;
+    }
+
+    // Across a gap between two buildings, just behind their fronts: fence on one side, an open gate on the other
+    static void PassageFence(Vector3 start, Vector3 along, Vector3 inward, float gap)
+    {
+        start.y = Curb;
+        float fenceLen = gap * 0.42f;
+        FenceBuilder.Run(root, start + along * 0.05f, start + along * fenceLen, FenceStyle.Wire, 2f);
+        Vector3 hinge = start + along * (gap - 0.05f);
+        FenceBuilder.OpenGate(root, hinge, -along, inward, gap * 0.45f, Range(60f, 80f), FenceStyle.Wire, 2f);
+    }
+
+    // A fence just inside a block's edge, with an opening (and an open gate) centred on each listed side.
+    // openings[side] = opening width (0 = no opening); sides as in Edge (0 -X, 1 +X, 2 -Z, 3 +Z).
+    static void FenceRound(Block b, float y, float inset, float[] openings, FenceStyle style, float height)
+    {
+        for (int side = 0; side < 4; side++)
+        {
+            Edge(b, side, out Vector3 p0, out Vector3 along, out Vector3 outward, out float length);
+            Vector3 a = p0 - outward * inset + along * inset, z = p0 - outward * inset + along * (length - inset);
+            a.y = z.y = y;
+            float open = openings[side];
+            if (open <= 0f) { FenceBuilder.Run(root, a, z, style, height); continue; }
+            float mid = length / 2f;
+            Vector3 g0 = p0 - outward * inset + along * (mid - open / 2f), g1 = p0 - outward * inset + along * (mid + open / 2f);
+            g0.y = g1.y = y;
+            FenceBuilder.Run(root, a, g0, style, height);
+            FenceBuilder.Run(root, g1, z, style, height);
+            if (style == FenceStyle.Railing)   // a gate swung open into the park on one side of the opening
+                FenceBuilder.OpenGate(root, g0, along, -outward, open * 0.45f, Range(70f, 100f), style, height);
+        }
     }
 
     static void Plaza(Block b)
@@ -368,6 +406,9 @@ public static class CityGenerator
         Bench(c + new Vector3(-3.5f, Curb, -4f), Vector3.right);
         Lamp(c + new Vector3(1.8f, Curb, b.D / 4f), Vector3.left);
         Lamp(c + new Vector3(-1.8f, Curb, -b.D / 4f), Vector3.right);
+
+        // Iron railings round it, opening where each path comes in
+        if (s.parkFences) FenceRound(b, Curb, 0.4f, new[] { 3.4f, 3.4f, 3.4f, 3.4f }, FenceStyle.Railing, 1.3f);
     }
 
     static void Parking(Block b)
@@ -400,6 +441,10 @@ public static class CityGenerator
         }
         LampsAlong(b, alongX ? 2 : 0);
         LampsAlong(b, alongX ? 3 : 1);
+
+        // Wire fencing round the lot, with a wide way in on each long side
+        if (s.parkingFences)
+            FenceRound(b, 0.06f, 0.4f, alongX ? new[] { 0f, 0f, 6f, 6f } : new[] { 6f, 6f, 0f, 0f }, FenceStyle.Wire, 2f);
     }
 
     static void EmptyBlock(Block b)

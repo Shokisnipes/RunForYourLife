@@ -8,6 +8,7 @@ using UnityEngine.Rendering.Universal;
 //  - colour drain and colour fringing at the edges
 //  - muffled hearing: a low-pass on your ears. The giant's footsteps, scream, the heartbeat and the chase music
 //    skip it (bypassListenerEffects in MonsterAudio), so the threat stays sharp while the rest of the world dulls.
+//  - panting: your character's heavy breathing (only you hear it), louder and faster with fear, calming slowly after
 // The look is a priority-20 global Volume made at runtime; its weight is the fear level.
 [RequireComponent(typeof(FirstPersonController))]
 public class ChaseStress : MonoBehaviour
@@ -42,6 +43,16 @@ public class ChaseStress : MonoBehaviour
     [Tooltip("Low-pass cutoff (Hz) at full fear. 22000 = no muffling; ~1000 = through a wall.")]
     public float muffledCutoff = 1200f;
 
+    [Header("Panting")]
+    [Tooltip("Your character's heavy breathing loop (2D, only you hear it).")]
+    public AudioClip pantingLoop;
+    [Tooltip("Volume at full fear.")]
+    [Range(0f, 1f)] public float pantingVolume = 0.6f;
+    [Tooltip("Fear below this is silent breathing.")]
+    [Range(0f, 1f)] public float pantingStart = 0.2f;
+    [Tooltip("Playback speed at full fear (faster, higher breaths). At the start it's 0.9.")]
+    public float pantingPitch = 1.15f;
+
     // Read-only, for tuning in Play mode
     [Header("Debug (read only)")]
     [SerializeField, Range(0f, 1f)] float fear;
@@ -51,6 +62,7 @@ public class ChaseStress : MonoBehaviour
     Vignette vig;
     ChromaticAberration chroma;
     AudioLowPassFilter lowPass;
+    AudioSource panting;
 
     void Awake() => player = GetComponent<FirstPersonController>();
 
@@ -62,6 +74,7 @@ public class ChaseStress : MonoBehaviour
             Destroy(volume.gameObject);
         }
         if (lowPass != null) Destroy(lowPass);
+        if (panting != null) Destroy(panting);
     }
 
     void Update()
@@ -82,6 +95,19 @@ public class ChaseStress : MonoBehaviour
         player.FovOffset = -fovSqueeze * f;
         lowPass.cutoffFrequency = Mathf.Lerp(22000f, muffledCutoff, f * f);   // muffling comes in late
         lowPass.enabled = f > 0.001f;
+
+        if (panting != null)
+        {
+            float breath = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(pantingStart, 1f, fear));
+            panting.volume = pantingVolume * breath;
+            panting.pitch = Mathf.Lerp(0.9f, pantingPitch, breath);
+            if (breath > 0.001f && !panting.isPlaying)
+            {
+                panting.time = Random.Range(0f, pantingLoop.length * 0.9f);   // not the same breath every chase
+                panting.Play();
+            }
+            else if (breath <= 0.001f && panting.isPlaying) panting.Stop();
+        }
     }
 
     // How scary things are right now: the closest chasing monster, by how near it is
@@ -148,5 +174,17 @@ public class ChaseStress : MonoBehaviour
         lowPass = (listener != null ? listener.gameObject : gameObject).AddComponent<AudioLowPassFilter>();
         lowPass.cutoffFrequency = 22000f;
         lowPass.enabled = false;
+
+        // Our own breath, right in our head; never muffled (that's the point: all you hear is yourself)
+        if (pantingLoop != null)
+        {
+            panting = gameObject.AddComponent<AudioSource>();
+            panting.clip = pantingLoop;
+            panting.loop = true;
+            panting.playOnAwake = false;
+            panting.spatialBlend = 0f;
+            panting.bypassListenerEffects = true;
+            panting.volume = 0f;
+        }
     }
 }

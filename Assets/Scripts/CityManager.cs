@@ -97,10 +97,12 @@ public class CityManager : NetworkBehaviour
 
         if (bakeNavMesh)
         {
-            // Colliders only: litter, windows and leaves (no colliders) stay out of the NavMesh
+            // Colliders only: litter, windows and leaves (no colliders) stay out of the NavMesh.
+            // The giant steps over fences, so they're left out of its NavMesh (the Climber has to go round them).
             foreach (var surface in FindObjectsByType<NavMeshSurface>())
             {
                 surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+                if (NavMesh.GetSettingsNameFromID(surface.agentTypeID) == "Giant") surface.layerMask &= FenceBuilder.AllButFences;
                 surface.BuildNavMesh();
             }
             PlaceMonsters();

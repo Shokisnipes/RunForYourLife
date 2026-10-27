@@ -53,6 +53,11 @@ public static class PlayerModelSetup
         ("Running Turn 180.fbx",              "RunTurn180",        false, null,             Vector2.zero),
     };
 
+    // Turn-on-the-spot clips: their turning is NOT baked into the pose (with root motion off it's dropped), so the
+    // feet step round while the body keeps facing forward; PlayerAnimator turns the body at the clip's pace.
+    // They loop, so a long turn keeps stepping.
+    static readonly HashSet<string> TurnClips = new HashSet<string> { "TurnLeft", "CrouchTurnLeft" };
+
     // Clip name -> velocity at playback 1 (m/s, body frame), filled by FixClips
     static readonly Dictionary<string, Vector2> velocities = new Dictionary<string, Vector2>();
 
@@ -133,7 +138,9 @@ public static class PlayerModelSetup
             var a = defaults[0];
             a.name = c.clip;
             a.loopTime = c.loop;
-            a.lockRootRotation = true;
+            bool turn = TurnClips.Contains(c.clip);
+            if (turn) a.loopTime = true;
+            a.lockRootRotation = !turn;
             a.lockRootHeightY = true;
             a.lockRootPositionXZ = false;
             a.keepOriginalOrientation = true;    // Mixamo faces +Z; "Body Orientation" skews strafes diagonally
@@ -336,7 +343,17 @@ public static class PlayerModelSetup
         return rim;
     }
 
-    struct Rims { public Rim stand, crouch, cover; }
+    struct Rims { public Rim stand, crouch, cover; public float standTurn, crouchTurn; }
+
+    // Degrees per second a turn clip turns (its root turning, which isn't baked into the pose)
+    static float TurnSpeed(AnimationClip clip)
+    {
+        if (clip == null) return 90f;
+        float s = Mathf.Abs(clip.averageAngularSpeed);
+        if (s < 7f) s *= Mathf.Rad2Deg;   // in case it's reported in radians
+        log.AppendFormat("  {0}: turns {1:F0} deg/s\n", clip.name, s);
+        return s > 1f ? s : 90f;
+    }
 
     // Three 2D blend trees on MoveX / MoveZ (velocity in the model's own frame, m/s): standing, crouched and in
     // cover (back to a wall; in those clips she faces -Z). Each clip sits at the velocity it really moves at.
@@ -351,6 +368,8 @@ public static class PlayerModelSetup
         ctrl.AddParameter("MoveZ", AnimatorControllerParameterType.Float);
         ctrl.AddParameter("Crouch", AnimatorControllerParameterType.Bool);
         ctrl.AddParameter("Cover", AnimatorControllerParameterType.Bool);
+        ctrl.AddParameter("Turning", AnimatorControllerParameterType.Bool);
+        ctrl.AddParameter("Turn", AnimatorControllerParameterType.Float);   // -1 left, +1 right
 
         var layers = ctrl.layers;
         layers[0].iKPass = true;   // head looks where the player looks
@@ -369,6 +388,14 @@ public static class PlayerModelSetup
         var cover = ctrl.CreateBlendTreeInController("Cover", out var coverTree, 0);
         Setup2D(coverTree);
         rims.cover = AddClips(coverTree, go, coverIdle, LoadClip("CoverLeft"), LoadClip("CoverRight"));
+
+        // Turning on the spot: left turn, idle, right turn on the Turn parameter
+        var standTurn = ctrl.CreateBlendTreeInController("StandTurn", out var standTurnTree, 0);
+        SetupTurn(standTurnTree, LoadClip("TurnLeft"), LoadClip("Idle"), LoadClip("TurnRight"));
+        var crouchTurn = ctrl.CreateBlendTreeInController("CrouchTurn", out var crouchTurnTree, 0);
+        SetupTurn(crouchTurnTree, LoadClip("CrouchTurnLeft"), LoadClip("CrouchIdle"), LoadClip("CrouchTurnRight"));
+        rims.standTurn = TurnSpeed(LoadClip("TurnLeft"));
+        rims.crouchTurn = TurnSpeed(LoadClip("CrouchTurnLeft"));
         Object.DestroyImmediate(go);
 
         var sm = ctrl.layers[0].stateMachine;
@@ -379,18 +406,39 @@ public static class PlayerModelSetup
         Link(crouch, cover, ("Cover", true));
         Link(cover, crouch, ("Cover", false), ("Crouch", true));
         Link(cover, stand, ("Cover", false), ("Crouch", false));
+        Link(stand, standTurn, 0.15f, ("Turning", true), ("Cover", false));
+        Link(standTurn, stand, 0.2f, ("Turning", false));
+        Link(standTurn, crouchTurn, ("Crouch", true));
+        Link(standTurn, cover, ("Cover", true));
+        Link(crouch, crouchTurn, 0.15f, ("Turning", true), ("Cover", false));
+        Link(crouchTurn, crouch, 0.2f, ("Turning", false));
+        Link(crouchTurn, standTurn, ("Crouch", false));
+        Link(crouchTurn, cover, ("Cover", true));
 
         EditorUtility.SetDirty(ctrl);
         return ctrl;
     }
 
-    static void Link(AnimatorState from, AnimatorState to, params (string param, bool value)[] conditions)
+    static void Link(AnimatorState from, AnimatorState to, params (string param, bool value)[] conditions) =>
+        Link(from, to, 0.3f, conditions);
+
+    static void Link(AnimatorState from, AnimatorState to, float duration, params (string param, bool value)[] conditions)
     {
         var t = from.AddTransition(to);
         t.hasExitTime = false;
-        t.duration = 0.3f;
+        t.duration = duration;
         foreach (var c in conditions)
             t.AddCondition(c.value ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot, 0f, c.param);
+    }
+
+    static void SetupTurn(BlendTree tree, AnimationClip left, AnimationClip idle, AnimationClip right)
+    {
+        tree.blendType = BlendTreeType.Simple1D;
+        tree.blendParameter = "Turn";
+        tree.useAutomaticThresholds = false;
+        if (left != null) tree.AddChild(left, -1f);
+        if (idle != null) tree.AddChild(idle, 0f);
+        if (right != null) tree.AddChild(right, 1f);
     }
 
     static void Setup2D(BlendTree tree)
@@ -435,6 +483,11 @@ public static class PlayerModelSetup
             pa.crouchBackSpeed = rims.crouch.back;
             pa.crouchSideSpeed = rims.crouch.side;
             pa.coverSideSpeed = rims.cover.side;
+            pa.standTurnSpeed = rims.standTurn;
+            pa.crouchTurnSpeed = rims.crouchTurn;
+
+            // The flashlight in her right hand
+            if (go.GetComponent<FlashlightHand>() == null) go.AddComponent<FlashlightHand>();
 
             var fpc = root.GetComponent<FirstPersonController>();
             if (fpc != null) fpc.body = null;   // the capsule is gone; PlayerAnimator handles the model

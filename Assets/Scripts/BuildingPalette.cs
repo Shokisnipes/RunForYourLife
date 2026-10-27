@@ -18,6 +18,9 @@ public class BuildingPalette : ScriptableObject
     public Material windowDark;
     public Material windowLit;
     public Material propMetal;
+    [Tooltip("See-through material for wall decals (grime, posters, graffiti); their pictures are made in code. " +
+             "Empty = no decals. Filled by the Building Generator / Texturer (Assets/Materials/Decal.mat).")]
+    public Material decalMaterial;
 
     [Tooltip("How many meters one copy of a wall/roof/floor texture covers (BoxUV).")]
     public float metersPerTile = 2.5f;

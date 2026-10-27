@@ -59,6 +59,9 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
     crouch-back clips added. Small mouse smoothing (lookSmoothing 0.02 s). Host-tested with simulated keys.
   - [ ] b. Flashlight in the right hand (arm IK toward where you look), turn-in-place (TurnLeft/Right and
     CrouchTurnLeft/Right are imported, not wired), 2-player check of other players' bodies and peeking.
+    Done and host-tested: FlashlightHand (simple-shapes flashlight in the fist, arm up when on, beam from the lens)
+    and turn-in-place in PlayerAnimator (body holds until 60 deg, then steps round with the turn clips).
+    Left: Petar's 2-player check.
 - [ ] **5. Clues (S, Sonnet).** Three clue prefabs spawned at prep start based on the genome: claw marks high on a wall
   (Climber), a carcass with eyes untouched (not Sight), one radio line (random). Simple decals/props are fine.
 - [ ] **6. Scouts (L, Opus).** Needs a scout model first. Split: 6a) small scout AI (wander, flee light or noise

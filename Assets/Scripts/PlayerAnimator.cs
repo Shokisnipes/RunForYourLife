@@ -7,6 +7,8 @@ using UnityEngine;
 // behind the camera, so looking down shows your arms, chest and feet instead of the inside of your neck.
 // Other players: the head and upper body turn to where they're looking (synced pitch).
 // In cover (PlayerCover) the body turns its back to the wall and plays the cover sneak.
+// Standing still, the body doesn't spin with the mouse: it keeps facing its way until you look far enough to the
+// side, then steps round with the turn clips (which don't turn the body themselves; this script does, at their pace).
 // The Animator Controller and the natural clip speeds come from Tools > RunForYourLife > Player Model Setup.
 [RequireComponent(typeof(Animator))]
 public class PlayerAnimator : MonoBehaviour
@@ -30,6 +32,20 @@ public class PlayerAnimator : MonoBehaviour
     [Header("Cover")]
     [Tooltip("How quickly the body turns its back to the wall (and back again).")]
     public float coverTurnSpeed = 8f;
+
+    [Header("Turning on the spot")]
+    [Tooltip("Standing still, the body keeps facing its way until you look this far (degrees) to the side, then steps round.")]
+    public float turnStartAngle = 60f;
+    [Tooltip("It stops stepping once it's within this many degrees of where you face.")]
+    public float turnStopAngle = 5f;
+    [Tooltip("Degrees per second the standing turn clip turns at playback 1 (measured by Player Model Setup).")]
+    public float standTurnSpeed = 90f;
+    [Tooltip("Same for the crouched turn clip.")]
+    public float crouchTurnSpeed = 90f;
+    [Tooltip("The body never falls further behind where you face than this (degrees); a fast spin drags it round.")]
+    public float maxTwist = 120f;
+    [Tooltip("Moving: how quickly the body catches up with where you face.")]
+    public float moveTurnSpeed = 10f;
 
     [Header("Feel")]
     [Tooltip("Seconds to smooth the movement input to the animator (higher = softer starts and stops).")]
@@ -59,6 +75,8 @@ public class PlayerAnimator : MonoBehaviour
     static readonly int MoveZId = Animator.StringToHash("MoveZ");
     static readonly int CrouchId = Animator.StringToHash("Crouch");
     static readonly int CoverId = Animator.StringToHash("Cover");
+    static readonly int TurnId = Animator.StringToHash("Turn");
+    static readonly int TurningId = Animator.StringToHash("Turning");
 
     Animator animator;
     FirstPersonController player;
@@ -68,6 +86,9 @@ public class PlayerAnimator : MonoBehaviour
     Vector3 smoothVelocity;
     float crouchBlend;
     PlayerRagdoll ragdoll;
+    Flashlight flashlight;
+    float bodyYaw;
+    bool yawStarted, turning;
 
     void Awake()
     {
@@ -76,6 +97,7 @@ public class PlayerAnimator : MonoBehaviour
         player = GetComponentInParent<FirstPersonController>();
         cover = GetComponentInParent<PlayerCover>();
         ragdoll = GetComponent<PlayerRagdoll>();
+        flashlight = player != null ? player.GetComponentInChildren<Flashlight>(true) : null;
         // Shrinking from the neck (not the head) folds the collar away too, so looking down shows no stump
         head = animator.GetBoneTransform(HumanBodyBones.Neck);
         if (head == null) head = animator.GetBoneTransform(HumanBodyBones.Head);
@@ -92,12 +114,14 @@ public class PlayerAnimator : MonoBehaviour
     void Update()
     {
         if (player == null) return;
-        if (ragdoll != null && ragdoll.Active) return;   // caught: physics moves the body now
+        if (ragdoll != null && ragdoll.Active) { yawStarted = false; return; }   // caught: physics moves the body now
         float dt = Time.deltaTime;
         if (dt <= 0f) return;
 
-        // Our own player keeps animating even when the body is off screen (we only see bits of it)
-        animator.cullingMode = IsMine ? AnimatorCullingMode.AlwaysAnimate : AnimatorCullingMode.CullUpdateTransforms;
+        // Our own player keeps animating even when the body is off screen (we only see bits of it). So does anyone
+        // whose flashlight is on: the beam comes from their hand, and it must keep up when their body is off screen.
+        bool alwaysAnimate = IsMine || (flashlight != null && flashlight.IsOn);
+        animator.cullingMode = alwaysAnimate ? AnimatorCullingMode.AlwaysAnimate : AnimatorCullingMode.CullUpdateTransforms;
 
         // Velocity from how far the player moved this frame (works for remote players too)
         Vector3 root = player.transform.position;
@@ -107,18 +131,14 @@ public class PlayerAnimator : MonoBehaviour
         if (player.IsGrabbed || player.IsDead || v.sqrMagnitude > 15f * 15f) v = Vector3.zero;   // carried or teleported
         smoothVelocity = Vector3.Lerp(smoothVelocity, v, 1f - Mathf.Exp(-12f * dt));
 
-        // In cover the body turns its back to the wall (faces out of it). Otherwise it faces where the player faces.
         bool inCover = cover != null && cover.InCover;
-        Quaternion facing = inCover
-            ? Quaternion.Inverse(player.transform.rotation) * Quaternion.LookRotation(cover.WallNormal)
-            : Quaternion.identity;
-        transform.localRotation = Quaternion.Slerp(transform.localRotation, facing, 1f - Mathf.Exp(-coverTurnSpeed * dt));
+        bool crouched = player.IsCrouching;
+        float turnPlayback = Turn(inCover, crouched, dt);
 
         // Velocity in the body's own frame (the blend trees are laid out that way)
         Vector3 local = transform.InverseTransformDirection(smoothVelocity);
         Vector2 flat = new Vector2(local.x, local.z);
         float speed = flat.magnitude;
-        bool crouched = player.IsCrouching;
 
         // The blend trees have clips placed at the velocities they really move at. Up to the fastest clip in this
         // direction we blend; beyond it we play that clip faster, so the feet keep up with the ground.
@@ -133,9 +153,52 @@ public class PlayerAnimator : MonoBehaviour
         animator.SetFloat(MoveZId, dir.y * blendSpeed, moveDamping, dt);
         animator.SetBool(CrouchId, crouched);
         animator.SetBool(CoverId, inCover);
-        animator.speed = Mathf.Lerp(animator.speed, playback, 1f - Mathf.Exp(-8f * dt));
+        animator.SetBool(TurningId, turning);
+        animator.SetFloat(TurnId, turning ? Mathf.Sign(Mathf.DeltaAngle(bodyYaw, FacingYaw(inCover))) : 0f, 0.1f, dt);
+        animator.speed = Mathf.Lerp(animator.speed, turning ? turnPlayback : playback, 1f - Mathf.Exp(-8f * dt));
 
         crouchBlend = Mathf.MoveTowards(crouchBlend, crouched ? 1f : 0f, dt * 4f);
+    }
+
+    // Where the body should face: out of the wall in cover, otherwise where the player faces
+    float FacingYaw(bool inCover) =>
+        inCover ? Quaternion.LookRotation(cover.WallNormal).eulerAngles.y : player.transform.eulerAngles.y;
+
+    // Turns the body (world yaw) and returns the turn clip's playback speed
+    float Turn(bool inCover, bool crouched, float dt)
+    {
+        float target = FacingYaw(inCover);
+        if (!yawStarted) { bodyYaw = target; yawStarted = true; }
+        float delta = Mathf.DeltaAngle(bodyYaw, target);
+        bool moving = smoothVelocity.magnitude > moveThreshold;
+        float playback = 1f;
+
+        if (inCover || moving || player.IsGrabbed || player.IsDead)
+        {
+            // Back to the wall in cover; moving, the legs carry the body round
+            turning = false;
+            float rate = inCover ? coverTurnSpeed : moveTurnSpeed;
+            bodyYaw = Mathf.LerpAngle(bodyYaw, target, 1f - Mathf.Exp(-rate * dt));
+        }
+        else
+        {
+            if (!turning && Mathf.Abs(delta) > turnStartAngle) turning = true;
+            else if (turning && Mathf.Abs(delta) < turnStopAngle) turning = false;
+            if (turning)
+            {
+                // Step round at the clip's pace, faster the further behind it is (the feet speed up to match)
+                float clipSpeed = Mathf.Max(1f, crouched ? crouchTurnSpeed : standTurnSpeed);
+                playback = Mathf.Clamp(Mathf.Abs(delta) * 2f / clipSpeed, 1f, maxPlayback);
+                bodyYaw = Mathf.MoveTowardsAngle(bodyYaw, target, clipSpeed * playback * dt);
+            }
+        }
+
+        // A quick spin drags the body round rather than leaving it twisted backwards
+        delta = Mathf.DeltaAngle(bodyYaw, target);
+        if (Mathf.Abs(delta) > maxTwist) bodyYaw = target - Mathf.Sign(delta) * maxTwist;
+
+        transform.rotation = Quaternion.Euler(0f, bodyYaw, 0f);
+        return playback;
     }
 
     // Fastest clip speed in this direction, blended between the forward/backward and sideways ones

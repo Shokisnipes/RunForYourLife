@@ -1807,8 +1807,8 @@ MonoBehaviour:
   deathStinger: {fileID: 8300000, guid: b50ea3e348ca72d41b393dc516ad1427, type: 3}
   deathVolume: 0.7
   silenceAfterDeath: 3
-  chaseMusicLoop: {fileID: 0}
-  heartbeatLoop: {fileID: 0}
+  chaseMusicLoop: {fileID: 8300000, guid: ce48f1175e4b7fb4ab5a7732877a4be7, type: 3}
+  heartbeatLoop: {fileID: 8300000, guid: 9409d10d34f18c54f981c1eac75f7bf1, type: 3}
   soundRange: 45
   breathFullVolumeDistance: 6
   footstepRange: 120
@@ -1911,6 +1911,7 @@ MonoBehaviour:
   pixelHeight: 300
   colourSteps: 32
   dither: 0.271
+  shadowLift: 0.8
   retroVolume: {fileID: 2014776696}
   forceOnAtStart: 0
 --- !u!114 &2014776696

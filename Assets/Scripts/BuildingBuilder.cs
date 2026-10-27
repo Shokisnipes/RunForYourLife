@@ -1,14 +1,17 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public enum BuildingKind { House, Shop, Warehouse }
+public enum BuildingKind { House, Shop, Warehouse, Apartment }
 
 // How the inside is split up. Every doorway between rooms is wide enough for the Climber to crawl through.
 public enum InteriorLayout { Open, BackRoom, SideRoom, TwoBackRooms }
 
 // Builds an enterable box building out of plain cubes with BoxColliders: walls, roof, doorway, optional back room,
 // windows, roof edge, rooftop clutter, sidewalk, a roof hatch (the Climber drops in through it) and a ReachPoint
-// (the giant crouches there and reaches in). Runs in the game (the city generator) and in the editor (Building
+// (the giant crouches there and reaches in). Houses may get a sloped roof (RoofBuilder; no hatch, and the flat slab
+// under it is called "Ceiling" so the Climber leaves them alone). Apartment blocks are 3-4 storeys tall: you can
+// only get into the ground floor (a ceiling over it, with a stairwell hole under the roof hatch). BuildingDressing
+// adds the outside variety (decals, tint, awnings, shutters, balconies). Runs in the game (the city generator) and in the editor (Building
 // Generator window). Everything random comes from the System.Random you pass in, so the same seed builds the same
 // building on every machine.
 //
@@ -20,6 +23,8 @@ public static class BuildingBuilder
     public const float InteriorGap = 1.8f;
     // How far outside the door the giant stands
     public const float GiantStandDistance = 3.5f;
+    // Apartment blocks: height of the ground floor you can walk into
+    public const float ApartmentCeiling = 3.4f;
 
     [System.Serializable]
     public struct DetailOptions
@@ -51,13 +56,15 @@ public static class BuildingBuilder
         public float interiorGap;       // width of the doorways between rooms
         public bool furniture;          // crates, shelves, tables... cover to hide behind
         public bool roofHatch, reverb;
+        public RoofStyle roof;          // sloped roofs never get a hatch
+        public bool decals;             // grime, stains, posters, graffiti on the outside walls
         public DetailOptions details;
 
         public static Spec Default => new Spec
         {
             kind = BuildingKind.House, width = 8f, depth = 10f, height = 4f, wallThickness = 0.25f,
             doorWidth = 2.2f, doorHeight = 2.3f, doorOffset = 0f, layout = InteriorLayout.Open, interiorGap = InteriorGap, furniture = true,
-            roofHatch = true, reverb = true, details = DetailOptions.Default,
+            roofHatch = true, reverb = true, roof = RoofStyle.Flat, decals = true, details = DetailOptions.Default,
         };
     }
 
@@ -74,6 +81,9 @@ public static class BuildingBuilder
                 s.height = Range(rng, 3.8f, 4.3f);
                 s.layout = Pick(rng, InteriorLayout.Open, 0.2f, InteriorLayout.BackRoom, 0.45f, InteriorLayout.SideRoom, 0.35f);
                 s.details.litChance = 0.25f;
+                // Most houses get a Western sloped roof (safe from the Climber); a few stay flat with a hatch
+                double r = rng.NextDouble();
+                s.roof = r < 0.5 ? RoofStyle.Gable : r < 0.85 ? RoofStyle.Hip : RoofStyle.Flat;
                 break;
             case BuildingKind.Shop:
                 s.width = Range(rng, 10f, 14f);
@@ -91,9 +101,23 @@ public static class BuildingBuilder
                 s.details.highWindows = true;
                 s.details.litChance = 0.08f;
                 break;
+            case BuildingKind.Apartment:
+                // Eastern European panel block: 3-4 storeys, rows of windows, balconies, flat roof with a hatch
+                s.width = Range(rng, 14f, 20f);
+                s.depth = Range(rng, 10f, 13f);
+                s.height = 3.2f * rng.Next(3, 5) + 0.4f;
+                s.layout = Pick(rng, InteriorLayout.BackRoom, 0.5f, InteriorLayout.SideRoom, 0.3f, InteriorLayout.TwoBackRooms, 0.2f);
+                s.details.litChance = 0.3f;
+                break;
         }
         s.width = Mathf.Min(s.width, maxWidth);
         s.depth = Mathf.Min(s.depth, maxDepth);
+        if (s.roof != RoofStyle.Flat)
+        {
+            s.roofHatch = false;
+            s.details.parapet = false;
+            s.details.roofClutter = false;
+        }
         float maxOffset = Mathf.Max(0f, (s.width - s.doorWidth) / 2f - s.wallThickness - 0.6f);
         s.doorOffset = Range(rng, -maxOffset, maxOffset) * 0.7f;
         return s;
@@ -144,19 +168,33 @@ public static class BuildingBuilder
         float lintelH = height - s.doorHeight;
         Box(b, "Wall_Front_Top", new Vector3(s.doorOffset, s.doorHeight + lintelH / 2f, frontZ), new Vector3(s.doorWidth, lintelH, t), wall, tile);
 
-        // Roof and floor
-        Box(b, "Roof",  new Vector3(0, height + t / 2f, 0), new Vector3(s.width, t, s.depth), roof, tile);
+        // Roof and floor. Under a sloped roof the flat slab is just a ceiling (the Climber only uses "Roof").
+        bool sloped = s.roof != RoofStyle.Flat;
+        Box(b, sloped ? "Ceiling" : "Roof", new Vector3(0, height + t / 2f, 0), new Vector3(s.width, t, s.depth), sloped ? inner : roof, tile);
         Box(b, "Floor", new Vector3(0, 0.025f, 0), new Vector3(s.width - t * 2f, 0.05f, s.depth - t * 2f), floor, tile);
 
         // Inside walls and furniture
         var gaps = Interior(b, s, inner, tile, rng);
         if (s.furniture) Furnish(b, s, gaps, Metal(pal), rng);
 
+        // Apartment block: a ceiling over the ground floor (the floors above are shut off)
+        bool apartment = s.kind == BuildingKind.Apartment;
+        if (apartment)
+            Box(b, "Ceiling_Inside", new Vector3(0, ApartmentCeiling + 0.1f, 0), new Vector3(s.width - t * 2f, 0.2f, s.depth - t * 2f), inner, tile);
+
         // Windows, roof edge, rooftop clutter, sidewalk
         AddDetails(b, s.width, s.depth, height, t, s.doorOffset, s.doorWidth, s.details, pal, rng, wall);
 
-        // Hatch in the roof: the Climber drops in through it
-        if (s.roofHatch) AddRoofHatch(b, Metal(pal));
+        // Sloped roof on top, then the outside variety
+        if (sloped) RoofBuilder.Build(b, s.roof, s.width, s.depth, height + t, Range(rng, 28f, 40f), wall, tile, rng);
+        BuildingDressing.Dress(b, s, pal, rng, wall);
+
+        // Hatch in the roof: the Climber drops in through it (in an apartment block, down a stairwell hole)
+        if (s.roofHatch && !sloped)
+        {
+            var hatch = AddRoofHatch(b, Metal(pal));
+            if (apartment && hatch != null) CutCeiling(b, hatch.transform.localPosition);
+        }
 
         // Doorway marker for the giant: it crouches here and reaches in
         AddReachPoint(b, s.doorOffset, frontZ);
@@ -189,7 +227,8 @@ public static class BuildingBuilder
     static List<Vector2> Interior(Transform b, Spec s, Material mat, float tile, System.Random rng)
     {
         var gaps = new List<Vector2>();
-        float t = s.wallThickness, h = s.height, gap = s.interiorGap;
+        float t = s.wallThickness, gap = s.interiorGap;
+        float h = s.kind == BuildingKind.Apartment ? ApartmentCeiling : s.height;   // up to the ceiling
         float left = -s.width / 2f + t, right = s.width / 2f - t, front = -s.depth / 2f + t, back = s.depth / 2f - t;
 
         switch (s.layout)
@@ -522,6 +561,22 @@ public static class BuildingBuilder
         rh.size = s;
         created?.Add(hatch.gameObject);
         return rh;
+    }
+
+    // Apartment block: a stairwell hole in the ground-floor ceiling right under the roof hatch, so the Climber can drop
+    // all the way down (and climb back out)
+    static void CutCeiling(Transform building, Vector3 hatchPos)
+    {
+        var ceiling = building.Find("Ceiling_Inside");
+        if (ceiling == null) return;
+        Vector3 cp = ceiling.localPosition, cs = ceiling.localScale;
+        float s = HatchSize + 0.5f, hx = hatchPos.x - cp.x, hz = hatchPos.z - cp.z;
+        float halfW = cs.x / 2f, halfD = cs.z / 2f;
+        float x0 = hx - s / 2f, x1 = hx + s / 2f, z0 = hz - s / 2f, z1 = hz + s / 2f;
+        RoofPiece(building, ceiling, null, cp, cs, -halfW, halfW, -halfD, z0, null);
+        RoofPiece(building, ceiling, "Ceiling_Inside_N", cp, cs, -halfW, halfW, z1, halfD, null);
+        RoofPiece(building, ceiling, "Ceiling_Inside_W", cp, cs, -halfW, x0, z0, z1, null);
+        RoofPiece(building, ceiling, "Ceiling_Inside_E", cp, cs, x1, halfW, z0, z1, null);
     }
 
     // Where on the roof to put the hatch (relative to the roof's centre): in the back room if there is one,

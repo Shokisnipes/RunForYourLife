@@ -272,7 +272,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 7536171483921910}
-  - {fileID: 1629663538954314184}
+  - {fileID: 5175939498819886424}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &8753566307392834616
@@ -287,7 +287,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 441421861
+  GlobalObjectIdHash: 3228355118
   InScenePlacedSourceGlobalObjectIdHash: 0
   m_InScenePlacedDisabledByDefault: 0
   DeferredDespawnTick: 0
@@ -484,6 +484,10 @@ MonoBehaviour:
   saturation: -40
   chromaticAberration: 0.6
   muffledCutoff: 1200
+  pantingLoop: {fileID: 8300000, guid: 0ec30de9ae9c4544cac29509b31f6840, type: 3}
+  pantingVolume: 0.6
+  pantingStart: 0.2
+  pantingPitch: 1.15
   fear: 0
 --- !u!1 &7100166854369933953
 GameObject:
@@ -631,7 +635,7 @@ MonoBehaviour:
   startOn: 0
   proceduralCookie: 1
   clickSound: {fileID: 0}
---- !u!1001 &1231456492511184419
+--- !u!1001 &4638172087334206131
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -721,28 +725,48 @@ PrefabInstance:
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: d3a3160412d1d11489fe71749e79150a, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 8580781084411013183}
+      addedObject: {fileID: 7584938384345475863}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: d3a3160412d1d11489fe71749e79150a, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 7157700587415933652}
+      addedObject: {fileID: 1702133668590093302}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: d3a3160412d1d11489fe71749e79150a, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6148278862144594210}
   m_SourcePrefab: {fileID: 100100000, guid: d3a3160412d1d11489fe71749e79150a, type: 3}
---- !u!4 &1629663538954314184 stripped
+--- !u!4 &5175939498819886424 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: d3a3160412d1d11489fe71749e79150a, type: 3}
-  m_PrefabInstance: {fileID: 1231456492511184419}
+  m_PrefabInstance: {fileID: 4638172087334206131}
   m_PrefabAsset: {fileID: 0}
---- !u!1 &2150023477656517490 stripped
+--- !u!1 &5521256057355290594 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: d3a3160412d1d11489fe71749e79150a, type: 3}
-  m_PrefabInstance: {fileID: 1231456492511184419}
+  m_PrefabInstance: {fileID: 4638172087334206131}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &8580781084411013183
+--- !u!114 &7584938384345475863
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2150023477656517490}
+  m_GameObject: {fileID: 5521256057355290594}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4a9c647b1271ff34c8bad5800cf62125, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerRagdoll
+  totalMass: 60
+  drag: 0.2
+  angularDrag: 1.5
+  gripSwing: 20
+  gripCatchUp: 10
+--- !u!114 &1702133668590093302
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5521256057355290594}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b9d261055c5144d46a827c8587ba67a6, type: 3}
@@ -756,6 +780,12 @@ MonoBehaviour:
   crouchSideSpeed: 1.8865349
   coverSideSpeed: 0.89051735
   coverTurnSpeed: 8
+  turnStartAngle: 60
+  turnStopAngle: 5
+  standTurnSpeed: 86.84945
+  crouchTurnSpeed: 62.389694
+  maxTwist: 120
+  moveTurnSpeed: 10
   moveDamping: 0.12
   moveThreshold: 0.15
   maxPlayback: 2
@@ -765,20 +795,25 @@ MonoBehaviour:
   lookDownStartAngle: 45
   bodyLookWeight: 0.3
   headLookWeight: 0.8
---- !u!114 &7157700587415933652
+--- !u!114 &6148278862144594210
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2150023477656517490}
+  m_GameObject: {fileID: 5521256057355290594}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4a9c647b1271ff34c8bad5800cf62125, type: 3}
+  m_Script: {fileID: 11500000, guid: b635e965c11fdb147a146f40d8a46757, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PlayerRagdoll
-  totalMass: 60
-  drag: 0.2
-  angularDrag: 1.5
-  gripSwing: 20
-  gripCatchUp: 10
+  m_EditorClassIdentifier: Assembly-CSharp::FlashlightHand
+  aimOffset: {x: 0.2, y: -0.24, z: 0.38}
+  elbowHint: {x: 0.45, y: -0.6, z: -0.1}
+  raiseTime: 0.25
+  fingerCurl: {x: 65, y: 75, z: 45}
+  thumbCurl: {x: 15, y: 25, z: 25}
+  alongPalm: 0.85
+  palmDepth: 0.035
+  length: 0.16
+  thickness: 0.032
+  bodyColour: {r: 0.12, g: 0.12, b: 0.13, a: 1}
