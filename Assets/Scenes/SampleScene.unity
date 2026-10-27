@@ -74805,6 +74805,7 @@ GameObject:
   - component: {fileID: 1118492852}
   - component: {fileID: 1118492856}
   - component: {fileID: 1118492855}
+  - component: {fileID: 1118492857}
   m_Layer: 0
   m_Name: Climber
   m_TagString: Untagged
@@ -74968,6 +74969,35 @@ MonoBehaviour:
   SwitchTransformSpaceWhenParented: 0
   Interpolate: 1
   SlerpPosition: 0
+--- !u!114 &1118492857
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1118492851}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a390f293740a4cb49b2b44051d1b885a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ClimberAudio
+  footstepClips:
+  - {fileID: 8300000, guid: f602b06d3b8e2ac449be0a881c31b0a3, type: 3}
+  callClips:
+  - {fileID: 8300000, guid: c37037357c2ba6c4b92378192013b941, type: 3}
+  grabClips:
+  - {fileID: 8300000, guid: 7543a8331c6c8f449bdcfefc08c26239, type: 3}
+  crawlSteps: 4
+  runSteps: 2
+  climbSteps: 4
+  footstepVolume: 0.7
+  climbStepVolume: 0.5
+  callVolume: 1
+  grabVolume: 1
+  stepRange: 25
+  callRange: 70
+  callInterval: {x: 12, y: 30}
+  callCooldown: 6
 --- !u!1 &1118761544
 GameObject:
   m_ObjectHideFlags: 0

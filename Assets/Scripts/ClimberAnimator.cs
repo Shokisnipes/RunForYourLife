@@ -27,6 +27,12 @@ public class ClimberAnimator : MonoBehaviour
     float grabUntil = -1f, grabWeight;
     int grabLayer = -1;
 
+    // Read by ClimberAudio to time the steps
+    public Animator Anim => anim;
+    public int Mode { get; private set; }        // 0 ground, 1 climbing up, 2 climbing down
+    public bool Running { get; private set; }
+    public bool Moving => flatSpeed > 0.3f;
+
     static readonly int SpeedId = Animator.StringToHash("Speed");
     static readonly int ModeId = Animator.StringToHash("Mode");
     static readonly int RunningId = Animator.StringToHash("Running");
@@ -65,6 +71,8 @@ public class ClimberAnimator : MonoBehaviour
         else if (flatSpeed > 0.3f) playback = flatSpeed / (running ? runClipSpeed : crawlClipSpeed);
         if (mode != 0 && verticalSpeed < 0.2f) playback = 1f;   // pulling itself over the edge
 
+        Mode = mode;
+        Running = running;
         anim.SetInteger(ModeId, mode);
         anim.SetBool(RunningId, running);
         anim.SetFloat(SpeedId, flatSpeed);

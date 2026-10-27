@@ -15,6 +15,7 @@ public class ClimberSetup : EditorWindow
     const string Folder = "Assets/Monsters/Climber";
     const string ControllerPath = Folder + "/ClimberAnimator.controller";
     const string AgentName = "Climber";
+    const string AudioFolder = "Assets/Audio/Climber";
 
     string modelFile = "Zombiegirl W Kurniawan.fbx";
     float modelScale = 1.7f;
@@ -244,6 +245,32 @@ public class ClimberSetup : EditorWindow
         anim.applyRootMotion = false;
         anim.cullingMode = AnimatorCullingMode.AlwaysAnimate;
         if (model.GetComponent<ClimberAnimator>() == null) model.gameObject.AddComponent<ClimberAnimator>();
+
+        // Sounds, found by name in the audio folder: "Footstep" = steps, "Grab" = catch, anything else = its call
+        var sounds = root.GetComponent<ClimberAudio>();
+        if (sounds == null) sounds = root.AddComponent<ClimberAudio>();
+        var stepClips = new System.Collections.Generic.List<AudioClip>();
+        var grabClips = new System.Collections.Generic.List<AudioClip>();
+        var callClips = new System.Collections.Generic.List<AudioClip>();
+        foreach (var guid in AssetDatabase.FindAssets("t:AudioClip", new[] { AudioFolder }))
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            if (AssetImporter.GetAtPath(path) is AudioImporter ai && !ai.forceToMono)
+            {
+                ai.forceToMono = true;   // 3D sounds
+                ai.SaveAndReimport();
+            }
+            var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+            string n = clip.name.ToLowerInvariant();
+            if (n.Contains("footstep") || n.Contains("step")) stepClips.Add(clip);
+            else if (n.Contains("grab")) grabClips.Add(clip);
+            else callClips.Add(clip);
+        }
+        sounds.footstepClips = stepClips.ToArray();
+        sounds.grabClips = grabClips.ToArray();
+        sounds.callClips = callClips.ToArray();
+        EditorUtility.SetDirty(sounds);
+        Debug.Log($"Climber sounds: {stepClips.Count} steps, {grabClips.Count} grab, {callClips.Count} calls");
         return root;
     }
 

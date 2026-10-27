@@ -673,7 +673,7 @@ public class ClimberAI : NetworkBehaviour
     {
         Debug.Log($"Climber caught player {target.OwnerClientId}");
         target.Caught(NetworkObject);
-        GrabAnimRpc(grabHoldTime);   // holds the pose while it has you
+        CaughtFxRpc(grabHoldTime);   // holds the pose while it has you, grab sound
         target = null;
         ignorePlayersUntil = Time.time + catchCooldown;
         SetState(ClimberState.Patrol);
@@ -688,6 +688,15 @@ public class ClimberAI : NetworkBehaviour
     {
         var anim = GetComponentInChildren<ClimberAnimator>();
         if (anim != null) anim.PlayGrab(holdSeconds);
+    }
+
+    [Rpc(SendTo.Everyone)]
+    void CaughtFxRpc(float holdSeconds)
+    {
+        var anim = GetComponentInChildren<ClimberAnimator>();
+        if (anim != null) anim.PlayGrab(holdSeconds);
+        var sounds = GetComponent<ClimberAudio>();
+        if (sounds != null) sounds.PlayGrab();
     }
 
     // ---------- Debug drawing in the Scene view ----------
