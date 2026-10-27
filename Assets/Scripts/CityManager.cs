@@ -105,7 +105,7 @@ public class CityManager : NetworkBehaviour
             }
             PlaceMonsters();
         }
-        Debug.Log($"CityManager: city seed {seed}, {Current.buildings.Count} buildings, {Current.lamps.Count} lamps " +
+        Debug.Log($"CityManager: city seed {seed}, {Current.buildings.Count} buildings, {ReachPoint.All.Count} doorways, {Current.lamps.Count} lamps " +
                   $"({(Time.realtimeSinceStartup - t0) * 1000f:0} ms{(bakeNavMesh ? " incl. NavMesh bake" : "")})");
         Built?.Invoke();
     }

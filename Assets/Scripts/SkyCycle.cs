@@ -52,8 +52,8 @@ public class SkyCycle : MonoBehaviour
     };
     public Look night = new Look
     {
-        lightColor = new Color(0.62f, 0.72f, 1f), lightIntensity = 0.18f,
-        ambient = new Color(0.039f, 0.047f, 0.078f),
+        lightColor = new Color(0.62f, 0.72f, 1f), lightIntensity = 0.3f,
+        ambient = new Color(0.07f, 0.08f, 0.12f),
         fog = new Color(0.098f, 0.118f, 0.157f), fogDensity = 0.053f,
         zenith = new Color(0.015f, 0.022f, 0.045f), sunGlow = 0f, stars = 1f,
         cloudLit = new Color(0.13f, 0.14f, 0.17f), cloudDark = new Color(0.03f, 0.035f, 0.045f), cloudSunLight = 0f,

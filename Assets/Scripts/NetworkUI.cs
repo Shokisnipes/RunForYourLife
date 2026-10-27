@@ -56,6 +56,18 @@ public class NetworkUI : MonoBehaviour
                 if (cam.GetComponentInParent<FirstPersonController>() == null && cam.GetComponent<LobbyCameraDrift>() == null)
                     cam.gameObject.AddComponent<LobbyCameraDrift>();
         }
+
+        // Testing from the command line: Game.exe -host, or Game.exe -join 192.168.1.20
+        var args = System.Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "-host") Host();
+            else if (args[i] == "-join")
+            {
+                addressField.text = i + 1 < args.Length ? args[i + 1] : "127.0.0.1";
+                Join();
+            }
+        }
     }
 
     void OnDestroy()

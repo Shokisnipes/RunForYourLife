@@ -224,8 +224,8 @@ Light:
   serializedVersion: 13
   m_Type: 0
   m_Color: {r: 1, g: 0.68, b: 0.38, a: 1}
-  m_Intensity: 6
-  m_Range: 12
+  m_Intensity: 35
+  m_Range: 16
   m_SpotAngle: 120
   m_InnerSpotAngle: 60
   m_CookieSize2D: {x: 0.5, y: 0.5}
@@ -564,5 +564,7 @@ MonoBehaviour:
   lamp: {fileID: 5554317670100656959}
   bulb: {fileID: 4804651360706202024}
   litRadius: 5
+  shaftMaterial: {fileID: 2100000, guid: a52f5fc5697d4ef4baea56e897388fd9, type: 2}
+  shaftGroundRadius: 3.6
   flickerSpeed: 8
   flickerOffChance: 0.25
