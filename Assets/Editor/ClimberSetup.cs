@@ -51,6 +51,7 @@ public class ClimberSetup : EditorWindow
 
     public void Run()
     {
+        ExtractTextures(Folder + "/" + modelFile);
         FixClips();
         int agentType = GetAgentType();
         var controller = BuildController();
@@ -63,6 +64,31 @@ public class ClimberSetup : EditorWindow
         EditorSceneManager.MarkSceneDirty(climber.scene);
         Selection.activeGameObject = climber;
         Debug.Log("Climber Setup done. Save the scene.");
+    }
+
+    // Mixamo embeds the textures in the FBX; pull them out so the materials pick them up (and the normal map
+    // is flagged as one)
+    static void ExtractTextures(string modelPath)
+    {
+        if (!(AssetImporter.GetAtPath(modelPath) is ModelImporter mi)) return;
+        string texFolder = Folder + "/Textures";
+        if (!AssetDatabase.IsValidFolder(texFolder))
+        {
+            AssetDatabase.CreateFolder(Folder, "Textures");
+            mi.ExtractTextures(texFolder);
+            AssetDatabase.Refresh();
+        }
+        foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { texFolder }))
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            if (path.ToLowerInvariant().Contains("normal") && AssetImporter.GetAtPath(path) is TextureImporter ti &&
+                ti.textureType != TextureImporterType.NormalMap)
+            {
+                ti.textureType = TextureImporterType.NormalMap;
+                ti.SaveAndReimport();
+            }
+        }
+        mi.SaveAndReimport();   // materials re-import and find the textures next to the model
     }
 
     // Rename "mixamo.com" clips, loop the right ones, bake root motion into the pose (clips are In Place)
