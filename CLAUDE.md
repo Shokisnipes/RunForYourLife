@@ -25,7 +25,7 @@ when it's done and tested.
 - **World:** `BoxUV` gives scaled cubes real-world texture tiling. `AmbientAudio`, `WindowFlicker`, `LobbyCameraDrift`.
 
 ## Editor tools (Tools > RunForYourLife)
-Building Generator (adds a roof hatch), Upgrade Existing Buildings, Add Roof Hatches To Existing Buildings, Add Reach Points To Existing Buildings, Building Texturer (Use Texture
+Building Generator (adds a roof hatch), Upgrade Existing Buildings, Add Roof Hatches To Existing Buildings, Widen Interior Doorways, Add Reach Points To Existing Buildings, Building Texturer (Use Texture
 Set), Street Lamps, Monster Animator Builder, Climber Setup (clips, agent type, controller, scene object, NavMesh bake),
 Make It Look Good. Prefer improving these tools over hand-editing scenes.
 

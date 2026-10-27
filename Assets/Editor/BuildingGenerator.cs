@@ -13,6 +13,7 @@ public class BuildingGenerator : EditorWindow
     float doorHeight = 2.3f;
     float doorOffset = 0f;      // slide the door left/right along the front wall
     bool addInteriorWall = false;
+    float interiorGap = InteriorGap;   // doorway between the front and back room
     bool addRoofHatch = true;   // hatch the Climber drops in through
     bool addReverb = true;
     Material wallMaterial;
@@ -37,6 +38,9 @@ public class BuildingGenerator : EditorWindow
 
         GUILayout.Space(6);
         addInteriorWall = EditorGUILayout.Toggle("Interior Wall", addInteriorWall);
+        if (addInteriorWall)
+            interiorGap = EditorGUILayout.FloatField(new GUIContent("Interior Doorway Width",
+                "Gap between the rooms. 1.6 m or more lets the Climber crawl through."), interiorGap);
         addReverb = EditorGUILayout.Toggle("Indoor Echo (Reverb)", addReverb);
         wallMaterial = (Material)EditorGUILayout.ObjectField("Material", wallMaterial, typeof(Material), false);
 
@@ -113,7 +117,7 @@ public class BuildingGenerator : EditorWindow
         // Optional interior wall with a gap, makes a back room to hide in
         if (addInteriorWall)
         {
-            float gap = 1.2f;
+            float gap = interiorGap;
             float innerW = width - t * 2f;
             float segment = (innerW - gap) / 2f;
             float z = depth * 0.15f;
@@ -140,6 +144,67 @@ public class BuildingGenerator : EditorWindow
         }
 
         Selection.activeGameObject = root;
+    }
+
+    // Default doorway between the rooms: wide enough for the Climber (NavMesh radius 0.5) to crawl through
+    const float InteriorGap = 1.8f;
+
+    // Interior doorway lintels (added by hand on some buildings) are raised to this height, so the Climber
+    // (NavMesh height 2.6 m) fits under them. The front door stays low, so it still can't walk in from the street.
+    const float InteriorDoorHeight = 3f;
+
+    // Lets the Climber crawl between the front and back room on every building: widens the gap between the
+    // interior wall halves (any children named "Interior...") and raises a "Wall_Rear_Top" lintel over it.
+    // Then re-bakes the climber's NavMesh.
+    [MenuItem("Tools/RunForYourLife/Widen Interior Doorways")]
+    static void WidenInteriorDoorways()
+    {
+        int widened = 0, raised = 0;
+        foreach (var building in Object.FindObjectsByType<Transform>(FindObjectsInactive.Exclude))
+        {
+            if (building.Find("Wall_Front_Top") == null) continue;   // only building roots
+
+            // The two interior wall halves: the left-most and right-most "Interior..." children
+            Transform left = null, right = null;
+            foreach (Transform ch in building)
+            {
+                if (!ch.name.StartsWith("Interior")) continue;
+                if (left == null || ch.localPosition.x < left.localPosition.x) left = ch;
+                if (right == null || ch.localPosition.x > right.localPosition.x) right = ch;
+            }
+            if (left != null && right != null && left != right)
+            {
+                float outerL = left.localPosition.x - left.localScale.x / 2f;
+                float outerR = right.localPosition.x + right.localScale.x / 2f;
+                float gapL = left.localPosition.x + left.localScale.x / 2f;
+                float gapR = right.localPosition.x - right.localScale.x / 2f;
+                float segment = (outerR - outerL - InteriorGap) / 2f;
+                if (gapR - gapL < InteriorGap - 0.01f && segment >= 0.5f)
+                {
+                    Undo.RecordObjects(new Object[] { left, right }, "Widen Interior Doorways");
+                    left.localScale = new Vector3(segment, left.localScale.y, left.localScale.z);
+                    right.localScale = new Vector3(segment, right.localScale.y, right.localScale.z);
+                    left.localPosition = new Vector3(outerL + segment / 2f, left.localPosition.y, left.localPosition.z);
+                    right.localPosition = new Vector3(outerR - segment / 2f, right.localPosition.y, right.localPosition.z);
+                    widened++;
+                }
+            }
+
+            // Lintel over the interior doorway: keep its top, lift its bottom
+            foreach (Transform ch in building)
+            {
+                if (ch.name.Trim() != "Wall_Rear_Top") continue;
+                float top = ch.localPosition.y + ch.localScale.y / 2f;
+                float bottom = ch.localPosition.y - ch.localScale.y / 2f;
+                if (bottom >= InteriorDoorHeight - 0.01f || top - InteriorDoorHeight < 0.2f) continue;
+                Undo.RecordObject(ch, "Raise Interior Lintel");
+                ch.localScale = new Vector3(ch.localScale.x, top - InteriorDoorHeight, ch.localScale.z);
+                ch.localPosition = new Vector3(ch.localPosition.x, (top + InteriorDoorHeight) / 2f, ch.localPosition.z);
+                raised++;
+            }
+        }
+        Debug.Log($"Interior doorways: widened {widened}, raised {raised} lintel(s).");
+        if (widened + raised > 0) ClimberSetup.BakeClimberNavMesh();
     }
 
     const float GiantStandDistance = 3.5f;   // how far outside the door the giant stands
