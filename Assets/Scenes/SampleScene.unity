@@ -21988,6 +21988,13 @@ MonoBehaviour:
   smoothing: 8
   grabBlendIn: 0.2
   grabBlendOut: 0.4
+  climbBodyHeight: 1.9
+  climbBodyDepth: 0
+  climbRecentre: 2
+  dropRecentre: 14
+  limbRadius: 0.08
+  wallGripRange: 0.9
+  limbBlend: 0.12
 --- !u!1 &292739239
 GameObject:
   m_ObjectHideFlags: 0

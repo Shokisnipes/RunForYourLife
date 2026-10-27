@@ -20,6 +20,24 @@ public class ClimberAnimator : MonoBehaviour, IMonsterGrabber
     [Tooltip("Seconds for the grab pose to blend back out.")]
     public float grabBlendOut = 0.4f;
 
+    [Header("Body on the wall / in the drop")]
+    [Tooltip("Height of its body above its feet point while climbing. Lower = hugs the wall lower (less floaty).")]
+    public float climbBodyHeight = 1.9f;
+    [Tooltip("How far its body sits from its climbing point toward the wall (+) or away from it (-).")]
+    public float climbBodyDepth = 0f;
+    [Tooltip("Higher = the climb clips' own bobbing is removed more. Low keeps the motion, just re-centres it.")]
+    public float climbRecentre = 2f;
+    [Tooltip("How fast the drop clip's forward lunge is cancelled (it would carry the body ~2 m forward).")]
+    public float dropRecentre = 14f;
+
+    [Header("Limb collision (hands and feet)")]
+    [Tooltip("Hands/feet stop this far from walls and floors.")]
+    public float limbRadius = 0.08f;
+    [Tooltip("While climbing, hands and feet stick to the wall in front if it's within this distance.")]
+    public float wallGripRange = 0.9f;
+    [Tooltip("Seconds for a limb to blend onto / off a surface.")]
+    public float limbBlend = 0.12f;
+
     Animator anim;
     ClimberAI ai;
     Vector3 lastPos;
@@ -28,6 +46,11 @@ public class ClimberAnimator : MonoBehaviour, IMonsterGrabber
     int grabLayer = -1;
 
     Transform leftHand, rightHand, head;
+    Vector3 smoothedBody, bodyOffset;
+    bool bodyStarted;
+    readonly float[] limbWeights = new float[4];
+    readonly RaycastHit[] hits = new RaycastHit[8];
+    static readonly AvatarIKGoal[] Limbs = { AvatarIKGoal.LeftHand, AvatarIKGoal.RightHand, AvatarIKGoal.LeftFoot, AvatarIKGoal.RightFoot };
 
     // Read by the player it caught: the hand that's furthest forward holds you, and you face its head
     public Vector3 HandPosition
@@ -110,5 +133,86 @@ public class ClimberAnimator : MonoBehaviour, IMonsterGrabber
             grabWeight = Mathf.MoveTowards(grabWeight, grabbing ? 1f : 0f, rate * Time.deltaTime);
             anim.SetLayerWeight(grabLayer, Mathf.SmoothStep(0f, 1f, grabWeight));
         }
+    }
+
+    // ---------- Body re-centring and limb collision (needs IK Pass on the base layer) ----------
+
+    void OnAnimatorIK(int layerIndex)
+    {
+        if (layerIndex != 0 || ai == null) return;
+        Transform root = ai.transform;
+        float dt = Time.deltaTime;
+
+        // Where the clip puts the body, relative to the climber's real position
+        Vector3 body = root.InverseTransformPoint(anim.bodyPosition);
+        if (!bodyStarted) { smoothedBody = body; bodyStarted = true; }
+        float follow = Mode == 3 ? dropRecentre : climbRecentre;
+        smoothedBody = Vector3.Lerp(smoothedBody, body, 1f - Mathf.Exp(-follow * dt));
+
+        // Climbing: body held at a set height and depth on the wall. Dropping: no forward lunge.
+        Vector3 offset = Vector3.zero;
+        if (Mode == 1 || Mode == 2) offset = new Vector3(0f, climbBodyHeight, climbBodyDepth) - smoothedBody;
+        else if (Mode == 3) offset = new Vector3(-smoothedBody.x, 0f, -smoothedBody.z);
+        bodyOffset = Vector3.Lerp(bodyOffset, offset, 1f - Mathf.Exp(-8f * dt));
+        Vector3 delta = root.TransformVector(bodyOffset);
+        anim.bodyPosition += delta;
+
+        for (int i = 0; i < Limbs.Length; i++) Limb(i, delta, root, dt);
+    }
+
+    // One hand/foot: never through a wall or the floor, and on the wall while climbing
+    void Limb(int i, Vector3 delta, Transform root, float dt)
+    {
+        var goal = Limbs[i];
+        Vector3 p = anim.GetIKPosition(goal) + delta;   // where the clip (plus the body shift) puts it
+        Vector3 want = p;
+        bool touching = false;
+
+        // Body -> limb passes through something? Stop the limb at the surface.
+        Vector3 from = anim.bodyPosition;
+        Vector3 toLimb = p - from;
+        if (toLimb.sqrMagnitude > 0.0001f && Cast(from, toLimb.normalized, toLimb.magnitude + limbRadius, out var block))
+        {
+            want = block.point + block.normal * limbRadius;
+            touching = true;
+        }
+
+        bool climbing = Mode == 1 || Mode == 2;
+        if (climbing)
+        {
+            // Press onto the wall it's facing: no floating off it, no sinking into it
+            Vector3 f = root.forward;
+            if (Cast(want - f * 0.6f, f, 0.6f + wallGripRange, out var wall) && Vector3.Dot(wall.normal, -f) > 0.5f)
+            {
+                want = wall.point + wall.normal * limbRadius;
+                touching = true;
+            }
+        }
+        else if (Cast(want + Vector3.up * 0.5f, Vector3.down, 1f, out var floor) && want.y < floor.point.y + limbRadius)
+        {
+            want.y = floor.point.y + limbRadius;   // not under the floor
+            touching = true;
+        }
+
+        float rate = 1f / Mathf.Max(0.01f, limbBlend);
+        limbWeights[i] = Mathf.MoveTowards(limbWeights[i], touching ? 1f : 0f, rate * dt);
+        anim.SetIKPositionWeight(goal, limbWeights[i]);
+        anim.SetIKPosition(goal, touching ? want : p);
+    }
+
+    // Raycast that ignores players (and the climber, which has no colliders)
+    bool Cast(Vector3 from, Vector3 dir, float distance, out RaycastHit best)
+    {
+        best = default;
+        int count = Physics.RaycastNonAlloc(from, dir, hits, distance, ~0, QueryTriggerInteraction.Ignore);
+        float bestDist = float.MaxValue;
+        for (int i = 0; i < count; i++)
+        {
+            if (hits[i].distance >= bestDist) continue;
+            if (hits[i].collider.GetComponentInParent<FirstPersonController>() != null) continue;
+            best = hits[i];
+            bestDist = hits[i].distance;
+        }
+        return bestDist < float.MaxValue;
     }
 }

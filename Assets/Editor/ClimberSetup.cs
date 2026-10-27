@@ -165,6 +165,10 @@ public class ClimberSetup : EditorWindow
         controller.AddParameter("Running", AnimatorControllerParameterType.Bool);
         controller.AddParameter(new AnimatorControllerParameter
             { name = "Playback", type = AnimatorControllerParameterType.Float, defaultFloat = 1f });
+        // IK pass on: ClimberAnimator re-centres the body and keeps hands/feet out of walls in OnAnimatorIK
+        var baseLayers = controller.layers;
+        baseLayers[0].iKPass = true;
+        controller.layers = baseLayers;
         var sm = controller.layers[0].stateMachine;
 
         var ground = controller.CreateBlendTreeInController("Ground", out BlendTree tree, 0);
