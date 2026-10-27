@@ -15,11 +15,17 @@ public class ClimberAnimator : MonoBehaviour
     public Vector2 playbackRange = new Vector2(0.4f, 2.2f);
     [Tooltip("Higher = reacts to speed changes faster.")]
     public float smoothing = 8f;
+    [Tooltip("Seconds for the grab pose to blend in over the crawl.")]
+    public float grabBlendIn = 0.2f;
+    [Tooltip("Seconds for the grab pose to blend back out.")]
+    public float grabBlendOut = 0.4f;
 
     Animator anim;
     ClimberAI ai;
     Vector3 lastPos;
     float flatSpeed, verticalSpeed;
+    float grabUntil = -1f, grabWeight;
+    int grabLayer = -1;
 
     static readonly int SpeedId = Animator.StringToHash("Speed");
     static readonly int ModeId = Animator.StringToHash("Mode");
@@ -32,7 +38,11 @@ public class ClimberAnimator : MonoBehaviour
         anim.applyRootMotion = false;   // ClimberAI moves the body
         ai = GetComponentInParent<ClimberAI>();
         lastPos = ai != null ? ai.transform.position : transform.position;
+        grabLayer = anim.GetLayerIndex("Grab");
     }
+
+    // Called on every client by ClimberAI: hold the grab pose for this long, then let it fade out
+    public void PlayGrab(float holdSeconds) => grabUntil = Mathf.Max(grabUntil, Time.time + holdSeconds);
 
     void Update()
     {
@@ -59,5 +69,14 @@ public class ClimberAnimator : MonoBehaviour
         anim.SetBool(RunningId, running);
         anim.SetFloat(SpeedId, flatSpeed);
         anim.SetFloat(PlaybackId, Mathf.Clamp(playback, playbackRange.x, playbackRange.y));
+
+        // Grab pose fades in over the crawl, never while it's on a wall
+        if (grabLayer >= 0)
+        {
+            bool grabbing = Time.time < grabUntil && mode == 0;
+            float rate = 1f / Mathf.Max(0.01f, grabbing ? grabBlendIn : grabBlendOut);
+            grabWeight = Mathf.MoveTowards(grabWeight, grabbing ? 1f : 0f, rate * Time.deltaTime);
+            anim.SetLayerWeight(grabLayer, Mathf.SmoothStep(0f, 1f, grabWeight));
+        }
     }
 }

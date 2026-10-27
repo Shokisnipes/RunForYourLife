@@ -30,6 +30,7 @@ public class ClimberSetup : EditorWindow
         ("Climbing Up Wall.fbx",   "ClimbUp",   true),   // looped: it climbs as long as the wall is tall
         ("Climbing Down Wall.fbx", "ClimbDown", true),
         ("Jumping Down.fbx",       "DropDown",  false),
+        ("Male Action Pose.fbx",   "Grab",      true),    // one-frame pose, held on its own layer
     };
 
     [MenuItem("Tools/RunForYourLife/Climber Setup")]
@@ -168,6 +169,17 @@ public class ClimberSetup : EditorWindow
             t.canTransitionToSelf = false;
             t.AddCondition(AnimatorConditionMode.Equals, mode, "Mode");
             Transition(state, ground, 0.3f).AddCondition(AnimatorConditionMode.Equals, 0, "Mode");
+        }
+        // Grab layer: the lunge pose over everything. ClimberAnimator fades its weight in and out.
+        var grabClip = LoadClip("Male Action Pose.fbx");
+        if (grabClip != null)
+        {
+            controller.AddLayer("Grab");
+            var grabLayers = controller.layers;
+            grabLayers[1].defaultWeight = 0f;
+            grabLayers[1].blendingMode = AnimatorLayerBlendingMode.Override;
+            controller.layers = grabLayers;
+            controller.layers[1].stateMachine.defaultState = AddState(controller.layers[1].stateMachine, "Grab", grabClip);
         }
         AssetDatabase.SaveAssets();
         return controller;

@@ -354,6 +354,7 @@ public class ClimberAI : NetworkBehaviour
             grabStart = Time.time;
             agent.velocity = Vector3.zero;
             agent.isStopped = true;
+            GrabAnimRpc(grabWindup + 0.15f);   // lunge pose; fades out again if it misses
             return;
         }
 
@@ -672,6 +673,7 @@ public class ClimberAI : NetworkBehaviour
     {
         Debug.Log($"Climber caught player {target.OwnerClientId}");
         target.Caught(NetworkObject);
+        GrabAnimRpc(grabHoldTime);   // holds the pose while it has you
         target = null;
         ignorePlayersUntil = Time.time + catchCooldown;
         SetState(ClimberState.Patrol);
@@ -679,6 +681,13 @@ public class ClimberAI : NetworkBehaviour
         holdUntil = Time.time + grabHoldTime;
         agent.velocity = Vector3.zero;
         agent.isStopped = true;
+    }
+
+    [Rpc(SendTo.Everyone)]
+    void GrabAnimRpc(float holdSeconds)
+    {
+        var anim = GetComponentInChildren<ClimberAnimator>();
+        if (anim != null) anim.PlayGrab(holdSeconds);
     }
 
     // ---------- Debug drawing in the Scene view ----------

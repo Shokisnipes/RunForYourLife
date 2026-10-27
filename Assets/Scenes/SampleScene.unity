@@ -18676,6 +18676,8 @@ MonoBehaviour:
   climbClipSpeed: 1.2
   playbackRange: {x: 0.4, y: 2.2}
   smoothing: 8
+  grabBlendIn: 0.2
+  grabBlendOut: 0.4
 --- !u!1 &293498932
 GameObject:
   m_ObjectHideFlags: 0
