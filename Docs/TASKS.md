@@ -44,6 +44,8 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
      UnityEngine.Random), runtime NavMesh bake for Giant + Climber behind a loading fade, MonsterAI/ClimberAI refresh
      their roof/reach caches, monster spawn points;
   [ ] d) tuning: prep ~8 min (DESIGN: 6-8), patrol area, light count/performance, playtest.
+- [x] **4.6 Dusk to night sky.** Prep starts as a fall evening (~8 pm) and fades to night as the timer runs down;
+  moon that lights the scene, clouds day and night (SkyCycle + Sky shader).
 - [ ] **5. Clues (S, Sonnet).** Three clue prefabs spawned at prep start based on the genome: claw marks high on a wall
   (Climber), a carcass with eyes untouched (not Sight), one radio line (random). Simple decals/props are fine.
 - [ ] **6. Scouts (L, Opus).** Needs a scout model first. Split: 6a) small scout AI (wander, flee light or noise

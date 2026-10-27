@@ -26,7 +26,7 @@ RenderSettings:
   m_AmbientIntensity: 1
   m_AmbientMode: 3
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 0}
+  m_SkyboxMaterial: {fileID: 2100000, guid: 895bd7155a10a6a40b5ebaddd86f499f, type: 2}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -315,6 +315,7 @@ GameObject:
   - component: {fileID: 410087041}
   - component: {fileID: 410087040}
   - component: {fileID: 410087042}
+  - component: {fileID: 410087043}
   m_Layer: 0
   m_Name: Directional Light
   m_TagString: Untagged
@@ -431,6 +432,79 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
+--- !u!114 &410087043
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 410087039}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 18db7087a62f0ca47b423cca6ce7bedc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SkyCycle
+  skyMaterial: {fileID: 2100000, guid: 895bd7155a10a6a40b5ebaddd86f499f, type: 2}
+  dusk:
+    lightColor: {r: 1, g: 0.6, b: 0.36, a: 1}
+    lightIntensity: 1.2
+    ambient: {r: 0.42, g: 0.39, b: 0.44, a: 1}
+    fog: {r: 0.52, g: 0.44, b: 0.44, a: 1}
+    fogDensity: 0.012
+    zenith: {r: 0.22, g: 0.31, b: 0.52, a: 1}
+    sunGlow: 1.6
+    stars: 0
+    cloudLit: {r: 0.62, g: 0.45, b: 0.42, a: 1}
+    cloudDark: {r: 0.27, g: 0.25, b: 0.31, a: 1}
+    cloudSunLight: 1.6
+    moonBrightness: 0.8
+  night:
+    lightColor: {r: 0.62, g: 0.72, b: 1, a: 1}
+    lightIntensity: 0.18
+    ambient: {r: 0.039, g: 0.047, b: 0.078, a: 1}
+    fog: {r: 0.098, g: 0.118, b: 0.157, a: 1}
+    fogDensity: 0.053
+    zenith: {r: 0.015, g: 0.022, b: 0.045, a: 1}
+    sunGlow: 0
+    stars: 1
+    cloudLit: {r: 0.13, g: 0.14, b: 0.17, a: 1}
+    cloudDark: {r: 0.03, g: 0.035, b: 0.045, a: 1}
+    cloudSunLight: 0
+    moonBrightness: 2.5
+  sunAzimuth: 250
+  sunElevationStart: 2
+  sunElevationEnd: -18
+  moonAzimuth: 95
+  moonElevation: 32
+  darkening:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.9
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  menuDarkness: 1
+  previewDarkness: 0
+  twilightLift: 0.5
+  cloudCover: 0.5
+  cloudSpeed: 0.012
 --- !u!1 &426872983
 GameObject:
   m_ObjectHideFlags: 0
@@ -1504,7 +1578,7 @@ Camera:
   m_GameObject: {fileID: 1769325617}
   m_Enabled: 1
   serializedVersion: 2
-  m_ClearFlags: 2
+  m_ClearFlags: 1
   m_BackGroundColor: {r: 0.09803922, g: 0.11764706, b: 0.15686275, a: 0}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2

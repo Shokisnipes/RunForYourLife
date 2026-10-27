@@ -24,6 +24,10 @@ when it's done and tested.
 - **Audio mix:** every 3D sound uses `AudioMix.Setup3D` (real inverse-distance falloff, silent at max range); the
   target level for each kind of sound is listed at the top of `AudioMix.cs`. 3D clips must be Force To Mono.
 - **Feel:** `CameraShake` (on the player camera), `Flashlight` (procedural cookie), head bob in FirstPersonController.
+- **Sky:** `SkyCycle` (on the Directional Light, every client, from the synced GameFlow clock) fades a fall evening
+  (~8 pm, sun just set) into night over the prep phase: light, ambient probe, fog and the `RunForYourLife/Sky` shader
+  (Assets/Shaders; gradient into fog, sunset glow, stars, drifting clouds, moon shaded as a sphere lit by the sun).
+  One light plays sun then moon (fades out at mid-twilight while it swings). Cameras clear to Skybox.
 - **City:** built fresh every run. `CityManager` (on the GameFlow object) builds a lobby city in the menu; the host
   calls `PrepareHost()` before StartHost (new random seed, city, runtime NavMesh bake for Giant + Climber, monsters
   placed), the seed is synced and clients build the same city (`CityManager.Built` event for anything that caches map
