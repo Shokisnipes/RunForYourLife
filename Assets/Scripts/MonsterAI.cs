@@ -132,6 +132,9 @@ public class MonsterAI : NetworkBehaviour
         homePosition = transform.position;
     }
 
+    // Host: CityManager moved us onto a new city; this is where we started
+    public void SetHome(Vector3 p) => homePosition = p;
+
     // Base senses are remembered the first time, so applying a new genome each run never stacks multipliers.
     bool baseSensesSaved;
     float baseSight, baseFlashSight, baseLitSight, baseHearing;

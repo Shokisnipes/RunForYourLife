@@ -93,6 +93,7 @@ public class FirstPersonController : NetworkBehaviour
         if (IsOwner)
         {
             MoveToSpawn();
+            CityManager.Built += MoveToSpawn;   // joined before our copy of the city was built
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
             if (body != null) body.enabled = false;   // don't see your own capsule
@@ -121,6 +122,7 @@ public class FirstPersonController : NetworkBehaviour
     public override void OnNetworkDespawn()
     {
         if (!IsOwner) return;
+        CityManager.Built -= MoveToSpawn;
         foreach (var go in hiddenSceneCameras)
             if (go != null) go.SetActive(true);
         hiddenSceneCameras.Clear();

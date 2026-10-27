@@ -48,12 +48,21 @@ public class BarricadeManager : NetworkBehaviour
             for (int i = 0; i < doors.Length; i++) boards.Add(0);
         }
         boards.OnListChanged += OnBoardsChanged;
+        CityManager.Built += OnCityBuilt;
         for (int i = 0; i < doors.Length && i < boards.Count; i++) doors[i].SetBoards(boards[i], boardsPerDoor);
+    }
+
+    // A client built its copy of the city after we spawned: pick up the new doorways
+    void OnCityBuilt()
+    {
+        RefreshDoors();
+        OnBoardsChanged(default);
     }
 
     public override void OnNetworkDespawn()
     {
         boards.OnListChanged -= OnBoardsChanged;
+        CityManager.Built -= OnCityBuilt;
         foreach (var d in doors) if (d != null) d.SetBoards(0, boardsPerDoor);
     }
 

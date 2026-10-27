@@ -40,7 +40,7 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
      warehouse). No behaviour change for existing buildings;
   [x] b) `CityGenerator` (Scripts): seed -> irregular blocks, a wide main road, alleys too narrow for the giant
      (radius 2.5), plaza, park, parking lot, empty lots; street lamps, PlayerSpawn, PatrolCenter. Tools menu preview;
-  [ ] c) in-game: host picks the seed (synced), every client builds the same city (System.Random, not
+  [x] c) in-game: host picks the seed (synced), every client builds the same city (System.Random, not
      UnityEngine.Random), runtime NavMesh bake for Giant + Climber behind a loading fade, MonsterAI/ClimberAI refresh
      their roof/reach caches, monster spawn points;
   [ ] d) tuning: prep ~8 min (DESIGN: 6-8), patrol area, light count/performance, playtest.

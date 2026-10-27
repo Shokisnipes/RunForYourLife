@@ -24,17 +24,23 @@ when it's done and tested.
 - **Audio mix:** every 3D sound uses `AudioMix.Setup3D` (real inverse-distance falloff, silent at max range); the
   target level for each kind of sound is listed at the top of `AudioMix.cs`. 3D clips must be Force To Mono.
 - **Feel:** `CameraShake` (on the player camera), `Flashlight` (procedural cookie), head bob in FirstPersonController.
+- **City:** built fresh every run. `CityManager` (on the GameFlow object) builds a lobby city in the menu; the host
+  calls `PrepareHost()` before StartHost (new random seed, city, runtime NavMesh bake for Giant + Climber, monsters
+  placed), the seed is synced and clients build the same city (`CityManager.Built` event for anything that caches map
+  stuff). `CityGenerator` lays out the city from `CitySettings` (Assets/Settings); `BuildingBuilder` makes each
+  building (house/shop/warehouse) with materials from `BuildingPalette`. All randomness = one seeded System.Random.
 - **World:** `BoxUV` gives scaled cubes real-world texture tiling. `AmbientAudio`, `WindowFlicker`, `LobbyCameraDrift`.
 
 ## Editor tools (Tools > RunForYourLife)
 Building Generator (adds a roof hatch), Upgrade Existing Buildings, Add Roof Hatches To Existing Buildings, Widen Interior Doorways, Add Reach Points To Existing Buildings, Building Texturer (Use Texture
 Set), Street Lamps, Monster Animator Builder, Climber Setup (clips, agent type, controller, scene object, NavMesh bake),
-Make It Look Good. Prefer improving these tools over hand-editing scenes.
+Make It Look Good, City Preview (generate a city from a seed next to the map). Prefer improving these tools (and
+CityGenerator) over hand-editing scenes; the scene has no buildings, the city is generated.
 
 ## Conventions and lessons learned
 - Expose tuning values in the Inspector with tooltips. Comment scripts in plain language.
 - Only the host runs MonsterAI; visual/audio effects run on each client from synced state.
-- Giant NavMesh: agent type "Giant" (radius 2.5, height 14). Re-bake after moving buildings. NavMesh floats above
+- Giant NavMesh: agent type "Giant" (radius 2.5, height 14). Baked at runtime on the host (no baked data in the scene). NavMesh floats above
   the floor; MonsterAnimator snaps the model to the real floor.
 - Mixamo clips: Rig = Humanoid; Loop Time on looping clips; Root Transform all Bake Into Pose, Position (Y) Based Upon
   Feet; rename clips from "mixamo.com" before using them.

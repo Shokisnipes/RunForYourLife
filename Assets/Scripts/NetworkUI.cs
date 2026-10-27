@@ -171,6 +171,7 @@ public class NetworkUI : MonoBehaviour
     void Host()
     {
         Transport().SetConnectionData("127.0.0.1", port, "0.0.0.0");   // listen on every network card
+        if (CityManager.Instance != null) CityManager.Instance.PrepareHost();   // new city + NavMesh before anything spawns
         if (NetworkManager.Singleton.StartHost()) CloseMenus();
         else ShowMessage("Couldn't start hosting (is the port in use?)");
     }
