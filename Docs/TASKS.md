@@ -33,7 +33,7 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
 - [x] **4. Climber access (L, Opus).** Needs the climber model first (CLAUDE.md Assets). Split:
   [x] 4a) climber moves on streets + climbs a building wall to the roof (scripted climb; ClimberAI, Climber Setup tool);
   [x] 4b) roof hatch: drops inside through a hatch the building generator adds. Barricades don't stop it.
-- [ ] **4.5 Bigger random city (L, Opus).** ~3x the current map, regenerated every run, more variety. Buildings stay
+- [x] **4.5 Bigger random city (L, Opus).** ~3x the current map, regenerated every run, more variety. Buildings stay
   single-storey (4-7 m tall); real 2-storey waits until after the prototype playtest. Split:
   [x] a) runtime `BuildingBuilder` (Scripts): the box/door/interior/reach point/hatch/details/texture code moves out of
      the editor tools so the game can build buildings; editor tools call it too. Size + height variants (house, shop,
@@ -43,7 +43,7 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   [x] c) in-game: host picks the seed (synced), every client builds the same city (System.Random, not
      UnityEngine.Random), runtime NavMesh bake for Giant + Climber behind a loading fade, MonsterAI/ClimberAI refresh
      their roof/reach caches, monster spawn points;
-  [ ] d) tuning: prep ~8 min (DESIGN: 6-8), patrol area, light count/performance, playtest.
+  [x] d) tuning: prep ~8 min (DESIGN: 6-8), patrol area, light count/performance, playtest.
 - [x] **4.6 Dusk to night sky.** Prep starts as a fall evening (~8 pm) and fades to night as the timer runs down;
   moon that lights the scene, clouds day and night (SkyCycle + Sky shader).
 - [x] **4.7 Deserted city dressing.** Interior layouts (open / back room / side room / two back rooms) + furniture;
