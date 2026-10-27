@@ -1,21 +1,29 @@
 using UnityEngine;
 
 // Put on any empty object in the scene (e.g. "Ambience"). Runs on every computer.
-// - A constant background drone/wind loop, crossfaded into itself so you can't hear the seam
-// - Random distant one-shots (clangs, barks, far-off screams) from random directions around you
-// Both are night sounds: they fade in as SkyCycle darkens the evening into night.
+// - Evening bed: calm, sparse birds while it's still light. Fades out as night falls.
+// - Night bed: a constant drone/wind loop. Fades in as SkyCycle darkens the evening into night.
+// - Random distant one-shots (clangs, barks, far-off screams) from random directions around you, only at night.
+// Both beds are crossfaded into themselves at the loop seam so you can't hear where they start over.
 public class AmbientAudio : MonoBehaviour
 {
+    [Header("Evening (prep)")]
+    [Tooltip("Calm dusk ambience (sparse birds). 2D, gain-staged so volume 1 hits the mix target (see AudioMix).")]
+    public AudioClip duskLoop;
+    [Range(0f, 1f)] public float duskVolume = 1f;
+    [Tooltip("The evening bed fades out over this stretch of the dusk-to-night darkness (0 = dusk, 1 = night).")]
+    public Vector2 duskFade = new Vector2(0.25f, 0.7f);
+
     [Header("Night")]
     [Tooltip("The night sounds fade in over this stretch of the dusk-to-night darkness (0 = dusk, 1 = night).")]
     public Vector2 nightFade = new Vector2(0.35f, 0.9f);
     [Tooltip("Distant sounds only play once it's at least this dark.")]
     [Range(0f, 1f)] public float distantSoundsFrom = 0.75f;
 
-    [Header("Background loop")]
+    [Header("Night background loop")]
     public AudioClip ambienceLoop;
     [Range(0f, 1f)] public float ambienceVolume = 0.4f;
-    [Tooltip("Seconds the end of the loop blends into its start. 0 = plain loop.")]
+    [Tooltip("Seconds the end of a loop blends into its start. 0 = plain loop.")]
     [Range(0f, 15f)] public float crossfadeTime = 4f;
     [Tooltip("Seconds to fade the ambience in when the scene starts.")]
     [Range(0f, 15f)] public float fadeInTime = 3f;
@@ -26,90 +34,102 @@ public class AmbientAudio : MonoBehaviour
     public Vector2 interval = new Vector2(12f, 35f);   // seconds between sounds
     public Vector2 distance = new Vector2(25f, 60f);   // how far away they play
 
-    AudioSource current, next;     // two players that take turns, overlapping at the seam
-    bool crossfading;
+    Loop dusk, night;
     float startTime;
     float nextSoundTime;
 
     void Start()
     {
-        if (ambienceLoop != null)
-        {
-            current = MakeLoopSource();
-            next = MakeLoopSource();
-            current.Play();
-        }
+        if (duskLoop != null) dusk = new Loop(gameObject, duskLoop);
+        if (ambienceLoop != null) night = new Loop(gameObject, ambienceLoop);
         startTime = Time.time;
         Schedule();
     }
 
     void Update()
     {
-        UpdateAmbience();
+        // Overall fade-in at scene start, then each bed follows how dark it is
+        float master = fadeInTime > 0f ? Mathf.Clamp01((Time.time - startTime) / fadeInTime) : 1f;
+        float dark = SkyCycle.Darkness01;
+        float nightAmount = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(nightFade.x, nightFade.y, dark));
+        float duskAmount = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(duskFade.x, duskFade.y, dark));
+
+        dusk?.Update(duskVolume * master * duskAmount, crossfadeTime);
+        night?.Update(ambienceVolume * master * nightAmount, crossfadeTime);
         UpdateDistantSounds();
     }
 
-    void UpdateAmbience()
+    // A looping 2D bed: two players take turns and overlap at the seam (equal-power crossfade).
+    // Silent beds are paused, so a 5-minute evening loop doesn't keep streaming all night.
+    class Loop
     {
-        if (current == null) return;
+        readonly AudioClip clip;
+        AudioSource current, next;
+        bool crossfading;
 
-        // Overall fade-in at scene start
-        float master = fadeInTime > 0f ? Mathf.Clamp01((Time.time - startTime) / fadeInTime) : 1f;
-        float night = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(nightFade.x, nightFade.y, SkyCycle.Darkness01));
-        float baseVol = ambienceVolume * master * night;
-
-        float length = ambienceLoop.length;
-        float fade = Mathf.Min(crossfadeTime, length * 0.45f);
-
-        if (fade <= 0.01f)
+        public Loop(GameObject host, AudioClip clip)
         {
-            // Plain loop
-            current.loop = true;
-            if (!current.isPlaying) current.Play();
-            current.volume = baseVol;
-            return;
-        }
-        current.loop = false;
-
-        float remaining = length - current.time;
-
-        // Start the second copy before the first one ends
-        if (!crossfading && (remaining <= fade || !current.isPlaying))
-        {
-            next.time = 0f;
-            next.Play();
-            crossfading = true;
+            this.clip = clip;
+            current = Make(host);
+            next = Make(host);
         }
 
-        if (crossfading)
+        AudioSource Make(GameObject host)
         {
-            // Equal-power crossfade: keeps loudness steady through the blend
-            float p = current.isPlaying ? Mathf.Clamp01(1f - remaining / fade) : 1f;
-            current.volume = baseVol * Mathf.Cos(p * Mathf.PI * 0.5f);
-            next.volume = baseVol * Mathf.Sin(p * Mathf.PI * 0.5f);
+            var s = host.AddComponent<AudioSource>();
+            s.clip = clip;
+            s.loop = false;
+            s.playOnAwake = false;
+            s.spatialBlend = 0f;
+            s.volume = 0f;
+            return s;
+        }
 
-            if (p >= 1f)
+        public void Update(float volume, float crossfadeTime)
+        {
+            if (volume <= 0.0001f)
             {
-                current.Stop();
-                (current, next) = (next, current);   // swap roles
-                crossfading = false;
+                if (current.isPlaying) current.Pause();
+                if (next.isPlaying) next.Pause();
+                return;
             }
-        }
-        else
-        {
-            current.volume = baseVol;
-        }
-    }
+            if (!current.isPlaying && !crossfading && current.time > 0f) current.UnPause();
+            else if (!current.isPlaying && !crossfading) current.Play();
+            if (crossfading && !next.isPlaying) next.UnPause();
 
-    AudioSource MakeLoopSource()
-    {
-        var s = gameObject.AddComponent<AudioSource>();
-        s.clip = ambienceLoop;
-        s.loop = false;
-        s.playOnAwake = false;
-        s.spatialBlend = 0f;
-        s.volume = 0f;
-        return s;
+            float length = clip.length;
+            float fade = Mathf.Min(crossfadeTime, length * 0.45f);
+            if (fade <= 0.01f)
+            {
+                current.loop = true;   // plain loop
+                current.volume = volume;
+                return;
+            }
+
+            float remaining = length - current.time;
+
+            // Start the second copy before the first one ends
+            if (!crossfading && remaining <= fade)
+            {
+                next.time = 0f;
+                next.Play();
+                crossfading = true;
+            }
+
+            if (crossfading)
+            {
+                float p = current.isPlaying ? Mathf.Clamp01(1f - remaining / fade) : 1f;
+                current.volume = volume * Mathf.Cos(p * Mathf.PI * 0.5f);
+                next.volume = volume * Mathf.Sin(p * Mathf.PI * 0.5f);
+                if (p >= 1f)
+                {
+                    current.Stop();
+                    (current, next) = (next, current);   // swap roles
+                    crossfading = false;
+                }
+            }
+            else current.volume = volume;
+        }
     }
 
     void UpdateDistantSounds()

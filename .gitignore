@@ -120,3 +120,6 @@ InitTestScene*.unity*
 /projects-*.zip
 /memories-*.zip
 /frames-*.zip
+
+# Untouched source audio (game-ready copies live in Assets/Audio)
+/SourceAudio/

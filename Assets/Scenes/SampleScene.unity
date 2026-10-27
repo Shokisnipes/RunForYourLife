@@ -1896,6 +1896,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eedfb208190a4c6a849d45bd5ac7fff2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AmbientAudio
+  duskLoop: {fileID: 8300000, guid: 3cdbd987936c9b5448c5657bd19f51db, type: 3}
+  duskVolume: 1
+  duskFade: {x: 0.25, y: 0.7}
   nightFade: {x: 0.35, y: 0.9}
   distantSoundsFrom: 0.75
   ambienceLoop: {fileID: 8300000, guid: 3481c7e2c555b024f94814c1f6ccb60e, type: 3}
