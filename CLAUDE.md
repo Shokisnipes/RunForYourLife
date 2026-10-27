@@ -28,6 +28,10 @@ when it's done and tested.
   (~8 pm, sun just set) into night over the prep phase: light, ambient probe, fog and the `RunForYourLife/Sky` shader
   (Assets/Shaders; gradient into fog, sunset glow, stars, drifting clouds, moon shaded as a sphere lit by the sun).
   One light plays sun then moon (fades out at mid-twilight while it swings). Cameras clear to Skybox.
+- **Retro look (optional, per player):** `RetroLook` ("Retro Look" scene object; LOOK button in the main/pause menu,
+  saved in PlayerPrefs): low render scale + nearest-neighbour upscaling (chunky pixels, HUD stays sharp), the
+  `RunForYourLife/RetroPost` full-screen pass on the URP renderers (colour steps + Bayer dither), and a priority-10
+  Volume (more bloom/grain/vignette). It edits the URP asset's render scale at runtime and always restores it.
 - **City:** built fresh every run. `CityManager` (on the GameFlow object) builds a lobby city in the menu; the host
   calls `PrepareHost()` before StartHost (new random seed, city, runtime NavMesh bake for Giant + Climber, monsters
   placed), the seed is synced and clients build the same city (`CityManager.Built` event for anything that caches map
@@ -41,7 +45,7 @@ when it's done and tested.
 ## Editor tools (Tools > RunForYourLife)
 Building Generator (adds a roof hatch), Upgrade Existing Buildings, Add Roof Hatches To Existing Buildings, Widen Interior Doorways, Add Reach Points To Existing Buildings, Building Texturer (Use Texture
 Set), Street Lamps, Monster Animator Builder, Climber Setup (clips, agent type, controller, scene object, NavMesh bake),
-Make It Look Good, City Preview (generate a city from a seed next to the map). Prefer improving these tools (and
+Make It Look Good, City Preview (generate a city from a seed next to the map), Retro Look Setup. Prefer improving these tools (and
 CityGenerator) over hand-editing scenes; the scene has no buildings, the city is generated.
 
 ## Conventions and lessons learned

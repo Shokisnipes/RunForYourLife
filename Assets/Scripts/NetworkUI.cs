@@ -238,6 +238,7 @@ public class NetworkUI : MonoBehaviour
 
     void ShowOnly(GameObject panel)
     {
+        foreach (var l in lookLabels) l.text = LookText();   // saved choice / changed in the other menu
         mainPanel.SetActive(panel == mainPanel);
         joinPanel.SetActive(panel == joinPanel);
         pausePanel.SetActive(panel == pausePanel);
@@ -301,6 +302,7 @@ public class NetworkUI : MonoBehaviour
         float y = -60f;
         AddButton(mainPanel.transform, "HOST", ref y, Host);
         AddButton(mainPanel.transform, "JOIN", ref y, () => { ShowOnly(joinPanel); addressField.text = address; });
+        AddLookButton(mainPanel.transform, ref y);
         AddButton(mainPanel.transform, "QUIT", ref y, Quit);
         mainMessage = AddLabel(mainPanel.transform, "", 24, new Vector2(140, y - 30), accentColor, TextAnchor.UpperLeft, 900);
 
@@ -324,6 +326,7 @@ public class NetworkUI : MonoBehaviour
         pauseInfo = AddLabel(pausePanel.transform, "", 24, new Vector2(140, -10), new Color(0.6f, 0.6f, 0.6f), TextAnchor.UpperLeft, 900);
         y = -110f;
         AddButton(pausePanel.transform, "RESUME", ref y, Resume);
+        AddLookButton(pausePanel.transform, ref y);
         AddButton(pausePanel.transform, "LEAVE GAME", ref y, Leave);
         AddButton(pausePanel.transform, "QUIT", ref y, Quit);
     }
@@ -399,7 +402,7 @@ public class NetworkUI : MonoBehaviour
         return t;
     }
 
-    void AddButton(Transform parent, string text, ref float y, UnityEngine.Events.UnityAction onClick)
+    Text AddButton(Transform parent, string text, ref float y, UnityEngine.Events.UnityAction onClick)
     {
         var go = new GameObject(text, typeof(RectTransform), typeof(Image), typeof(Button));
         go.transform.SetParent(parent, false);
@@ -426,7 +429,23 @@ public class NetworkUI : MonoBehaviour
         mb.hoverColor = accentColor;
 
         y -= 70f;
+        return label;
     }
+
+    // "LOOK: NORMAL / RETRO" (RetroLook): each player picks their own, it's remembered on their PC
+    void AddLookButton(Transform parent, ref float y)
+    {
+        Text label = null;
+        label = AddButton(parent, LookText(), ref y, () =>
+        {
+            if (RetroLook.Instance != null) RetroLook.Instance.Toggle();
+            label.text = LookText();
+        });
+        lookLabels.Add(label);
+    }
+
+    readonly System.Collections.Generic.List<Text> lookLabels = new System.Collections.Generic.List<Text>();
+    static string LookText() => RetroLook.On ? "LOOK: RETRO" : "LOOK: NORMAL";
 
     InputField AddInput(Transform parent, Vector2 pos)
     {
