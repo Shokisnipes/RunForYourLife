@@ -948,8 +948,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GenomeManager
   genomes: []
-  allowClimber: 1
-  alwaysClimber: 1
+  allowClimber: 0
+  alwaysClimber: 0
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -1075,7 +1075,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameFlow
   ShowTopMostFoldoutHeaderGroup: 1
-  prepSeconds: 5
+  prepSeconds: 30
   nightSeconds: 360
 --- !u!114 &1018997749
 MonoBehaviour:
@@ -1135,6 +1135,9 @@ MonoBehaviour:
   closeClip: {fileID: 8300000, guid: 1fbd7d54c811c6246a6dcf28a8089adc, type: 3}
   tornClip: {fileID: 8300000, guid: 076ef3bc0d6083d489b5698b92cbeadf, type: 3}
   soundRange: 35
+  openVolume: 0.19
+  closeVolume: 0.55
+  tornVolume: 1
 --- !u!1 &1118492851
 GameObject:
   m_ObjectHideFlags: 0

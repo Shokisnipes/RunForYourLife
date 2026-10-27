@@ -25,6 +25,10 @@ public class DoorManager : NetworkBehaviour
     public AudioClip tornClip;
     [Tooltip("Door sounds fade out at this distance.")]
     public float soundRange = 35f;
+    [Tooltip("Volumes, set to the levels in AudioMix.cs (opening -28 dB, closing -27 dB, torn -14 dB).")]
+    [Range(0f, 1f)] public float openVolume = 0.19f;
+    [Range(0f, 1f)] public float closeVolume = 0.55f;
+    [Range(0f, 1f)] public float tornVolume = 1f;
 
     // One entry per door (Door.State), in Door order (sorted by position so every machine agrees)
     readonly NetworkList<byte> states = new NetworkList<byte>();
@@ -79,7 +83,9 @@ public class DoorManager : NetworkBehaviour
         var door = doors[e.Index];
         var state = (Door.State)e.Value;
         door.Show(state, false);
-        Play(state == Door.State.Torn ? tornClip : state == Door.State.Open ? openClip : closeClip, door.Center);
+        if (state == Door.State.Torn) Play(tornClip, tornVolume, door.Center);
+        else if (state == Door.State.Open) Play(openClip, openVolume, door.Center);
+        else Play(closeClip, closeVolume, door.Center);
     }
 
     // Same order on every machine: sort by position
@@ -163,14 +169,14 @@ public class DoorManager : NetworkBehaviour
         return best;
     }
 
-    void Play(AudioClip clip, Vector3 at)
+    void Play(AudioClip clip, float volume, Vector3 at)
     {
         if (clip == null) return;
         var go = new GameObject("Door Sound");
         go.transform.position = at;
         var s = go.AddComponent<AudioSource>();
         AudioMix.Setup3D(s, 3f, soundRange);
-        s.PlayOneShot(clip);
+        s.PlayOneShot(clip, volume);
         Destroy(go, clip.length + 0.1f);
     }
 

@@ -43,7 +43,8 @@ public static class BuildingDetails
         changed |= Fill(ref pal.windowDark, Mat("Window_Dark", new Color(0.03f, 0.035f, 0.045f), Color.black, 0.92f));
         changed |= Fill(ref pal.windowLit, Mat("Window_Lit", new Color(1f, 0.85f, 0.6f), new Color(1f, 0.72f, 0.42f) * 1.6f, 0.6f));
         changed |= Fill(ref pal.propMetal, Mat("Prop_Metal", new Color(0.35f, 0.36f, 0.37f), Color.black, 0.35f));
-        changed |= Fill(ref pal.decalMaterial, DecalMat());
+        var decal = DecalMat();   // also repairs the existing one
+        changed |= Fill(ref pal.decalMaterial, decal);
 
         if (isNew) AssetDatabase.CreateAsset(pal, PalettePath);
         else if (changed) EditorUtility.SetDirty(pal);
@@ -54,13 +55,21 @@ public static class BuildingDetails
     static Material Load(string name) => AssetDatabase.LoadAssetAtPath<Material>($"Assets/Materials/{name}.mat");
 
     // Transparent URP Lit for wall decals. Saved as an asset so builds keep the transparent shader variant
-    // (a material made only at runtime could have it stripped).
+    // (a material made only at runtime could have it stripped). The settings are put back every time this runs.
     static Material DecalMat()
     {
         const string path = "Assets/Materials/Decal.mat";
         var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (mat != null) return mat;
-        mat = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "Decal" };
+        bool isNew = mat == null;
+        if (isNew) mat = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "Decal" };
+        // Plain alpha blending. NOT "preserve specular" (premultiplied): that keeps the shine and reflections on the
+        // see-through parts, which shows up as a pale box round every decal. No shine at all, it's paint and dirt.
+        mat.SetFloat("_BlendModePreserveSpecular", 0f);
+        mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        mat.SetFloat("_SpecularHighlights", 0f);
+        mat.EnableKeyword("_SPECULARHIGHLIGHTS_OFF");
+        mat.SetFloat("_EnvironmentReflections", 0f);
+        mat.EnableKeyword("_ENVIRONMENTREFLECTIONS_OFF");
         mat.SetFloat("_Surface", 1f);   // transparent
         mat.SetFloat("_Blend", 0f);     // alpha
         mat.SetFloat("_ZWrite", 0f);
@@ -74,6 +83,7 @@ public static class BuildingDetails
         mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
         mat.SetShaderPassEnabled("DepthOnly", false);
         mat.SetShaderPassEnabled("ShadowCaster", false);
+        if (!isNew) { EditorUtility.SetDirty(mat); return mat; }
         if (!AssetDatabase.IsValidFolder("Assets/Materials")) AssetDatabase.CreateFolder("Assets", "Materials");
         AssetDatabase.CreateAsset(mat, path);
         return mat;
