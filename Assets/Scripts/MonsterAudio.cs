@@ -16,25 +16,38 @@ public class MonsterAudio : MonoBehaviour
     public AudioClip[] attackClips;        // 3D on the monster: the roar/crunch when it gets someone
     public AudioClip[] playerDeathScreams; // 3D where the victim was: what the other players hear
     public AudioClip deathStinger;         // only the victim hears this, right in their head
-    [Range(0f, 1f)] public float deathVolume = 1f;
+    [Range(0f, 1f)] public float deathVolume = 0.7f;
     public float silenceAfterDeath = 3f;   // victim: heartbeat/music cut out for this long
 
     [Header("Your ears only")]
     public AudioClip chaseMusicLoop;
     public AudioClip heartbeatLoop;
 
-    [Header("Distances")]
-    public float soundRange = 80f;         // how far its breathing/steps/growls carry (it's huge)
+    [Header("Distances (full volume out to the first number, silent at the range; see AudioMix)")]
+    [Tooltip("How far its breathing carries.")]
+    public float soundRange = 45f;
+    [Tooltip("Breathing is at full volume this close (it's huge).")]
+    public float breathFullVolumeDistance = 6f;
+    [Tooltip("How far its footsteps carry.")]
+    public float footstepRange = 120f;
+    [Tooltip("Footsteps are at full volume this close.")]
+    public float footstepFullVolumeDistance = 8f;
+    [Tooltip("How far its scream, growls and roars carry.")]
+    public float voiceRange = 160f;
+    [Tooltip("Scream/growls are at full volume this close.")]
+    public float voiceFullVolumeDistance = 10f;
+    [Tooltip("Breathing and voice come from its head, this high above its feet.")]
+    public float headHeight = 12f;
     public float heartbeatDistance = 35f;  // heartbeat starts when it's this close
     public float chaseMusicDistance = 60f; // chase music only if the chase is near you
 
     [Header("Volumes")]
-    [Range(0f, 1f)] public float breathingVolume = 0.6f;
-    [Range(0f, 1f)] public float footstepVolume = 0.9f;
-    [Range(0f, 1f)] public float growlVolume = 1f;
-    [Range(0f, 1f)] public float screamVolume = 1f;
-    [Range(0f, 1f)] public float chaseMusicVolume = 0.6f;
-    [Range(0f, 1f)] public float heartbeatVolume = 0.8f;
+    [Range(0f, 1f)] public float breathingVolume = 0.5f;
+    [Range(0f, 1f)] public float footstepVolume = 0.75f;
+    [Range(0f, 1f)] public float growlVolume = 0.9f;
+    [Range(0f, 1f)] public float screamVolume = 0.9f;
+    [Range(0f, 1f)] public float chaseMusicVolume = 0.5f;
+    [Range(0f, 1f)] public float heartbeatVolume = 0.7f;
 
     [Header("Camera shake")]
     [Range(0f, 1f)] public float footstepShake = 0.35f;
@@ -62,9 +75,13 @@ public class MonsterAudio : MonoBehaviour
     {
         ai = GetComponent<MonsterAI>();
 
-        breath = Make3D(true);
-        steps = Make3D(false);
-        voice = Make3D(false);
+        // Steps at its feet; breathing and voice up at its head
+        var headAudio = new GameObject("Head Audio").transform;
+        headAudio.SetParent(transform, false);
+        headAudio.localPosition = Vector3.up * headHeight;
+        breath = Make3D(headAudio.gameObject, true, breathFullVolumeDistance, soundRange);
+        steps = Make3D(gameObject, false, footstepFullVolumeDistance, footstepRange);
+        voice = Make3D(headAudio.gameObject, false, voiceFullVolumeDistance, voiceRange);
         music = Make2D();
         heartbeat = Make2D();
 
@@ -167,11 +184,7 @@ public class MonsterAudio : MonoBehaviour
             var go = new GameObject("DeathScream");
             go.transform.position = victimPosition + Vector3.up * 1.5f;
             var s = go.AddComponent<AudioSource>();
-            s.spatialBlend = 1f;
-            s.rolloffMode = AudioRolloffMode.Linear;
-            s.minDistance = 3f;
-            s.maxDistance = soundRange * 1.5f;   // screams carry
-            s.dopplerLevel = 0f;
+            AudioMix.Setup3D(s, 3f, 120f);   // screams carry
             s.PlayOneShot(clip, deathVolume);
             Destroy(go, clip.length + 0.1f);
         }
@@ -208,16 +221,11 @@ public class MonsterAudio : MonoBehaviour
         src.Play();
     }
 
-    AudioSource Make3D(bool loop)
+    static AudioSource Make3D(GameObject on, bool loop, float fullVolumeDistance, float range)
     {
-        var s = gameObject.AddComponent<AudioSource>();
-        s.playOnAwake = false;
+        var s = on.AddComponent<AudioSource>();
+        AudioMix.Setup3D(s, fullVolumeDistance, range);
         s.loop = loop;
-        s.spatialBlend = 1f;
-        s.rolloffMode = AudioRolloffMode.Linear;
-        s.minDistance = 2f;
-        s.maxDistance = soundRange;
-        s.dopplerLevel = 0f;
         return s;
     }
 

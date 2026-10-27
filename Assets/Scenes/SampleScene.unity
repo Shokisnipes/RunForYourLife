@@ -89178,15 +89178,17 @@ MonoBehaviour:
   crawlSteps: 4
   runSteps: 2
   climbSteps: 4
-  footstepVolume: 0.7
-  climbStepVolume: 0.5
-  callVolume: 1
-  grabVolume: 1
-  hatchVolume: 1
-  hatchRange: 30
-  landVolume: 1
-  stepRange: 25
-  callRange: 70
+  footstepVolume: 0.3
+  climbStepVolume: 0.22
+  callVolume: 0.75
+  grabVolume: 0.8
+  hatchVolume: 0.85
+  hatchRange: 35
+  landVolume: 0.6
+  stepRange: 30
+  callRange: 90
+  stepFullVolumeDistance: 1.5
+  voiceFullVolumeDistance: 4
   callInterval: {x: 12, y: 30}
   callCooldown: 6
 --- !u!1 &1118761544
@@ -145559,19 +145561,25 @@ MonoBehaviour:
   attackClips: []
   playerDeathScreams: []
   deathStinger: {fileID: 8300000, guid: b50ea3e348ca72d41b393dc516ad1427, type: 3}
-  deathVolume: 0.646
+  deathVolume: 0.7
   silenceAfterDeath: 3
   chaseMusicLoop: {fileID: 0}
   heartbeatLoop: {fileID: 0}
-  soundRange: 80
+  soundRange: 45
+  breathFullVolumeDistance: 6
+  footstepRange: 120
+  footstepFullVolumeDistance: 8
+  voiceRange: 160
+  voiceFullVolumeDistance: 10
+  headHeight: 12
   heartbeatDistance: 35
   chaseMusicDistance: 60
-  breathingVolume: 0.6
-  footstepVolume: 0.9
-  growlVolume: 1
-  screamVolume: 1
-  chaseMusicVolume: 0.6
-  heartbeatVolume: 0.8
+  breathingVolume: 0.5
+  footstepVolume: 0.75
+  growlVolume: 0.9
+  screamVolume: 0.9
+  chaseMusicVolume: 0.5
+  heartbeatVolume: 0.7
   footstepShake: 0.35
   screamShake: 0.5
   grabShake: 1

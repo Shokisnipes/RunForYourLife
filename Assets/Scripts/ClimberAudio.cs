@@ -18,19 +18,23 @@ public class ClimberAudio : MonoBehaviour
     public int climbSteps = 4;
 
     [Header("Volume and range")]
-    [Range(0f, 1f)] public float footstepVolume = 0.7f;
-    [Range(0f, 1f)] public float climbStepVolume = 0.5f;
-    [Range(0f, 1f)] public float callVolume = 1f;
-    [Range(0f, 1f)] public float grabVolume = 1f;
-    [Range(0f, 1f)] public float hatchVolume = 1f;
+    [Range(0f, 1f)] public float footstepVolume = 0.3f;
+    [Range(0f, 1f)] public float climbStepVolume = 0.22f;
+    [Range(0f, 1f)] public float callVolume = 0.75f;
+    [Range(0f, 1f)] public float grabVolume = 0.8f;
+    [Range(0f, 1f)] public float hatchVolume = 0.85f;
     [Tooltip("How far the hatch creak carries.")]
-    public float hatchRange = 30f;
+    public float hatchRange = 35f;
     [Tooltip("Landing after dropping through a roof hatch.")]
-    [Range(0f, 1f)] public float landVolume = 1f;
+    [Range(0f, 1f)] public float landVolume = 0.6f;
     [Tooltip("How far its steps carry.")]
-    public float stepRange = 25f;
+    public float stepRange = 30f;
     [Tooltip("How far its call carries.")]
-    public float callRange = 70f;
+    public float callRange = 90f;
+    [Tooltip("Steps and the hatch are at full volume this close (see AudioMix).")]
+    public float stepFullVolumeDistance = 1.5f;
+    [Tooltip("Its call and grab are at full volume this close.")]
+    public float voiceFullVolumeDistance = 4f;
 
     [Header("Timing")]
     [Tooltip("Seconds between calls while it's out hunting (random in this range).")]
@@ -50,13 +54,13 @@ public class ClimberAudio : MonoBehaviour
     {
         ai = GetComponent<ClimberAI>();
         climberAnim = GetComponentInChildren<ClimberAnimator>();
-        steps = Make3D(stepRange);
-        voice = Make3D(callRange);
+        steps = Make3D(stepFullVolumeDistance, stepRange);
+        voice = Make3D(voiceFullVolumeDistance, callRange);
 
         // The hatch sound plays where the hatch is, not on the climber, so it gets its own object
         var hatchGo = new GameObject("Climber Hatch Audio");   // not parented: stays at the hatch
         hatchSource = hatchGo.AddComponent<AudioSource>();
-        Setup3D(hatchSource, hatchRange);
+        AudioMix.Setup3D(hatchSource, stepFullVolumeDistance, hatchRange);
         nextCall = Time.time + Random.Range(callInterval.x, callInterval.y);
     }
 
@@ -135,20 +139,10 @@ public class ClimberAudio : MonoBehaviour
         src.PlayOneShot(clip, vol);
     }
 
-    AudioSource Make3D(float range)
+    AudioSource Make3D(float fullVolumeDistance, float range)
     {
         var s = gameObject.AddComponent<AudioSource>();
-        Setup3D(s, range);
+        AudioMix.Setup3D(s, fullVolumeDistance, range);
         return s;
-    }
-
-    static void Setup3D(AudioSource s, float range)
-    {
-        s.playOnAwake = false;
-        s.spatialBlend = 1f;
-        s.rolloffMode = AudioRolloffMode.Linear;
-        s.minDistance = 2f;
-        s.maxDistance = range;
-        s.dopplerLevel = 0f;
     }
 }

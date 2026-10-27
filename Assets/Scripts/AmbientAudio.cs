@@ -126,11 +126,7 @@ public class AmbientAudio : MonoBehaviour
         go.transform.position = pos;
         var s = go.AddComponent<AudioSource>();
         s.clip = clip;
-        s.spatialBlend = 1f;
-        s.rolloffMode = AudioRolloffMode.Linear;
-        s.minDistance = 5f;
-        s.maxDistance = distance.y + 20f;
-        s.dopplerLevel = 0f;
+        AudioMix.Setup3D(s, 5f, distance.y + 20f);
         s.pitch = Random.Range(0.9f, 1.05f);
         s.volume = distantVolume;
         s.Play();

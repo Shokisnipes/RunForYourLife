@@ -21,6 +21,8 @@ when it's done and tested.
   Each monster only shows up when the genome's Access matches it (synced `netInPlay`).
 - **Senses:** `NoiseSystem.Emit(pos, radius)`; `FootstepNoise` sends player steps to the host by RPC. Flashlight on or
   standing under a lit `StreetLamp` makes players visible from further.
+- **Audio mix:** every 3D sound uses `AudioMix.Setup3D` (real inverse-distance falloff, silent at max range); the
+  target level for each kind of sound is listed at the top of `AudioMix.cs`. 3D clips must be Force To Mono.
 - **Feel:** `CameraShake` (on the player camera), `Flashlight` (procedural cookie), head bob in FirstPersonController.
 - **World:** `BoxUV` gives scaled cubes real-world texture tiling. `AmbientAudio`, `WindowFlicker`, `LobbyCameraDrift`.
 

@@ -475,7 +475,7 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 4d72e78fec73ac44880fa712749e6df9, type: 3}
   footSpacing: 0.12
   landClip: {fileID: 0}
-  volume: 0.339
+  volume: 1
   hearDistance: 25
 --- !u!114 &1649352431673675213
 MonoBehaviour:

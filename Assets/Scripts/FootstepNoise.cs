@@ -27,7 +27,7 @@ public class FootstepNoise : NetworkBehaviour
     [Tooltip("How far each foot sits from the center, in meters. Gives a subtle left/right pan.")]
     public float footSpacing = 0.12f;
     public AudioClip landClip;           // optional
-    [Range(0f, 1f)] public float volume = 0.7f;
+    [Range(0f, 1f)] public float volume = 1f;   // the files are quiet; see AudioMix for the targets
     public float hearDistance = 25f;     // how far other players hear your steps
 
     FirstPersonController player;
@@ -61,12 +61,7 @@ public class FootstepNoise : NetworkBehaviour
         foot.transform.localPosition = new Vector3(x, 0.05f, 0f);
 
         var s = foot.AddComponent<AudioSource>();
-        s.playOnAwake = false;
-        s.spatialBlend = 1f;                       // fully 3D
-        s.rolloffMode = AudioRolloffMode.Linear;
-        s.minDistance = 1f;
-        s.maxDistance = hearDistance;
-        s.dopplerLevel = 0f;
+        AudioMix.Setup3D(s, 1f, hearDistance);   // fully 3D, same falloff as every other sound
         return s;
     }
 
