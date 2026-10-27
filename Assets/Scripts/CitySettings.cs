@@ -55,6 +55,18 @@ public class CitySettings : ScriptableObject
     [Range(0f, 1f)] public float brokenLampChance = 0.15f;
     [Range(0f, 1f)] public float flickeringLampChance = 0.12f;
 
+    [Header("Roads (deserted city)")]
+    [Tooltip("Faded lane lines and crosswalks.")]
+    public bool roadMarkings = true;
+    [Range(0f, 1f), Tooltip("Chance each street end gets a crosswalk.")]
+    public float crosswalkChance = 0.6f;
+    [Tooltip("Litter pieces (paper, bags, cans, tires, planks, scrap, drums) per 100 m2 of road. Alleys get double.")]
+    public float litterDensity = 1.2f;
+    [Tooltip("Cracks and puddles per 100 m2 of road.")]
+    public float crackDensity = 0.5f;
+    [Tooltip("Wrecked cars per 100 m of main road (only the main road is wide enough to leave the giant a way past).")]
+    public float wrecksPer100m = 2f;
+
     [Header("Ground and props (empty = plain colour)")]
     public Material groundMaterial;
     public Material pavingMaterial;

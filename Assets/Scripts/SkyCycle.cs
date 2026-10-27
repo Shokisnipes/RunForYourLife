@@ -86,6 +86,9 @@ public class SkyCycle : MonoBehaviour
     [Range(0f, 1f)] public float cloudCover = 0.5f;
     [Range(0f, 0.2f)] public float cloudSpeed = 0.012f;
 
+    // How dark it is right now, 0 = dusk .. 1 = night (AmbientAudio fades the night sounds in with it)
+    public static float Darkness01 { get; private set; } = 1f;
+
     Light lightSource;
     Material sky;
 
@@ -114,7 +117,11 @@ public class SkyCycle : MonoBehaviour
         if (sky != null) Destroy(sky);
     }
 
-    void Update() => Apply(Darkness());
+    void Update()
+    {
+        Darkness01 = Darkness();
+        Apply(Darkness01);
+    }
 
     // 0 = dusk, 1 = night
     float Darkness()

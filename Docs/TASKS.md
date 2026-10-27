@@ -46,6 +46,10 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   [ ] d) tuning: prep ~8 min (DESIGN: 6-8), patrol area, light count/performance, playtest.
 - [x] **4.6 Dusk to night sky.** Prep starts as a fall evening (~8 pm) and fades to night as the timer runs down;
   moon that lights the scene, clouds day and night (SkyCycle + Sky shader).
+- [x] **4.7 Deserted city dressing.** Interior layouts (open / back room / side room / two back rooms) + furniture;
+  road paint, crosswalks, cracks, puddles, litter, wrecks on the main road; walls along alleys (narrow gaps) so the
+  giant can never get in; NavMesh baked from colliders; night ambience fades in with the dark.
+  [ ] needs a dusk ambience clip (calm, sparse birds) from Petar, then crossfade it out as night falls.
 - [ ] **5. Clues (S, Sonnet).** Three clue prefabs spawned at prep start based on the genome: claw marks high on a wall
   (Climber), a carcass with eyes untouched (not Sight), one radio line (random). Simple decals/props are fine.
 - [ ] **6. Scouts (L, Opus).** Needs a scout model first. Split: 6a) small scout AI (wander, flee light or noise

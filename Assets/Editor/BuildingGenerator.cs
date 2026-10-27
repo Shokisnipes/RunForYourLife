@@ -35,8 +35,9 @@ public class BuildingGenerator : EditorWindow
         spec.doorOffset = EditorGUILayout.FloatField("Door Offset", spec.doorOffset);
 
         GUILayout.Space(6);
-        spec.interiorWall = EditorGUILayout.Toggle("Interior Wall", spec.interiorWall);
-        if (spec.interiorWall)
+        spec.layout = (InteriorLayout)EditorGUILayout.EnumPopup("Rooms", spec.layout);
+        spec.furniture = EditorGUILayout.Toggle("Furniture", spec.furniture);
+        if (spec.layout != InteriorLayout.Open)
             spec.interiorGap = EditorGUILayout.FloatField(new GUIContent("Interior Doorway Width",
                 "Gap between the rooms. 1.6 m or more lets the Climber crawl through."), spec.interiorGap);
         spec.reverb = EditorGUILayout.Toggle("Indoor Echo (Reverb)", spec.reverb);

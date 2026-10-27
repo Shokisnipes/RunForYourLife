@@ -33,6 +33,9 @@ when it's done and tested.
   placed), the seed is synced and clients build the same city (`CityManager.Built` event for anything that caches map
   stuff). `CityGenerator` lays out the city from `CitySettings` (Assets/Settings); `BuildingBuilder` makes each
   building (house/shop/warehouse) with materials from `BuildingPalette`. All randomness = one seeded System.Random.
+  Alleys must stay closed to the giant (radius 2.5): they're lined with walls whose gaps are 1.2 m. Runtime NavMesh
+  is baked from physics colliders, so colliderless litter/windows don't affect it; keep anything big near a street
+  curb collider-free or the giant can get stuck between it and a lamp.
 - **World:** `BoxUV` gives scaled cubes real-world texture tiling. `AmbientAudio`, `WindowFlicker`, `LobbyCameraDrift`.
 
 ## Editor tools (Tools > RunForYourLife)

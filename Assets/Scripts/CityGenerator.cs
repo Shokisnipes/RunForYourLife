@@ -38,6 +38,17 @@ public static class CityGenerator
         public Block Copy() => new Block { x0 = x0, z0 = z0, x1 = x1, z1 = z1, road = (float[])road.Clone() };
     }
 
+    enum RoadKind { Main, Street, Alley, Ring }
+
+    // A stretch of road between two blocks (or the ring road). alongZ = which way it runs.
+    struct Road
+    {
+        public float x0, z0, x1, z1;
+        public bool alongZ;
+        public RoadKind kind;
+        public bool Contains(float x, float z) => x > x0 && x < x1 && z > z0 && z < z1;
+    }
+
     // Wider than this counts as a street (doors and lamps go there); narrower is an alley
     const float StreetMin = 5f;
     const float Curb = 0.15f;   // sidewalks, plazas and parks are raised this much; buildings stand on top
@@ -48,6 +59,7 @@ public static class CityGenerator
     static Transform root;
     static readonly List<Block> blocks = new List<Block>();
     static readonly List<(Vector3 a, Vector3 b)> deadEnds = new List<(Vector3, Vector3)>();
+    static readonly List<Road> roads = new List<Road>();
 
     public static City Generate(CitySettings settings, int seed, Vector3 origin, Transform parent = null)
     {
@@ -56,6 +68,7 @@ public static class CityGenerator
         city = new City { seed = seed };
         blocks.Clear();
         deadEnds.Clear();
+        roads.Clear();
 
         var go = new GameObject($"City (seed {seed})");
         go.transform.SetParent(parent, false);
@@ -69,6 +82,11 @@ public static class CityGenerator
         // Cut the area inside the ring road into blocks
         var all = new Block { x0 = -hw + s.streetWidth, x1 = hw - s.streetWidth, z0 = -hd + s.streetWidth, z1 = hd - s.streetWidth };
         for (int i = 0; i < 4; i++) all.road[i] = s.streetWidth;
+        float sw0 = s.streetWidth;
+        roads.Add(new Road { x0 = -hw, z0 = -hd, x1 = hw, z1 = -hd + sw0, alongZ = false, kind = RoadKind.Ring });
+        roads.Add(new Road { x0 = -hw, z0 = hd - sw0, x1 = hw, z1 = hd, alongZ = false, kind = RoadKind.Ring });
+        roads.Add(new Road { x0 = -hw, z0 = -hd, x1 = -hw + sw0, z1 = hd, alongZ = true, kind = RoadKind.Ring });
+        roads.Add(new Road { x0 = hw - sw0, z0 = -hd, x1 = hw, z1 = hd, alongZ = true, kind = RoadKind.Ring });
         Split(all, 0);
 
         AssignUses();
@@ -84,6 +102,7 @@ public static class CityGenerator
             }
         }
         foreach (var (a, b) in deadEnds) Wall("Wall_DeadEnd", a, b, 3f, 0.3f, ConcreteWall());
+        foreach (var road in roads) DressRoad(road);
 
         PickSpawns(hw, hd);
         city.patrolCenter = root.position;
@@ -120,17 +139,19 @@ public static class CityGenerator
             ? Mathf.Clamp((len - road) * Range(0.42f, 0.58f), min, max)
             : Mathf.Lerp(min, max, (Rand() + Rand()) / 2f);   // two dice: cuts lean toward the middle
 
-        Cut(b, cutX, pos, road, out var a, out var c);
+        Cut(b, cutX, pos, road, depth == 0 ? RoadKind.Main : RoadKind.Street, out var a, out var c);
         Split(a, depth + 1);
         Split(c, depth + 1);
     }
 
-    static void Cut(Block b, bool cutX, float pos, float road, out Block a, out Block c)
+    static void Cut(Block b, bool cutX, float pos, float road, RoadKind kind, out Block a, out Block c)
     {
         a = b.Copy();
         c = b.Copy();
         if (cutX) { a.x1 = b.x0 + pos; a.road[1] = road; c.x0 = a.x1 + road; c.road[0] = road; }
         else      { a.z1 = b.z0 + pos; a.road[3] = road; c.z0 = a.z1 + road; c.road[2] = road; }
+        roads.Add(cutX ? new Road { x0 = a.x1, x1 = c.x0, z0 = b.z0, z1 = b.z1, alongZ = true, kind = kind }
+                       : new Road { x0 = b.x0, x1 = b.x1, z0 = a.z1, z1 = c.z0, alongZ = false, kind = kind });
     }
 
     // Cut a block in two with an alley across its long side (sometimes walled off at one end)
@@ -142,7 +163,7 @@ public static class CityGenerator
         const float minHalf = 13f;   // room for a row of buildings each side
         if (Rand() >= s.alleyChance || len < minHalf * 2f + w) { blocks.Add(b); return; }
 
-        Cut(b, cutX, Range(minHalf, len - w - minHalf), w, out var a, out var c);
+        Cut(b, cutX, Range(minHalf, len - w - minHalf), w, RoadKind.Alley, out var a, out var c);
         blocks.Add(a);
         blocks.Add(c);
 
@@ -169,17 +190,24 @@ public static class CityGenerator
         {
             Block best = null;
             foreach (var b in blocks)
-                if (Mathf.Min(b.W, b.D) >= 20f && (best == null || b.Center.sqrMagnitude < best.Center.sqrMagnitude)) best = b;
+                if (Mathf.Min(b.W, b.D) >= 20f && !OnAlley(b) && (best == null || b.Center.sqrMagnitude < best.Center.sqrMagnitude)) best = b;
             if (best != null) best.use = Use.Plaza;
         }
 
+        // Open areas only on blocks with streets all round: an open side on an alley would let the giant in
         var free = new List<Block>();
-        foreach (var b in blocks) if (b.use == Use.Buildings && Mathf.Min(b.W, b.D) >= 18f) free.Add(b);
+        foreach (var b in blocks) if (b.use == Use.Buildings && Mathf.Min(b.W, b.D) >= 18f && !OnAlley(b)) free.Add(b);
         Shuffle(free);
         int i = 0;
         for (int n = 0; n < s.parks && i < free.Count; n++) free[i++].use = Use.Park;
         for (int n = 0; n < s.parkingLots && i < free.Count; n++) free[i++].use = Use.Parking;
         for (int n = 0; n < s.emptyBlocks && i < free.Count; n++) free[i++].use = Use.Empty;
+    }
+
+    static bool OnAlley(Block b)
+    {
+        foreach (float w in b.road) if (w < StreetMin) return true;
+        return false;
     }
 
     // ---------- Block contents ----------
@@ -206,27 +234,45 @@ public static class CityGenerator
         if (streetA && streetB && across >= 2f * (8f + sw) + 1.5f)
         {
             float maxDepth = Mathf.Min(19f, (across - 2f * sw - 1.5f) / 2f);
-            Row(b, sideA, maxDepth);
-            Row(b, sideB, maxDepth);
+            Row(b, sideA, maxDepth, 0f);
+            Row(b, sideB, maxDepth, 0f);
         }
         else if (streetA || streetB)
-            Row(b, streetA ? sideA : sideB, Mathf.Min(19f, across - 2f * sw - 1f));
+        {
+            // One row. If an alley runs behind it, the buildings back right onto the alley (a deeper front yard
+            // instead), so the gap stays alley-narrow and the giant can't squeeze through.
+            int side = streetA ? sideA : sideB, behind = streetA ? sideB : sideA;
+            bool alleyBehind = b.road[behind] < StreetMin;
+            Row(b, side, Mathf.Min(19f, across - sw - (alleyBehind ? 0.3f : sw + 1f)), alleyBehind ? across - 0.3f : 0f);
+        }
 
         for (int side = 0; side < 4; side++)
             if (b.road[side] >= StreetMin) LampsAlong(b, side);
     }
 
-    static void Row(Block b, int side, float maxDepth)
+    // backLine > 0: buildings sit with their back on this line (measured in from the street edge), not on the sidewalk
+    static void Row(Block b, int side, float maxDepth, float backLine)
     {
         Edge(b, side, out Vector3 p0, out Vector3 along, out Vector3 outward, out float length);
         Vector3 inward = -outward;
         float sw = s.sidewalkWidth;
-        float t = sw, end = length - sw;
+        // Row ends: a sidewalk at a street corner, but right up to the edge where an alley runs past. The row is
+        // built starting from the alley end, so whatever space is left over ends up at the street corner instead.
+        StartEndSides(side, out int startSide, out int endSide);
+        bool startAlley = b.road[startSide] < StreetMin, endAlley = b.road[endSide] < StreetMin;
+        if (endAlley && !startAlley)
+        {
+            p0 += along * length;
+            along = -along;
+            (startAlley, endAlley) = (endAlley, startAlley);
+        }
+        float t = startAlley ? 0.3f : sw;
+        float end = length - (endAlley ? 0.3f : sw);
 
         while (end - t >= 7f)
         {
             float room = end - t;
-            if (Rand() < s.emptyLotChance && room > 10f)
+            if (Rand() < s.emptyLotChance && room > 10f && !(startAlley && t < 1f))   // never an empty lot at an alley mouth
             {
                 float lot = Mathf.Min(room, Range(8f, 12f));
                 EmptyLot(p0 + along * (t + lot / 2f) + inward * (sw + maxDepth / 2f), along, lot, maxDepth);
@@ -239,7 +285,8 @@ public static class CityGenerator
             spec.details.sidewalk = false;   // the whole block has one sidewalk slab
             if (spec.width < 6.5f) break;
 
-            Vector3 c = p0 + along * (t + spec.width / 2f) + inward * (sw + spec.depth / 2f);
+            float setback = backLine > 0f ? Mathf.Max(sw, backLine - spec.depth) : sw;
+            Vector3 c = p0 + along * (t + spec.width / 2f) + inward * (setback + spec.depth / 2f);
             c.y = Curb;
             var building = BuildingBuilder.Build(spec, root.TransformPoint(c), root.rotation * Quaternion.LookRotation(inward),
                                                  root, s.palette, rng);   // building +Z points into the block, door to the street
@@ -247,6 +294,13 @@ public static class CityGenerator
 
             t += spec.width + (Rand() < s.passageChance ? Range(2f, 3.2f) : Range(0.3f, 1f));
         }
+    }
+
+    // Which block sides meet the start and the end of this side (see Edge for the direction it runs)
+    static void StartEndSides(int side, out int startSide, out int endSide)
+    {
+        if (side < 2) { startSide = 2; endSide = 3; }   // runs along +Z: from the -Z side to the +Z side
+        else { startSide = 0; endSide = 1; }            // runs along +X
     }
 
     static bool PickKind(float room, float maxDepth, out BuildingKind kind)
@@ -371,6 +425,168 @@ public static class CityGenerator
         if (Rand() < 0.6f) Dumpster(c + along * Range(-width / 4f, width / 4f), Range(0f, 360f));
         for (int i = 0, n = 1 + (int)(Rand() * 3); i < n; i++)
             Rubble(c + along * Range(-width / 2f + 1f, width / 2f - 1f) + Quaternion.Euler(0, 90, 0) * along * Range(-depth / 3f, depth / 3f));
+    }
+
+    // ---------- Roads: paint, cracks, litter, wrecks ----------
+
+    static void DressRoad(Road road)
+    {
+        float length = road.alongZ ? road.z1 - road.z0 : road.x1 - road.x0;
+        float width = road.alongZ ? road.x1 - road.x0 : road.z1 - road.z0;
+        Vector3 along = road.alongZ ? Vector3.forward : Vector3.right;
+        Vector3 across = road.alongZ ? Vector3.right : Vector3.forward;
+        Vector3 start = new Vector3(road.alongZ ? (road.x0 + road.x1) / 2f : road.x0, 0f, road.alongZ ? road.z0 : (road.z0 + road.z1) / 2f);
+        Quaternion rot = Quaternion.LookRotation(along);
+        bool alley = road.kind == RoadKind.Alley;
+
+        if (s.roadMarkings && !alley)
+        {
+            // Faded centre line, broken at crossings; the main road gets a double line
+            var yellow = Mat("Road_Paint_Yellow", new Color(0.5f, 0.42f, 0.16f), 0.3f);
+            float dash = road.kind == RoadKind.Main ? 5f : 3f, gap = road.kind == RoadKind.Main ? 1f : 5f;
+            float[] offsets = road.kind == RoadKind.Main ? new[] { -0.18f, 0.18f } : new[] { 0f };
+            for (float t = 1f; t + dash < length; t += dash + gap)
+            {
+                Vector3 p = start + along * (t + dash / 2f);
+                if (InOtherRoad(road, p) || Rand() < 0.12f) continue;   // crossing, or worn away
+                foreach (float o in offsets)
+                    Cube("Road_Line", p + across * o + Vector3.up * 0.005f, new Vector3(0.12f, 0.01f, dash), yellow, false, 0f).localRotation = rot;
+            }
+
+            // Crosswalks where a street meets the next one
+            if (road.kind != RoadKind.Ring)
+            {
+                var white = Mat("Road_Paint_White", new Color(0.55f, 0.55f, 0.52f), 0.3f);
+                foreach (float t in new[] { 2.2f, length - 2.2f })
+                {
+                    if (Rand() >= s.crosswalkChance) continue;
+                    for (float x = -width / 2f + 0.8f; x < width / 2f - 0.6f; x += 1.1f)
+                        if (Rand() > 0.15f)
+                            Cube("Road_Crosswalk", start + along * t + across * x + Vector3.up * 0.005f,
+                                 new Vector3(0.5f, 0.01f, 2.8f), white, false, 0f).localRotation = rot;
+                }
+            }
+
+            // Manholes down the middle now and then
+            var iron = Mat("Road_Manhole", new Color(0.12f, 0.11f, 0.1f), 0.5f);
+            for (float t = Range(5f, 20f); t < length - 3f; t += Range(20f, 40f))
+            {
+                Vector3 p = start + along * t + across * Range(-width / 4f, width / 4f);
+                if (!InOtherRoad(road, p)) Prim(PrimitiveType.Cylinder, "Road_Manhole", p + Vector3.up * 0.01f, new Vector3(0.8f, 0.01f, 0.8f), iron, false);
+            }
+        }
+
+        if (alley) AlleyWalls(road, length);
+
+        float area = length * width;
+
+        // Cracks and puddles: dark, glossy patches
+        var puddle = Mat("Road_Puddle", new Color(0.035f, 0.035f, 0.04f), 0.85f);
+        for (int i = 0, n = Count(area * s.crackDensity / 100f); i < n; i++)
+        {
+            Vector3 p = start + along * Range(0f, length) + across * Range(-width / 2f, width / 2f);
+            var patch = Cube("Road_Crack", p + Vector3.up * 0.003f, new Vector3(Range(0.3f, 1.6f), 0.006f, Range(0.6f, 2.4f)), puddle, false, 0f);
+            patch.localRotation = Quaternion.Euler(0f, Range(0f, 360f), 0f);
+        }
+
+        // Litter, mostly along the curbs; alleys are filthy
+        for (int i = 0, n = Count(area * s.litterDensity * (alley ? 2f : 1f) / 100f); i < n; i++)
+        {
+            float side = Rand() < 0.5f ? -1f : 1f;
+            float off = Rand() < 0.8f ? width / 2f - Range(0.2f, Mathf.Min(1.8f, width / 2f)) : Range(0f, width / 2f - 0.5f);
+            Vector3 p = start + along * Range(0.5f, length - 0.5f) + across * side * off;
+            if (!alley && InOtherRoad(road, p)) continue;
+            Litter(p, width / 2f - off);
+        }
+
+        // Wrecked cars by the curb of the main road
+        if (road.kind == RoadKind.Main)
+            for (int i = 0, n = Count(length * s.wrecksPer100m / 100f); i < n; i++)
+            {
+                float side = Rand() < 0.5f ? -1f : 1f;
+                Vector3 p = start + along * Range(4f, length - 4f) + across * side * (width / 2f - 1.3f);
+                if (InOtherRoad(road, p)) continue;
+                Car(p, along * (Rand() < 0.5f ? 1f : -1f), true);
+            }
+    }
+
+    // Walls down both sides of an alley, with the odd narrow gap (1.2 m): players and the Climber can slip through to
+    // the blocks behind, the giant can't. Without them a block's open corner or yard could let the giant in.
+    static void AlleyWalls(Road road, float length)
+    {
+        var mat = ConcreteWall();
+        for (int edge = 0; edge < 2; edge++)
+        {
+            // Just inside the block on each side of the alley
+            Vector3 from = road.alongZ ? new Vector3(edge == 0 ? road.x0 - 0.15f : road.x1 + 0.15f, 0f, road.z0)
+                                       : new Vector3(road.x0, 0f, edge == 0 ? road.z0 - 0.15f : road.z1 + 0.15f);
+            Vector3 along = road.alongZ ? Vector3.forward : Vector3.right;
+            float t = 0f;
+            while (t < length - 0.5f)
+            {
+                float piece = Mathf.Min(Range(6f, 14f), length - t);
+                if (length - t - piece < 2f) piece = length - t;   // no sliver at the end
+                Wall("Wall_Alley", from + along * t, from + along * (t + piece), 2.4f, 0.2f, mat);
+                t += piece + (Rand() < 0.5f ? 1.4f : 0f);   // 1.2 m clear once the wall ends overlap
+            }
+        }
+    }
+
+    // One piece of junk. fromCurb = how far it is from the road edge (drums only go right by the curb)
+    static void Litter(Vector3 p, float fromCurb)
+    {
+        float yaw = Range(0f, 360f);
+        float r = Rand();
+        Transform t;
+        if (r < 0.3f)        // paper and cardboard
+            t = Cube("Litter_Paper", p + Vector3.up * 0.006f, new Vector3(Range(0.2f, 0.5f), 0.01f, Range(0.25f, 0.6f)),
+                     Mat("Litter_Paper", new Color(0.45f, 0.43f, 0.38f), 0.1f), false, 0f);
+        else if (r < 0.5f)   // bin bag
+            t = Prim(PrimitiveType.Sphere, "Litter_Bag", p + Vector3.up * 0.2f, new Vector3(Range(0.5f, 0.75f), Range(0.35f, 0.5f), Range(0.45f, 0.6f)),
+                     Mat("Litter_Bag", new Color(0.03f, 0.03f, 0.035f), 0.35f), false);
+        else if (r < 0.62f)  // can
+            t = Prim(PrimitiveType.Cylinder, "Litter_Can", p + Vector3.up * 0.035f, new Vector3(0.07f, 0.06f, 0.07f),
+                     Mat("Litter_Can", new Color(0.4f, 0.12f, 0.1f), 0.6f), false);
+        else if (r < 0.72f)  // tire lying flat
+            t = Prim(PrimitiveType.Cylinder, "Litter_Tire", p + Vector3.up * 0.12f, new Vector3(0.65f, 0.12f, 0.65f),
+                     Mat("Litter_Tire", new Color(0.03f, 0.03f, 0.03f), 0.25f), false);
+        else if (r < 0.84f)  // plank
+            t = Cube("Litter_Plank", p + Vector3.up * 0.03f, new Vector3(0.15f, 0.05f, Range(1f, 2.2f)),
+                     Mat("Furniture_Wood", new Color(0.26f, 0.18f, 0.11f), 0.15f), false, 0f);
+        else if (r < 0.94f || fromCurb > 0.9f)  // bent sheet of scrap metal
+        {
+            t = Cube("Litter_Scrap", p + Vector3.up * 0.06f, new Vector3(Range(0.6f, 1.3f), 0.02f, Range(0.5f, 1f)),
+                     Mat("City_Rust", new Color(0.24f, 0.13f, 0.07f), 0.1f), false, 0f);
+            t.localRotation = Quaternion.Euler(Range(-8f, 8f), yaw, Range(-12f, 12f));
+            return;
+        }
+        else                 // rusty drum, standing or tipped over (solid: something to duck behind)
+        {
+            bool tipped = Rand() < 0.4f;
+            t = Prim(PrimitiveType.Cylinder, "Litter_Drum", p + Vector3.up * (tipped ? 0.3f : 0.45f), new Vector3(0.6f, 0.45f, 0.6f),
+                     Mat("City_Rust", new Color(0.24f, 0.13f, 0.07f), 0.1f), true);
+            t.localRotation = Quaternion.Euler(tipped ? 90f : 0f, yaw, 0f);
+            return;
+        }
+        t.localRotation = Quaternion.Euler(0f, yaw, 0f);
+    }
+
+    // Is this point where another road crosses (an intersection)?
+    static bool InOtherRoad(Road self, Vector3 p)
+    {
+        foreach (var o in roads)
+        {
+            if (o.alongZ == self.alongZ && o.x0 == self.x0 && o.z0 == self.z0) continue;   // itself
+            if (o.Contains(p.x, p.z)) return true;
+        }
+        return false;
+    }
+
+    // Whole number of things from an average (the fraction is a dice roll)
+    static int Count(float average)
+    {
+        int n = Mathf.FloorToInt(average);
+        return n + (Rand() < average - n ? 1 : 0);
     }
 
     // ---------- Lamps ----------

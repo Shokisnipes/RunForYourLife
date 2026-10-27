@@ -3,6 +3,9 @@ using UnityEngine;
 
 public enum BuildingKind { House, Shop, Warehouse }
 
+// How the inside is split up. Every doorway between rooms is wide enough for the Climber to crawl through.
+public enum InteriorLayout { Open, BackRoom, SideRoom, TwoBackRooms }
+
 // Builds an enterable box building out of plain cubes with BoxColliders: walls, roof, doorway, optional back room,
 // windows, roof edge, rooftop clutter, sidewalk, a roof hatch (the Climber drops in through it) and a ReachPoint
 // (the giant crouches there and reaches in). Runs in the game (the city generator) and in the editor (Building
@@ -44,15 +47,16 @@ public static class BuildingBuilder
         public float doorWidth;    // wide enough for the giant's forearm to reach through
         public float doorHeight;   // low enough that the Climber can't walk in from the street
         public float doorOffset;   // slides the door left/right along the front wall
-        public bool interiorWall;  // a back room to hide in
-        public float interiorGap;
+        public InteriorLayout layout;   // rooms to hide in
+        public float interiorGap;       // width of the doorways between rooms
+        public bool furniture;          // crates, shelves, tables... cover to hide behind
         public bool roofHatch, reverb;
         public DetailOptions details;
 
         public static Spec Default => new Spec
         {
             kind = BuildingKind.House, width = 8f, depth = 10f, height = 4f, wallThickness = 0.25f,
-            doorWidth = 2.2f, doorHeight = 2.3f, doorOffset = 0f, interiorWall = false, interiorGap = InteriorGap,
+            doorWidth = 2.2f, doorHeight = 2.3f, doorOffset = 0f, layout = InteriorLayout.Open, interiorGap = InteriorGap, furniture = true,
             roofHatch = true, reverb = true, details = DetailOptions.Default,
         };
     }
@@ -68,14 +72,14 @@ public static class BuildingBuilder
                 s.width = Range(rng, 7f, 9f);
                 s.depth = Range(rng, 8f, 10.5f);
                 s.height = Range(rng, 3.8f, 4.3f);
-                s.interiorWall = rng.NextDouble() < 0.75;
+                s.layout = Pick(rng, InteriorLayout.Open, 0.2f, InteriorLayout.BackRoom, 0.45f, InteriorLayout.SideRoom, 0.35f);
                 s.details.litChance = 0.25f;
                 break;
             case BuildingKind.Shop:
                 s.width = Range(rng, 10f, 14f);
                 s.depth = Range(rng, 9f, 12f);
                 s.height = Range(rng, 4.5f, 5.5f);
-                s.interiorWall = true;              // stock room at the back
+                s.layout = Pick(rng, InteriorLayout.BackRoom, 0.5f, InteriorLayout.TwoBackRooms, 0.3f, InteriorLayout.SideRoom, 0.2f);   // stock rooms
                 s.details.shopfront = true;
                 s.details.litChance = 0.3f;
                 break;
@@ -83,7 +87,7 @@ public static class BuildingBuilder
                 s.width = Range(rng, 14f, 18f);
                 s.depth = Range(rng, 14f, 19f);
                 s.height = Range(rng, 5.5f, 6.5f);
-                s.interiorWall = rng.NextDouble() < 0.5;
+                s.layout = Pick(rng, InteriorLayout.Open, 0.35f, InteriorLayout.SideRoom, 0.3f, InteriorLayout.TwoBackRooms, 0.35f);
                 s.details.highWindows = true;
                 s.details.litChance = 0.08f;
                 break;
@@ -144,16 +148,9 @@ public static class BuildingBuilder
         Box(b, "Roof",  new Vector3(0, height + t / 2f, 0), new Vector3(s.width, t, s.depth), roof, tile);
         Box(b, "Floor", new Vector3(0, 0.025f, 0), new Vector3(s.width - t * 2f, 0.05f, s.depth - t * 2f), floor, tile);
 
-        // Interior wall with a gap, makes a back room to hide in
-        if (s.interiorWall)
-        {
-            float gap = s.interiorGap;
-            float innerW = s.width - t * 2f;
-            float segment = (innerW - gap) / 2f;
-            float z = s.depth * 0.15f;
-            Box(b, "Interior_L", new Vector3(-innerW / 2f + segment / 2f, height / 2f, z), new Vector3(segment, height, t), inner, tile);
-            Box(b, "Interior_R", new Vector3(innerW / 2f - segment / 2f, height / 2f, z), new Vector3(segment, height, t), inner, tile);
-        }
+        // Inside walls and furniture
+        var gaps = Interior(b, s, inner, tile, rng);
+        if (s.furniture) Furnish(b, s, gaps, Metal(pal), rng);
 
         // Windows, roof edge, rooftop clutter, sidewalk
         AddDetails(b, s.width, s.depth, height, t, s.doorOffset, s.doorWidth, s.details, pal, rng, wall);
@@ -183,6 +180,152 @@ public static class BuildingBuilder
         rp.transform.localRotation = Quaternion.identity;   // forward (+Z) points into the building
         rp.AddComponent<ReachPoint>();
         return rp;
+    }
+
+    // ---------- Inside: rooms and furniture ----------
+
+    // Walls between rooms (all named Interior_..., which the tools and the texturer look for). Returns the middle of
+    // each doorway between rooms (local XZ), so furniture keeps out of the way.
+    static List<Vector2> Interior(Transform b, Spec s, Material mat, float tile, System.Random rng)
+    {
+        var gaps = new List<Vector2>();
+        float t = s.wallThickness, h = s.height, gap = s.interiorGap;
+        float left = -s.width / 2f + t, right = s.width / 2f - t, front = -s.depth / 2f + t, back = s.depth / 2f - t;
+
+        switch (s.layout)
+        {
+            case InteriorLayout.BackRoom:
+            case InteriorLayout.TwoBackRooms:
+            {
+                // Wall across the building; the back room is 35-50% of the depth, its doorway anywhere along it
+                float z = Mathf.Lerp(front, back, Range(rng, 0.5f, 0.65f));
+                float gx = Range(rng, left + gap / 2f + 0.6f, right - gap / 2f - 0.6f);
+                WallAcross(b, "Interior_L", left, gx - gap / 2f, z, t, h, mat, tile);
+                WallAcross(b, "Interior_R", gx + gap / 2f, right, z, t, h, mat, tile);
+                gaps.Add(new Vector2(gx, z));
+
+                if (s.layout == InteriorLayout.TwoBackRooms && right - left > 9f)
+                {
+                    // Split the back room in two, on the far side from its doorway. It stops short of the cross
+                    // wall, leaving a passage between the two rooms.
+                    float x = gx < 0f ? Range(rng, Mathf.Max(gx + gap, 0.2f * right), 0.6f * right)
+                                      : Range(rng, 0.6f * left, Mathf.Min(gx - gap, 0.2f * left));
+                    WallAlong(b, "Interior_Div", x, z + t / 2f + gap, back, t, h, mat, tile);
+                    gaps.Add(new Vector2(x, z + t / 2f + gap / 2f));
+                }
+                break;
+            }
+            case InteriorLayout.SideRoom:
+            {
+                // A long room down one side, with its doorway somewhere along it
+                float roomW = Range(rng, 3f, 4.2f);
+                bool onRight = rng.NextDouble() < 0.5;
+                float x = onRight ? right - roomW : left + roomW;
+                float gz = Range(rng, front + gap / 2f + 0.8f, back - gap / 2f - 0.8f);
+                WallAlong(b, "Interior_SideA", x, front, gz - gap / 2f, t, h, mat, tile);
+                WallAlong(b, "Interior_SideB", x, gz + gap / 2f, back, t, h, mat, tile);
+                gaps.Add(new Vector2(x, gz));
+                break;
+            }
+        }
+        return gaps;
+    }
+
+    // Interior wall running across the building (along X) from x0 to x1, at z
+    static void WallAcross(Transform b, string name, float x0, float x1, float z, float t, float h, Material mat, float tile)
+    {
+        if (x1 - x0 < 0.3f) return;
+        Box(b, name, new Vector3((x0 + x1) / 2f, h / 2f, z), new Vector3(x1 - x0, h, t), mat, tile);
+    }
+
+    // Interior wall running front to back (along Z) from z0 to z1, at x
+    static void WallAlong(Transform b, string name, float x, float z0, float z1, float t, float h, Material mat, float tile)
+    {
+        if (z1 - z0 < 0.3f) return;
+        Box(b, name, new Vector3(x, h / 2f, (z0 + z1) / 2f), new Vector3(t, h, z1 - z0), mat, tile);
+    }
+
+    // Crates, shelves, tables, mattresses and drums against the walls: cover to hide behind. Kept clear of the front
+    // door (the giant reaches in there) and of the doorways between rooms (the Climber crawls through).
+    static void Furnish(Transform b, Spec s, List<Vector2> gaps, Material metal, System.Random rng)
+    {
+        var parent = new GameObject("Furniture").transform;
+        parent.SetParent(b, false);
+        var wood = Fallback("Furniture_Wood", new Color(0.26f, 0.18f, 0.11f), Color.black, 0.15f);
+        var cloth = Fallback("Furniture_Cloth", new Color(0.32f, 0.3f, 0.27f), Color.black, 0.05f);
+
+        float t = s.wallThickness;
+        float left = -s.width / 2f + t, right = s.width / 2f - t, front = -s.depth / 2f + t, back = s.depth / 2f - t;
+        var walls = new List<Rect>();   // interior walls in local XZ
+        foreach (Transform w in b)
+            if (w.name.StartsWith("Interior_"))
+                walls.Add(new Rect(w.localPosition.x - w.localScale.x / 2f, w.localPosition.z - w.localScale.z / 2f, w.localScale.x, w.localScale.z));
+        var placed = new List<Rect>();
+
+        int wanted = 2 + Mathf.RoundToInt(s.width * s.depth / 35f);
+        for (int tries = 0; tries < wanted * 4 && placed.Count < wanted; tries++)
+        {
+            // What, and how big (x = along the wall, y = out from the wall)
+            int type = rng.Next(5);
+            Vector2 size = type == 0 ? new Vector2(1.1f, 1.1f)    // crates
+                         : type == 1 ? new Vector2(1.8f, 0.5f)    // shelf
+                         : type == 2 ? new Vector2(1.6f, 0.9f)    // table
+                         : type == 3 ? new Vector2(1.9f, 0.95f)   // mattress
+                         : new Vector2(0.7f, 0.7f);               // oil drum
+
+            // Against which outside wall (left, right or back)
+            int side = rng.Next(3);
+            Vector2 c; float yaw;
+            if (side == 0) { c = new Vector2(left + size.y / 2f + 0.05f, Range(rng, front + size.x / 2f, back - size.x / 2f)); yaw = 90f; }
+            else if (side == 1) { c = new Vector2(right - size.y / 2f - 0.05f, Range(rng, front + size.x / 2f, back - size.x / 2f)); yaw = -90f; }
+            else { c = new Vector2(Range(rng, left + size.x / 2f, right - size.x / 2f), back - size.y / 2f - 0.05f); yaw = 180f; }
+            Vector2 extent = side < 2 ? new Vector2(size.y, size.x) : size;
+            var rect = new Rect(c - extent / 2f, extent);
+
+            // Keep clear of the front door, the doorways between rooms, interior walls and other furniture
+            if (Mathf.Abs(c.x - s.doorOffset) < s.doorWidth / 2f + 1.4f + extent.x / 2f && c.y < front + 3f) continue;
+            bool blocked = false;
+            foreach (var g in gaps) if (Vector2.Distance(g, c) < s.interiorGap / 2f + 1.3f + Mathf.Max(extent.x, extent.y) / 2f) { blocked = true; break; }
+            foreach (var w in walls) if (Grow(w, 0.1f).Overlaps(rect)) { blocked = true; break; }
+            foreach (var p in placed) if (Grow(p, 0.3f).Overlaps(rect)) { blocked = true; break; }
+            if (blocked) continue;
+            placed.Add(rect);
+
+            var item = new GameObject("Prop_Furniture").transform;
+            item.SetParent(parent, false);
+            item.localPosition = new Vector3(c.x, 0.05f, c.y);
+            item.localRotation = Quaternion.Euler(0f, yaw + Range(rng, -4f, 4f), 0f);
+            switch (type)
+            {
+                case 0: // stacked crates
+                    Part(item, "Crate", PrimitiveType.Cube, new Vector3(0, 0.45f, 0), new Vector3(1f, 0.9f, 1f), wood, true, 0f);
+                    if (rng.NextDouble() < 0.6)
+                        Part(item, "Crate", PrimitiveType.Cube, new Vector3(Range(rng, -0.1f, 0.1f), 1.25f, Range(rng, -0.1f, 0.1f)),
+                             new Vector3(0.75f, 0.7f, 0.75f), wood, true, 0f).localRotation = Quaternion.Euler(0f, Range(rng, -20f, 20f), 0f);
+                    break;
+                case 1: // tall shelf
+                    Part(item, "Shelf", PrimitiveType.Cube, new Vector3(0, 0.95f, 0), new Vector3(1.8f, 1.9f, 0.45f), metal, true, 0f);
+                    break;
+                case 2: // table (a slab on a block, enough to crouch behind)
+                    Part(item, "Table", PrimitiveType.Cube, new Vector3(0, 0.74f, 0), new Vector3(1.6f, 0.06f, 0.9f), wood, true, 0f);
+                    Part(item, "Table_Base", PrimitiveType.Cube, new Vector3(0, 0.36f, 0), new Vector3(1.3f, 0.7f, 0.1f), wood, false, 0f);
+                    break;
+                case 3: // old mattress on the floor
+                    Part(item, "Mattress", PrimitiveType.Cube, new Vector3(0, 0.1f, 0), new Vector3(1.9f, 0.2f, 0.95f), cloth, false, 0f);
+                    break;
+                default: // oil drum
+                    Part(item, "Barrel", PrimitiveType.Cylinder, new Vector3(0, 0.45f, 0), new Vector3(0.6f, 0.45f, 0.6f), metal, true, 0f);
+                    break;
+            }
+        }
+    }
+
+    static Rect Grow(Rect r, float m) => new Rect(r.x - m, r.y - m, r.width + m * 2f, r.height + m * 2f);
+
+    static InteriorLayout Pick(System.Random rng, InteriorLayout a, float wa, InteriorLayout b, float wb, InteriorLayout c, float wc)
+    {
+        float r = (float)rng.NextDouble() * (wa + wb + wc);
+        return r < wa ? a : r < wa + wb ? b : c;
     }
 
     // ---------- Details: windows (some lit, a few flickering), roof parapet, rooftop clutter, sidewalks ----------
@@ -390,15 +533,22 @@ public static class BuildingBuilder
         float wallZ = hasWall ? wall.localPosition.z - rp.z : 0f;
         float preferZ = hasWall ? (wallZ + halfD) / 2f : 0f;   // middle of the back room
 
+        // Rooftop clutter, and furniture inside (the Climber lands under the hatch)
         var props = new List<Vector2>();
-        var details = building.Find("Details");
-        if (details != null)
-            foreach (Transform p in details)
-                if (p.name.StartsWith("Prop_"))
-                {
-                    Vector3 local = building.InverseTransformPoint(p.position) - rp;
-                    props.Add(new Vector2(local.x, local.z));
-                }
+        foreach (var group in new[] { building.Find("Details"), building.Find("Furniture") })
+            if (group != null)
+                foreach (Transform p in group)
+                    if (p.name.StartsWith("Prop_"))
+                    {
+                        Vector3 local = building.InverseTransformPoint(p.position) - rp;
+                        props.Add(new Vector2(local.x, local.z));
+                    }
+        // Interior walls, so the hatch doesn't open right above one
+        var walls = new List<Rect>();
+        foreach (Transform c in building)
+            if (c.name.StartsWith("Interior_"))
+                walls.Add(new Rect(c.localPosition.x - rp.x - c.localScale.x / 2f - 0.5f, c.localPosition.z - rp.z - c.localScale.z / 2f - 0.5f,
+                                   c.localScale.x + 1f, c.localScale.z + 1f));
 
         float margin = HatchSize / 2f + 0.8f;
         float best = float.MaxValue;
@@ -407,7 +557,9 @@ public static class BuildingBuilder
             for (float z = -halfD + margin; z <= halfD - margin; z += 0.25f)
             {
                 if (hasWall && Mathf.Abs(z - wallZ) < HatchSize / 2f + 0.6f) continue;
+                var hole = new Rect(x - HatchSize / 2f, z - HatchSize / 2f, HatchSize, HatchSize);
                 bool clear = true;
+                foreach (var w in walls) if (w.Overlaps(hole)) { clear = false; break; }
                 foreach (var p in props)
                     if (Vector2.Distance(p, new Vector2(x, z)) < 1.8f) { clear = false; break; }
                 if (!clear) continue;

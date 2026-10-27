@@ -97,7 +97,12 @@ public class CityManager : NetworkBehaviour
 
         if (bakeNavMesh)
         {
-            foreach (var surface in FindObjectsByType<NavMeshSurface>()) surface.BuildNavMesh();
+            // Colliders only: litter, windows and leaves (no colliders) stay out of the NavMesh
+            foreach (var surface in FindObjectsByType<NavMeshSurface>())
+            {
+                surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+                surface.BuildNavMesh();
+            }
             PlaceMonsters();
         }
         Debug.Log($"CityManager: city seed {seed}, {Current.buildings.Count} buildings, {Current.lamps.Count} lamps " +

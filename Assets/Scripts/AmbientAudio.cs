@@ -3,8 +3,15 @@ using UnityEngine;
 // Put on any empty object in the scene (e.g. "Ambience"). Runs on every computer.
 // - A constant background drone/wind loop, crossfaded into itself so you can't hear the seam
 // - Random distant one-shots (clangs, barks, far-off screams) from random directions around you
+// Both are night sounds: they fade in as SkyCycle darkens the evening into night.
 public class AmbientAudio : MonoBehaviour
 {
+    [Header("Night")]
+    [Tooltip("The night sounds fade in over this stretch of the dusk-to-night darkness (0 = dusk, 1 = night).")]
+    public Vector2 nightFade = new Vector2(0.35f, 0.9f);
+    [Tooltip("Distant sounds only play once it's at least this dark.")]
+    [Range(0f, 1f)] public float distantSoundsFrom = 0.75f;
+
     [Header("Background loop")]
     public AudioClip ambienceLoop;
     [Range(0f, 1f)] public float ambienceVolume = 0.4f;
@@ -48,7 +55,8 @@ public class AmbientAudio : MonoBehaviour
 
         // Overall fade-in at scene start
         float master = fadeInTime > 0f ? Mathf.Clamp01((Time.time - startTime) / fadeInTime) : 1f;
-        float baseVol = ambienceVolume * master;
+        float night = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(nightFade.x, nightFade.y, SkyCycle.Darkness01));
+        float baseVol = ambienceVolume * master * night;
 
         float length = ambienceLoop.length;
         float fade = Mathf.Min(crossfadeTime, length * 0.45f);
@@ -110,6 +118,7 @@ public class AmbientAudio : MonoBehaviour
         Schedule();
 
         if (distantSounds == null || distantSounds.Length == 0) return;
+        if (SkyCycle.Darkness01 < distantSoundsFrom) return;   // still evening
 
         // Pick a random spot around whoever is listening
         Vector3 center = Camera.main != null ? Camera.main.transform.position : transform.position;
