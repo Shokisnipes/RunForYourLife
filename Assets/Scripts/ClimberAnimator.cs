@@ -112,7 +112,7 @@ public class ClimberAnimator : MonoBehaviour, IMonsterGrabber
         var state = ai.SyncedState;
         int mode = state == ClimberState.ClimbUp || state == ClimberState.ClimbOut ? 1
                  : state == ClimberState.ClimbDown ? 2
-                 : state == ClimberState.DropIn ? 3 : 0;
+                 : state == ClimberState.DropIn || state == ClimberState.LeapDown ? 3 : 0;
         bool running = mode == 0 && ai.SyncedRunning;
 
         float playback = 1f;

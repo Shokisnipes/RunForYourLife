@@ -8,6 +8,7 @@ public enum ClimberState
     Patrol, Investigate, Chase, Search,
     ToWall, ClimbUp, OnRoof, ToEdge, ClimbDown,   // up and down the outside walls
     ToHatch, DropIn, ToUnderHatch, ClimbOut,      // in and out through a roof hatch
+    Perch, LeapDown,                              // watching the door from the roof edge, jumping off a roof
 }
 
 // The Climber genome's monster: a lanky crawler that hunts on the streets and, when you hide inside, climbs the
@@ -90,6 +91,30 @@ public class ClimberAI : NetworkBehaviour
     [Tooltip("On a roof with no new sign of anyone for this long? Climbs back down and patrols.")]
     public float roofGiveUpTime = 15f;
 
+    [Header("Door camping (stops players trolling it in and out of a door)")]
+    [Tooltip("This far out in front of a door still counts as inside that building.")]
+    public float doorstepDepth = 3f;
+    [Tooltip("Half the width of the doorstep zone.")]
+    public float doorstepHalfWidth = 2f;
+    [Tooltip("You must stay out of its building this long before it climbs down / out after you.")]
+    public float leaveDelay = 1.5f;
+    [Tooltip("On the roof and you're this close to the door (inside or out)? It perches on the edge above the door.")]
+    public float doorNearDistance = 4f;
+    [Tooltip("Longest it waits on the perch before it goes for the hatch instead (so you can't just stay inside).")]
+    public float perchMaxTime = 8f;
+    [Tooltip("After a perch times out it won't perch on that building again for this long.")]
+    public float perchCooldown = 20f;
+    [Tooltip("How far in from the roof edge it crouches while perched.")]
+    public float perchInset = 0.8f;
+    [Tooltip("Step out within this distance of the wall below it while it's perched and it pounces.")]
+    public float pounceRange = 6f;
+
+    [Header("Leaping off roofs (when it can see you)")]
+    [Tooltip("How far out from the wall it lands.")]
+    public float leapDistance = 2f;
+    [Tooltip("Pause after landing before it moves.")]
+    public float leapLandPause = 0.3f;
+
     [Header("Roof hatch")]
     [Tooltip("Crouches at the open hatch, peering in, this long before it drops.")]
     public float hatchPeekTime = 1.2f;
@@ -111,13 +136,22 @@ public class ClimberAI : NetworkBehaviour
     bool holding, inPlay;
 
     // Climbing
-    class Roof { public Vector3 center, right, fwd; public float halfX, halfZ, topY; public RoofHatch hatch; }
+    class Roof
+    {
+        public Vector3 center, right, fwd; public float halfX, halfZ, topY; public RoofHatch hatch;
+        public bool hasDoor; public Vector3 door, doorOut;   // front door at ground level, and which way is outside
+    }
     struct ClimbPlan { public Vector3 foot, wallBase, wallTop, roofPoint, outward; }
     readonly List<Roof> roofs = new List<Roof>();
     Roof currentRoof;   // the roof it's on (null on the street)
     Roof indoorsRoof;   // the building it dropped into (null outside)
     Vector3 hatchFloor; // where it lands inside, under the hatch
     float hatchCloseAt = -1f;
+    float outsideSince = -1f;   // when its prey left the building it's in / on (-1 = they haven't)
+    bool leaping;               // the trip to the edge ends in a jump, not a climb down
+    Vector3 leapLanding;
+    Roof perchBlockedRoof;
+    float perchBlockedUntil;
     ClimbPlan plan;
     int climbPhase;
     float phaseStart;
@@ -127,7 +161,7 @@ public class ClimberAI : NetworkBehaviour
     bool OnRoof => currentRoof != null;
     bool Indoors => indoorsRoof != null;
     bool Climbing => state == ClimberState.ClimbUp || state == ClimberState.ClimbDown ||
-                     state == ClimberState.DropIn || state == ClimberState.ClimbOut;
+                     state == ClimberState.DropIn || state == ClimberState.ClimbOut || state == ClimberState.LeapDown;
 
     void Awake()
     {
@@ -219,6 +253,17 @@ public class ClimberAI : NetworkBehaviour
             var roof = BuildingAt(hatch.transform.position);
             if (roof != null) roof.hatch = hatch;
         }
+
+        // Front doors, from the giant's doorway markers
+        foreach (var rp in ReachPoint.All)
+        {
+            var roof = BuildingAt(rp.DoorPoint);
+            if (roof == null) continue;
+            Vector3 outward = -rp.Inward; outward.y = 0f;
+            roof.hasDoor = true;
+            roof.door = new Vector3(rp.DoorPoint.x, rp.transform.position.y, rp.DoorPoint.z);
+            roof.doorOut = outward.normalized;
+        }
     }
 
     bool shownActive = true;
@@ -275,6 +320,12 @@ public class ClimberAI : NetworkBehaviour
             if (state != ClimberState.Chase) GoAfter(lastSeenPosition, true);
         }
 
+        // Prey left its building a moment ago and hasn't come back: now it follows
+        if ((OnRoof || Indoors) && outsideSince >= 0f && Time.time - outsideSince >= leaveDelay &&
+            (state == ClimberState.OnRoof || state == ClimberState.Perch || state == ClimberState.ToHatch ||
+             state == ClimberState.Search || state == ClimberState.Investigate || state == ClimberState.Chase))
+            GoAfter(pointOfInterest, Time.time - lastSeenTime < 0.5f);
+
         switch (state)
         {
             case ClimberState.Patrol:      UpdatePatrol(); break;
@@ -284,12 +335,14 @@ public class ClimberAI : NetworkBehaviour
             case ClimberState.ToWall:      if (Arrived()) StartClimb(ClimberState.ClimbUp); break;
             case ClimberState.ClimbUp:     UpdateClimbUp(); break;
             case ClimberState.OnRoof:      UpdateOnRoof(); break;
-            case ClimberState.ToEdge:      if (Arrived()) StartClimb(ClimberState.ClimbDown); break;
+            case ClimberState.ToEdge:      if (Arrived()) StartClimb(leaping ? ClimberState.LeapDown : ClimberState.ClimbDown); break;
             case ClimberState.ClimbDown:   UpdateClimbDown(); break;
             case ClimberState.ToHatch:     UpdateToHatch(); break;
             case ClimberState.DropIn:      UpdateDropIn(); break;
             case ClimberState.ToUnderHatch: if (Arrived()) StartClimbOut(); break;
             case ClimberState.ClimbOut:    UpdateClimbOut(); break;
+            case ClimberState.Perch:       UpdatePerch(); break;
+            case ClimberState.LeapDown:    UpdateLeapDown(); break;
         }
 
         bool running = canRun && state == ClimberState.Chase && target != null &&
@@ -345,6 +398,10 @@ public class ClimberAI : NetworkBehaviour
                 agent.speed = huntSpeed;
                 agent.SetDestination(hatchFloor);
                 break;
+            case ClimberState.Perch:
+                agent.speed = huntSpeed;
+                agent.SetDestination(plan.roofPoint);
+                break;
         }
     }
 
@@ -354,12 +411,15 @@ public class ClimberAI : NetworkBehaviour
         pointOfInterest = point;
         if (Climbing) return;   // finish the climb first; it heads for the new spot after
         Roof building = BuildingAt(point);
+        if (building == null) building = Doorstep(point);   // just outside the door still counts as inside
+        Roof mine = OnRoof ? currentRoof : indoorsRoof;
+        if (mine != null && building == mine) outsideSince = -1f;   // came back: forget about following
 
         // Inside a building: hunt in here, or climb back out through the hatch if you got out
         if (Indoors && !IsReachable(point))
         {
             if (building == indoorsRoof) SetState(ClimberState.Investigate);   // same building: get as close as it can
-            else if (state != ClimberState.ToUnderHatch) SetState(ClimberState.ToUnderHatch);
+            else if (state != ClimberState.ToUnderHatch && ReadyToLeave()) SetState(ClimberState.ToUnderHatch);
             return;
         }
 
@@ -367,13 +427,15 @@ public class ClimberAI : NetworkBehaviour
         {
             if (building == currentRoof)
             {
-                if (state != ClimberState.OnRoof && state != ClimberState.ToHatch) SetState(ClimberState.OnRoof);
+                if (state != ClimberState.OnRoof && state != ClimberState.ToHatch && state != ClimberState.Perch)
+                    SetState(ClimberState.OnRoof);
                 return;
             }
-            if (state != ClimberState.ToEdge && PlanClimb(currentRoof, point, false))
+            if (state != ClimberState.ToEdge && ReadyToLeave() && PlanClimb(currentRoof, point, false))
             {
                 givingUp = false;
-                SetState(ClimberState.ToEdge);   // climb down toward it
+                leaping = seenIt;                 // can see you: jumps down instead of climbing
+                SetState(ClimberState.ToEdge);
             }
             return;
         }
@@ -450,6 +512,17 @@ public class ClimberAI : NetworkBehaviour
         // Nothing new for a while? Climb down and patrol.
         if (Time.time - Mathf.Max(lastSeenTime, heardTime, stateStartTime) > roofGiveUpTime) { GiveUpAndClimbDown(); return; }
 
+        // Prey near the door: perch on the edge above it (unless it just tried that here)
+        bool perchBlocked = perchBlockedRoof == currentRoof && Time.time < perchBlockedUntil;
+        if (!perchBlocked && PreyNearDoor(currentRoof) && PlanClimb(currentRoof, currentRoof.door, false))
+        {
+            // Right at the edge, so it can see over the parapet
+            Vector3 edge = plan.wallTop - plan.outward * wallGap;
+            if (RoofSpot(currentRoof, edge - plan.outward * perchInset, out var perchSpot)) plan.roofPoint = perchSpot;
+            SetState(ClimberState.Perch);
+            return;
+        }
+
         // Someone's inside and there's a hatch: go in
         if (currentRoof.hatch != null && SomeoneInside(currentRoof) && HatchFloor(currentRoof, out hatchFloor))
         {
@@ -466,7 +539,122 @@ public class ClimberAI : NetworkBehaviour
     void GiveUpAndClimbDown()
     {
         Vector3 away = homePosition;
-        if (PlanClimb(currentRoof, away, false)) { givingUp = true; SetState(ClimberState.ToEdge); }
+        if (PlanClimb(currentRoof, away, false)) { givingUp = true; leaping = false; SetState(ClimberState.ToEdge); }
+    }
+
+    // ---------- Door camping ----------
+
+    // Has its prey been out of its building long enough to bother following?
+    bool ReadyToLeave()
+    {
+        if (outsideSince < 0f) outsideSince = Time.time;
+        return Time.time - outsideSince >= leaveDelay;
+    }
+
+    // The few metres right outside a front door belong to that building
+    Roof Doorstep(Vector3 p)
+    {
+        foreach (var r in roofs)
+        {
+            if (!r.hasDoor) continue;
+            Vector3 d = p - r.door;
+            float outward = Vector3.Dot(d, r.doorOut);
+            float side = Vector3.Dot(d, Vector3.Cross(Vector3.up, r.doorOut));
+            if (outward > -0.5f && outward < doorstepDepth && Mathf.Abs(side) < doorstepHalfWidth && p.y < r.topY) return r;
+        }
+        return null;
+    }
+
+    bool PreyNearDoor(Roof roof)
+    {
+        if (!roof.hasDoor) return false;
+        Vector3 d = pointOfInterest - roof.door;
+        d.y = 0f;
+        return d.magnitude < doorNearDistance + doorstepDepth * 0.5f;
+    }
+
+    // On the roof edge above the door, looking down at the street. Pounces on anyone who steps out under it.
+    void UpdatePerch()
+    {
+        if (!PreyNearDoor(currentRoof)) { SetState(ClimberState.OnRoof); return; }   // they went deeper inside
+
+        if (Time.time - stateStartTime > perchMaxTime)
+        {
+            perchBlockedRoof = currentRoof;           // no waiting forever: go for the hatch instead
+            perchBlockedUntil = Time.time + perchCooldown;
+            SetState(ClimberState.OnRoof);
+            return;
+        }
+
+        if (Arrived())
+        {
+            agent.isStopped = true;
+            FaceTowards(transform.position + plan.outward);
+        }
+
+        // Someone right below it, outside: jump on them
+        bool sees = target != null && target.IsSpawned && !target.IsGrabbed && Time.time - lastSeenTime < 0.5f;
+        if (sees && BuildingAt(target.transform.position) == null)
+        {
+            Vector3 below = target.transform.position - plan.wallBase;
+            below.y = 0f;
+            if (below.magnitude < pounceRange)
+            {
+                leaping = true;
+                StartClimb(ClimberState.LeapDown);
+            }
+        }
+    }
+
+    // Onto the edge, then off it in an arc, landing a couple of metres out (toward its prey if it can see them)
+    void UpdateLeapDown()
+    {
+        transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(plan.outward), 540f * Time.deltaTime);
+        switch (climbPhase)
+        {
+            case 0:   // up onto the edge
+                if (MantleOverTime(phaseFrom, plan.wallTop, plan.wallTop.y + 0.3f, 0.3f))
+                {
+                    leapLanding = LeapLanding();
+                    NextPhase();
+                }
+                break;
+            case 1:   // fall
+                float t = Time.time - phaseStart;
+                float height = Mathf.Max(0.1f, phaseFrom.y - leapLanding.y);
+                float k = Mathf.Clamp01(t / Mathf.Sqrt(2f * height / 9.81f));
+                Vector3 flat = Vector3.Lerp(phaseFrom, leapLanding, k);
+                float y = phaseFrom.y - 0.5f * 9.81f * t * t;
+                if (k >= 1f || y <= leapLanding.y) { transform.position = leapLanding; NextPhase(); }
+                else transform.position = new Vector3(flat.x, y, flat.z);
+                break;
+            case 2:   // landed
+                if (Time.time - phaseStart < leapLandPause) break;
+                currentRoof = null;
+                leaping = false;
+                outsideSince = -1f;
+                LandOnNavMesh(leapLanding);
+                SetState(ClimberState.Search);
+                bool sees = target != null && Time.time - lastSeenTime < loseSightTime;
+                GoAfter(sees ? target.transform.position : pointOfInterest, sees);
+                break;
+        }
+    }
+
+    Vector3 LeapLanding()
+    {
+        Vector3 aim = plan.wallBase + plan.outward * leapDistance;
+        // Can see its prey just below? Land closer to them (but never more than twice the normal distance out)
+        if (target != null && Time.time - lastSeenTime < 0.5f)
+        {
+            Vector3 toPrey = target.transform.position - plan.wallBase;
+            toPrey.y = 0f;
+            if (toPrey.magnitude < leapDistance * 2f && Vector3.Dot(toPrey, plan.outward) > 0.3f)
+                aim = plan.wallBase + toPrey * 0.8f;
+        }
+        aim.y = plan.wallBase.y;
+        if (NavMesh.SamplePosition(aim, out var hit, 2f, Filter) && hit.position.y < plan.wallTop.y - 2f) return hit.position;
+        return plan.foot;
     }
 
     // ---------- Roof hatch ----------
@@ -582,6 +770,7 @@ public class ClimberAI : NetworkBehaviour
     {
         agent.ResetPath();
         agent.enabled = false;   // scripted from here until it's back on a NavMesh
+        outsideSince = -1f;      // a fresh building: its prey has to leave this one before it follows again
         climbPhase = 0;
         phaseStart = Time.time;
         phaseFrom = transform.position;
@@ -778,7 +967,8 @@ public class ClimberAI : NetworkBehaviour
     FirstPersonController FindVisiblePlayer()
     {
         if (Time.time < ignorePlayersUntil) return null;
-        Vector3 eye = transform.position + Vector3.up * eyeHeight;
+        // Perched: its head pokes out over the roof edge, looking down at the street
+        Vector3 eye = state == ClimberState.Perch ? plan.wallTop + Vector3.up * 0.5f : transform.position + Vector3.up * eyeHeight;
         FirstPersonController best = null;
         float bestDist = float.MaxValue;
 

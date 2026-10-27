@@ -87,7 +87,8 @@ public class ClimberAudio : MonoBehaviour
         var state = ai.SyncedState;
         if (state == ClimberState.Chase && lastState != ClimberState.Chase) Call();
         // Heavy thump when it lands inside after dropping through a hatch
-        if (lastState == ClimberState.DropIn && state != ClimberState.DropIn)
+        bool wasFalling = lastState == ClimberState.DropIn || lastState == ClimberState.LeapDown;
+        if (wasFalling && state != ClimberState.DropIn && state != ClimberState.LeapDown)
             PlayRandom(steps, footstepClips, landVolume, 0.7f, 0.8f);
         lastState = state;
         if (Time.time >= nextCall) Call();
