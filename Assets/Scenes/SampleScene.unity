@@ -67974,8 +67974,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameFlow
   ShowTopMostFoldoutHeaderGroup: 1
-  prepSeconds: 360
-  nightSeconds: 600
+  prepSeconds: 1
+  nightSeconds: 30
 --- !u!114 &1018997749
 MonoBehaviour:
   m_ObjectHideFlags: 0
