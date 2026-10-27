@@ -20,6 +20,8 @@ public class ClimberAudio : MonoBehaviour
     [Range(0f, 1f)] public float climbStepVolume = 0.5f;
     [Range(0f, 1f)] public float callVolume = 1f;
     [Range(0f, 1f)] public float grabVolume = 1f;
+    [Tooltip("Landing after dropping through a roof hatch.")]
+    [Range(0f, 1f)] public float landVolume = 1f;
     [Tooltip("How far its steps carry.")]
     public float stepRange = 25f;
     [Tooltip("How far its call carries.")]
@@ -55,6 +57,9 @@ public class ClimberAudio : MonoBehaviour
         // Shrieks as it starts a chase, and calls out now and then
         var state = ai.SyncedState;
         if (state == ClimberState.Chase && lastState != ClimberState.Chase) Call();
+        // Heavy thump when it lands inside after dropping through a hatch
+        if (lastState == ClimberState.DropIn && state != ClimberState.DropIn)
+            PlayRandom(steps, footstepClips, landVolume, 0.7f, 0.8f);
         lastState = state;
         if (Time.time >= nextCall) Call();
     }
@@ -68,6 +73,7 @@ public class ClimberAudio : MonoBehaviour
 
         int mode = climberAnim.Mode;
         var info = anim.GetCurrentAnimatorStateInfo(0);
+        if (mode == 3) return;   // falling through a hatch
         int count = mode != 0 ? climbSteps : climberAnim.Running ? runSteps : crawlSteps;
         bool moving = mode == 1 || mode == 2 || (mode == 0 && climberAnim.Moving);
 

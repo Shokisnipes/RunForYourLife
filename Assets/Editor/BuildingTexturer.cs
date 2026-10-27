@@ -222,7 +222,7 @@ public class BuildingTexturer : EditorWindow
                 Material m = null;
                 if (part.name.StartsWith("Wall_")) m = wall;                       // walls + roof edge
                 else if (part.name.StartsWith("Interior_")) m = interiorWallMaterial != null ? interiorWallMaterial : wall;
-                else if (part.name == "Roof") m = roofMaterial;
+                else if (part.name == "Roof" || part.name.StartsWith("Roof_")) m = roofMaterial;   // split around a hatch
                 else if (part.name == "Floor") m = floorMaterial;
                 else if (part.name.StartsWith("Sidewalk")) m = sidewalkMaterial;
                 if (m == null) continue;

@@ -17,7 +17,7 @@ when it's done and tested.
   `MonsterAudio` (breathing, footsteps, growls, scream, chase music, heartbeat, death sounds). `PoseAdjuster` (per-bone
   rotation tweaks). `ReachPoint` = doorway marker the giant crouches at.
 - **Climber** (Climber genome; the giant hides): `ClimberAI` (host only; crawls the streets on NavMesh agent type
-  "Climber", too tall for doorways; scripted climb up/down walls to the roof) + `ClimberAnimator` on its Model child + `ClimberAudio` (steps timed to the anim loop, call, grab).
+  "Climber", too tall for doorways; scripted climb up/down walls to the roof, drops in and climbs out through `RoofHatch`) + `ClimberAnimator` on its Model child + `ClimberAudio` (steps timed to the anim loop, call, grab).
   Each monster only shows up when the genome's Access matches it (synced `netInPlay`).
 - **Senses:** `NoiseSystem.Emit(pos, radius)`; `FootstepNoise` sends player steps to the host by RPC. Flashlight on or
   standing under a lit `StreetLamp` makes players visible from further.
@@ -25,7 +25,7 @@ when it's done and tested.
 - **World:** `BoxUV` gives scaled cubes real-world texture tiling. `AmbientAudio`, `WindowFlicker`, `LobbyCameraDrift`.
 
 ## Editor tools (Tools > RunForYourLife)
-Building Generator, Upgrade Existing Buildings, Add Reach Points To Existing Buildings, Building Texturer (Use Texture
+Building Generator (adds a roof hatch), Upgrade Existing Buildings, Add Roof Hatches To Existing Buildings, Add Reach Points To Existing Buildings, Building Texturer (Use Texture
 Set), Street Lamps, Monster Animator Builder, Climber Setup (clips, agent type, controller, scene object, NavMesh bake),
 Make It Look Good. Prefer improving these tools over hand-editing scenes.
 

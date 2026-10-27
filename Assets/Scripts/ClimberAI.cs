@@ -3,7 +3,12 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
 
-public enum ClimberState { Patrol, Investigate, Chase, Search, ToWall, ClimbUp, OnRoof, ToEdge, ClimbDown }
+public enum ClimberState
+{
+    Patrol, Investigate, Chase, Search,
+    ToWall, ClimbUp, OnRoof, ToEdge, ClimbDown,   // up and down the outside walls
+    ToHatch, DropIn, ToUnderHatch, ClimbOut,      // in and out through a roof hatch
+}
 
 // The Climber genome's monster: a lanky crawler that hunts on the streets and, when you hide inside, climbs the
 // building's wall to the roof. Host runs all of this; everyone else sees it through NetworkTransform and the
@@ -17,6 +22,9 @@ public class ClimberAI : NetworkBehaviour
     readonly NetworkVariable<ClimberState> netState = new NetworkVariable<ClimberState>(ClimberState.Patrol);
     readonly NetworkVariable<bool> netRunning = new NetworkVariable<bool>();
     readonly NetworkVariable<bool> netInPlay = new NetworkVariable<bool>(false);
+    // The roof hatch it's using: the lid opens on every client
+    readonly NetworkVariable<bool> netHatchOpen = new NetworkVariable<bool>();
+    readonly NetworkVariable<Vector3> netHatchPos = new NetworkVariable<Vector3>();
     public ClimberState SyncedState => netState.Value;
     public bool SyncedRunning => netRunning.Value;
 
@@ -80,6 +88,14 @@ public class ClimberAI : NetworkBehaviour
     [Tooltip("On a roof with no new sign of anyone for this long? Climbs back down and patrols.")]
     public float roofGiveUpTime = 15f;
 
+    [Header("Roof hatch")]
+    [Tooltip("Crouches at the open hatch, peering in, this long before it drops.")]
+    public float hatchPeekTime = 1.2f;
+    [Tooltip("Pause after landing inside before it moves.")]
+    public float landPause = 0.6f;
+    [Tooltip("Lid closes this long after it's through.")]
+    public float hatchCloseDelay = 1.5f;
+
     [Header("Search")]
     public float searchDuration = 12f;
     public float searchArea = 12f;
@@ -93,10 +109,13 @@ public class ClimberAI : NetworkBehaviour
     bool holding, inPlay;
 
     // Climbing
-    class Roof { public Vector3 center, right, fwd; public float halfX, halfZ, topY; }
+    class Roof { public Vector3 center, right, fwd; public float halfX, halfZ, topY; public RoofHatch hatch; }
     struct ClimbPlan { public Vector3 foot, wallBase, wallTop, roofPoint, outward; }
     readonly List<Roof> roofs = new List<Roof>();
     Roof currentRoof;   // the roof it's on (null on the street)
+    Roof indoorsRoof;   // the building it dropped into (null outside)
+    Vector3 hatchFloor; // where it lands inside, under the hatch
+    float hatchCloseAt = -1f;
     ClimbPlan plan;
     int climbPhase;
     float phaseStart;
@@ -104,7 +123,9 @@ public class ClimberAI : NetworkBehaviour
     bool givingUp;      // climbing down because it lost interest, not to chase someone
 
     bool OnRoof => currentRoof != null;
-    bool Climbing => state == ClimberState.ClimbUp || state == ClimberState.ClimbDown;
+    bool Indoors => indoorsRoof != null;
+    bool Climbing => state == ClimberState.ClimbUp || state == ClimberState.ClimbDown ||
+                     state == ClimberState.DropIn || state == ClimberState.ClimbOut;
 
     void Awake()
     {
@@ -149,24 +170,52 @@ public class ClimberAI : NetworkBehaviour
         SetState(ClimberState.Patrol);
     }
 
-    // Every building's roof, from the "Roof" boxes the Building Generator makes
+    // Every building's roof, from the "Roof" boxes the Building Generator makes. A roof with a hatch is split into
+    // pieces (Roof, Roof_N, Roof_W, Roof_E); they're merged back into one footprint per building.
     void FindRoofs()
     {
         roofs.Clear();
+        var pieces = new Dictionary<Transform, List<BoxCollider>>();
         foreach (var box in FindObjectsByType<BoxCollider>())
         {
-            if (box.name != "Roof") continue;
-            var t = box.transform;
-            Vector3 s = t.lossyScale;
+            if (box.name != "Roof" && !box.name.StartsWith("Roof_")) continue;
+            var building = box.transform.parent != null ? box.transform.parent : box.transform;
+            if (!pieces.TryGetValue(building, out var list)) pieces[building] = list = new List<BoxCollider>();
+            list.Add(box);
+        }
+
+        foreach (var pair in pieces)
+        {
+            Transform space = pair.Key;
+            Vector3 min = Vector3.positiveInfinity, max = Vector3.negativeInfinity;
+            float topY = float.NegativeInfinity;
+            foreach (var box in pair.Value)
+                for (int c = 0; c < 8; c++)
+                {
+                    Vector3 corner = box.center + Vector3.Scale(box.size * 0.5f,
+                        new Vector3((c & 1) == 0 ? -1 : 1, (c & 2) == 0 ? -1 : 1, (c & 4) == 0 ? -1 : 1));
+                    Vector3 world = box.transform.TransformPoint(corner);
+                    Vector3 local = space.InverseTransformPoint(world);
+                    min = Vector3.Min(min, local);
+                    max = Vector3.Max(max, local);
+                    topY = Mathf.Max(topY, world.y);
+                }
+            Vector3 s = space.lossyScale;
             roofs.Add(new Roof
             {
-                center = t.TransformPoint(box.center),
-                right = t.right,
-                fwd = t.forward,
-                halfX = box.size.x * 0.5f * Mathf.Abs(s.x),
-                halfZ = box.size.z * 0.5f * Mathf.Abs(s.z),
-                topY = t.TransformPoint(box.center).y + box.size.y * 0.5f * Mathf.Abs(s.y),
+                center = space.TransformPoint((min + max) * 0.5f),
+                right = space.right,
+                fwd = space.forward,
+                halfX = (max.x - min.x) * 0.5f * Mathf.Abs(s.x),
+                halfZ = (max.z - min.z) * 0.5f * Mathf.Abs(s.z),
+                topY = topY,
             });
+        }
+
+        foreach (var hatch in RoofHatch.All)
+        {
+            var roof = BuildingAt(hatch.transform.position);
+            if (roof != null) roof.hatch = hatch;
         }
     }
 
@@ -200,6 +249,8 @@ public class ClimberAI : NetworkBehaviour
     void Update()
     {
         if (IsServer && IsSpawned && netInPlay.Value != inPlay) netInPlay.Value = inPlay;
+        if (IsSpawned) RoofHatch.SetOpenAt(netHatchPos.Value, netHatchOpen.Value);
+        if (IsServer && hatchCloseAt > 0f && Time.time >= hatchCloseAt) { hatchCloseAt = -1f; netHatchOpen.Value = false; }
         var flow = GameFlow.Instance;
         bool active = (flow == null || flow.MonsterActive) && netInPlay.Value;
         if (IsSpawned) UpdateAsleep(active);
@@ -233,6 +284,10 @@ public class ClimberAI : NetworkBehaviour
             case ClimberState.OnRoof:      UpdateOnRoof(); break;
             case ClimberState.ToEdge:      if (Arrived()) StartClimb(ClimberState.ClimbDown); break;
             case ClimberState.ClimbDown:   UpdateClimbDown(); break;
+            case ClimberState.ToHatch:     UpdateToHatch(); break;
+            case ClimberState.DropIn:      UpdateDropIn(); break;
+            case ClimberState.ToUnderHatch: if (Arrived()) StartClimbOut(); break;
+            case ClimberState.ClimbOut:    UpdateClimbOut(); break;
         }
 
         bool running = canRun && state == ClimberState.Chase && target != null &&
@@ -280,6 +335,14 @@ public class ClimberAI : NetworkBehaviour
                 agent.speed = huntSpeed;
                 agent.SetDestination(plan.roofPoint);
                 break;
+            case ClimberState.ToHatch:
+                agent.speed = huntSpeed;
+                if (RoofSpot(currentRoof, currentRoof.hatch.transform.position, out var rim)) agent.SetDestination(rim);
+                break;
+            case ClimberState.ToUnderHatch:
+                agent.speed = huntSpeed;
+                agent.SetDestination(hatchFloor);
+                break;
         }
     }
 
@@ -290,9 +353,21 @@ public class ClimberAI : NetworkBehaviour
         if (Climbing) return;   // finish the climb first; it heads for the new spot after
         Roof building = BuildingAt(point);
 
+        // Inside a building: hunt in here, or climb back out through the hatch if you got out
+        if (Indoors && !IsReachable(point))
+        {
+            if (building == indoorsRoof) SetState(ClimberState.Investigate);   // same building: get as close as it can
+            else if (state != ClimberState.ToUnderHatch) SetState(ClimberState.ToUnderHatch);
+            return;
+        }
+
         if (OnRoof)
         {
-            if (building == currentRoof) { if (state != ClimberState.OnRoof) SetState(ClimberState.OnRoof); return; }
+            if (building == currentRoof)
+            {
+                if (state != ClimberState.OnRoof && state != ClimberState.ToHatch) SetState(ClimberState.OnRoof);
+                return;
+            }
             if (state != ClimberState.ToEdge && PlanClimb(currentRoof, point, false))
             {
                 givingUp = false;
@@ -322,6 +397,7 @@ public class ClimberAI : NetworkBehaviour
     void UpdatePatrol()
     {
         if (OnRoof) { GiveUpAndClimbDown(); return; }
+        if (Indoors) { if (state != ClimberState.ToUnderHatch) SetState(ClimberState.ToUnderHatch); return; }
         if (!Arrived()) return;
         if (pauseUntil == 0f) pauseUntil = Time.time + patrolPause;
         if (Time.time < pauseUntil) return;
@@ -372,7 +448,14 @@ public class ClimberAI : NetworkBehaviour
         // Nothing new for a while? Climb down and patrol.
         if (Time.time - Mathf.Max(lastSeenTime, heardTime, stateStartTime) > roofGiveUpTime) { GiveUpAndClimbDown(); return; }
 
-        // Crawl to the spot right above where it thinks you are (task 4b: the hatch drop goes here)
+        // Someone's inside and there's a hatch: go in
+        if (currentRoof.hatch != null && SomeoneInside(currentRoof) && HatchFloor(currentRoof, out hatchFloor))
+        {
+            SetState(ClimberState.ToHatch);
+            return;
+        }
+
+        // No hatch: crawl to the spot right above where it thinks you are and wait
         if (Time.time < nextRepath) return;
         nextRepath = Time.time + 0.5f;
         if (RoofSpot(currentRoof, pointOfInterest, out var spot)) agent.SetDestination(spot);
@@ -382,6 +465,113 @@ public class ClimberAI : NetworkBehaviour
     {
         Vector3 away = homePosition;
         if (PlanClimb(currentRoof, away, false)) { givingUp = true; SetState(ClimberState.ToEdge); }
+    }
+
+    // ---------- Roof hatch ----------
+
+    // Does it think its prey is in the room below this roof?
+    bool SomeoneInside(Roof roof) => BuildingAt(pointOfInterest) == roof && pointOfInterest.y < roof.topY - 1f;
+
+    // Where it lands on the floor below the hatch
+    bool HatchFloor(Roof roof, out Vector3 floor)
+    {
+        floor = Vector3.zero;
+        Vector3 h = roof.hatch.transform.position;
+        if (!Physics.Raycast(new Vector3(h.x, roof.topY - 0.5f, h.z), Vector3.down, out var hit, roof.topY + 5f, ~0, QueryTriggerInteraction.Ignore))
+            return false;
+        if (!NavMesh.SamplePosition(hit.point, out var nav, 1.5f, Filter) || nav.position.y > roof.topY - 2f) return false;
+        floor = nav.position;
+        return true;
+    }
+
+    void SetHatch(bool open)
+    {
+        Roof roof = OnRoof ? currentRoof : indoorsRoof;
+        if (roof == null || roof.hatch == null) return;
+        netHatchPos.Value = roof.hatch.transform.position;
+        netHatchOpen.Value = open;
+        hatchCloseAt = -1f;
+    }
+
+    // Crawl to the hatch, open it, peer in, drop
+    void UpdateToHatch()
+    {
+        if (!SomeoneInside(currentRoof)) { SetHatch(false); SetState(ClimberState.OnRoof); return; }
+        if (pauseUntil == 0f)
+        {
+            if (!Arrived()) return;
+            pauseUntil = Time.time + hatchPeekTime;   // there: lid opens, it looks in
+            agent.isStopped = true;
+            SetHatch(true);
+        }
+        FaceTowards(currentRoof.hatch.transform.position);
+        if (Time.time >= pauseUntil) StartClimb(ClimberState.DropIn);
+    }
+
+    // Over the hole, fall through, land in the room
+    void UpdateDropIn()
+    {
+        Vector3 hole = currentRoof.hatch.transform.position;
+        switch (climbPhase)
+        {
+            case 0:   // shuffle over the opening
+                if (MantleOverTime(phaseFrom, new Vector3(hole.x, currentRoof.topY, hole.z), currentRoof.topY + 0.3f, 0.35f)) NextPhase();
+                break;
+            case 1:   // fall
+                float t = Time.time - phaseStart;
+                Vector3 p = new Vector3(hole.x, phaseFrom.y - 0.5f * 9.81f * t * t, hole.z);
+                if (p.y <= hatchFloor.y) { p = hatchFloor; NextPhase(); }
+                transform.position = p;
+                break;
+            case 2:   // crouched where it landed
+                if (Time.time - phaseStart < landPause) break;
+                indoorsRoof = currentRoof;
+                currentRoof = null;
+                LandOnNavMesh(hatchFloor);
+                hatchCloseAt = Time.time + hatchCloseDelay;
+                SetState(ClimberState.Search);
+                bool sees = target != null && Time.time - lastSeenTime < loseSightTime;
+                GoAfter(sees ? target.transform.position : pointOfInterest, sees);
+                break;
+        }
+    }
+
+    void StartClimbOut()
+    {
+        SetHatch(true);
+        StartClimb(ClimberState.ClimbOut);
+    }
+
+    // Up through the hatch from below and out onto the roof
+    void UpdateClimbOut()
+    {
+        Roof roof = indoorsRoof;
+        Vector3 hole = roof.hatch.transform.position;
+        float climbTop = roof.topY - climbFinishBelow;
+        switch (climbPhase)
+        {
+            case 0:   // under the opening
+                if (MoveOverTime(phaseFrom, new Vector3(hole.x, phaseFrom.y, hole.z), 0.3f)) NextPhase();
+                break;
+            case 1:   // climb up
+                Vector3 p = transform.position;
+                p.y = Mathf.MoveTowards(p.y, climbTop, climbSpeed * Time.deltaTime);
+                transform.position = p;
+                if (p.y >= climbTop - 0.01f) NextPhase();
+                break;
+            case 2:   // out onto the roof beside the hatch
+                if (!RoofSpot(roof, hole + roof.right * 1.2f, out var spot)) spot = new Vector3(hole.x, roof.topY, hole.z);
+                if (MantleOverTime(phaseFrom, spot, roof.topY + 0.4f, mantleTime))
+                {
+                    currentRoof = roof;
+                    indoorsRoof = null;
+                    LandOnNavMesh(spot);
+                    hatchCloseAt = Time.time + hatchCloseDelay;
+                    SetState(ClimberState.OnRoof);
+                    GoAfter(pointOfInterest, false);
+                }
+                break;
+        }
     }
 
     // ---------- Climbing ----------

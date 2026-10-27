@@ -45,7 +45,7 @@ public class ClimberAnimator : MonoBehaviour, IMonsterGrabber
 
     // Read by ClimberAudio to time the steps
     public Animator Anim => anim;
-    public int Mode { get; private set; }        // 0 ground, 1 climbing up, 2 climbing down
+    public int Mode { get; private set; }        // 0 ground, 1 climbing up, 2 climbing down, 3 dropping through a hatch
     public bool Running { get; private set; }
     public bool Moving => flatSpeed > 0.3f;
 
@@ -85,13 +85,15 @@ public class ClimberAnimator : MonoBehaviour, IMonsterGrabber
         verticalSpeed = Mathf.Lerp(verticalSpeed, Mathf.Abs(v.y), k);
 
         var state = ai.SyncedState;
-        int mode = state == ClimberState.ClimbUp ? 1 : state == ClimberState.ClimbDown ? 2 : 0;
+        int mode = state == ClimberState.ClimbUp || state == ClimberState.ClimbOut ? 1
+                 : state == ClimberState.ClimbDown ? 2
+                 : state == ClimberState.DropIn ? 3 : 0;
         bool running = mode == 0 && ai.SyncedRunning;
 
         float playback = 1f;
-        if (mode != 0) playback = verticalSpeed / climbClipSpeed;
+        if (mode == 1 || mode == 2) playback = verticalSpeed / climbClipSpeed;
         else if (flatSpeed > 0.3f) playback = flatSpeed / (running ? runClipSpeed : crawlClipSpeed);
-        if (mode != 0 && verticalSpeed < 0.2f) playback = 1f;   // pulling itself over the edge
+        if ((mode == 1 || mode == 2) && verticalSpeed < 0.2f) playback = 1f;   // pulling itself over the edge
 
         Mode = mode;
         Running = running;

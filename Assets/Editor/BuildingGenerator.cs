@@ -13,6 +13,7 @@ public class BuildingGenerator : EditorWindow
     float doorHeight = 2.3f;
     float doorOffset = 0f;      // slide the door left/right along the front wall
     bool addInteriorWall = false;
+    bool addRoofHatch = true;   // hatch the Climber drops in through
     bool addReverb = true;
     Material wallMaterial;
     BuildingDetails.Options details = BuildingDetails.Options.Default;
@@ -51,6 +52,7 @@ public class BuildingGenerator : EditorWindow
         }
         details.parapet = EditorGUILayout.Toggle("Roof Edge (Parapet)", details.parapet);
         details.roofClutter = EditorGUILayout.Toggle("Rooftop Clutter", details.roofClutter);
+        addRoofHatch = EditorGUILayout.Toggle(new GUIContent("Roof Hatch", "A hatch the Climber can drop in through"), addRoofHatch);
         details.sidewalk = EditorGUILayout.Toggle("Sidewalk", details.sidewalk);
         if (details.sidewalk)
         {
@@ -121,6 +123,9 @@ public class BuildingGenerator : EditorWindow
 
         // Windows, roof edge, rooftop clutter, sidewalk
         BuildingDetails.Add(root.transform, width, depth, height, t, doorOffset, doorWidth, details);
+
+        // Hatch in the roof: the Climber drops in through it
+        if (addRoofHatch) RoofHatchTool.Add(root.transform);
 
         // Doorway marker for the giant: it crouches here and reaches in
         AddReachPoint(root.transform, doorOffset, frontZ);

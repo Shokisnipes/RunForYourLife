@@ -300,6 +300,17 @@ public class ClimberSetup : EditorWindow
         return root;
     }
 
+    // Called after building changes (e.g. roof hatches) so the climber's NavMesh matches the roofs
+    public static void BakeClimberNavMesh()
+    {
+        for (int i = 0; i < NavMesh.GetSettingsCount(); i++)
+        {
+            var s = NavMesh.GetSettingsByIndex(i);
+            if (NavMesh.GetSettingsNameFromID(s.agentTypeID) == AgentName) { Bake(s.agentTypeID); return; }
+        }
+        Debug.LogWarning("No Climber agent type yet: run Tools > RunForYourLife > Climber Setup.");
+    }
+
     // Its own NavMeshSurface, same settings as the giant's, baked for the Climber agent type
     static void Bake(int agentType)
     {

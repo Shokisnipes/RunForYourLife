@@ -30,9 +30,9 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
 - [x] **3. Barricades (M, Sonnet).** Players hold E at a doorway/window to board it during prep (limited planks,
   Inspector value). A boarded doorway disables its ReachPoint so the giant can't reach in. Boards are networked
   objects. Files: ReachPoint.cs, MonsterAI.cs (FindReachPoint).
-- [ ] **4. Climber access (L, Opus).** Needs the climber model first (CLAUDE.md Assets). Split:
+- [x] **4. Climber access (L, Opus).** Needs the climber model first (CLAUDE.md Assets). Split:
   [x] 4a) climber moves on streets + climbs a building wall to the roof (scripted climb; ClimberAI, Climber Setup tool);
-  4b) roof hatch: drops inside through a hatch the building generator adds. Barricades don't stop it.
+  [x] 4b) roof hatch: drops inside through a hatch the building generator adds. Barricades don't stop it.
 - [ ] **5. Clues (S, Sonnet).** Three clue prefabs spawned at prep start based on the genome: claw marks high on a wall
   (Climber), a carcass with eyes untouched (not Sight), one radio line (random). Simple decals/props are fine.
 - [ ] **6. Scouts (L, Opus).** Needs a scout model first. Split: 6a) small scout AI (wander, flee light or noise
