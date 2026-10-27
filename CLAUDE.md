@@ -26,7 +26,10 @@ when it's done and tested.
 - **Player body:** `PlayerAnimator` on the Player's Model child (Martha, Assets/Characters/Martha), every client:
   reads movement from position changes, 2D strafe blend trees (stand/crouch) with clips at their natural speeds and
   playback sped up past them; your own neck/head is shrunk and the body slides back behind the camera (more when
-  looking down); other players' heads follow their synced pitch. Built by Tools > Player Model Setup.
+  looking down); other players' heads follow their synced pitch. Built by Tools > Player Model Setup, which also
+  turns each Mixamo loop so it travels the way its name says (table in PlayerModelSetup.cs) and places it in the
+  blend tree at its measured speed. `PlayerCover` (Player root, runs after the controller): crouch by a wall =
+  cover (back to wall, cover sneak, view eased off the wall), lean out at the wall's end; synced to others.
 - **Feel:** `CameraShake` (on the player camera), `Flashlight` (procedural cookie), head bob in FirstPersonController.
 - **Sky:** `SkyCycle` (on the Directional Light, every client, from the synced GameFlow clock) fades a fall evening
   (~8 pm, sun just set) into night over the prep phase: light, ambient probe, fog and the `RunForYourLife/Sky` shader
@@ -59,7 +62,8 @@ CityGenerator) over hand-editing scenes; the scene has no buildings, the city is
   the floor; MonsterAnimator snaps the model to the real floor.
 - Mixamo clips: Rig = Humanoid; Loop Time on looping clips; Root Transform all Bake Into Pose, Position (Y) Based Upon
   Feet; rename clips from "mixamo.com" before using them. Exception: a clip downloaded without "In Place" (it walks
-  off) must NOT bake XZ into the pose, or the body drifts and snaps back each loop.
+  off) must NOT bake XZ into the pose, or the body drifts and snaps back each loop. Use Root Rotation "Based
+  Upon: Original" (Body Orientation skews strafes), then fix clips authored at an angle with the rotation offset.
 - ProBuilder shapes: change Shape Size, keep Transform scale at 1.
 - Git: always `git pull --no-edit` before `git push`. Binary assets (png/jpg/fbx/wav) go through Git LFS.
 

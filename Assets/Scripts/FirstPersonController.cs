@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 // Networked first-person player. Lives on the Player prefab (spawned by the NetworkManager).
-// Hierarchy:  Player (CharacterController + NetworkObject + OwnerNetworkTransform + this)
+// Hierarchy:  Player (CharacterController + NetworkObject + OwnerNetworkTransform + this + PlayerCover)
 //               -> CameraPivot -> Main Camera, Flashlight
 //               -> Model (character + PlayerAnimator, no collider) - what other players see
 [RequireComponent(typeof(CharacterController))]
@@ -25,6 +25,8 @@ public class FirstPersonController : NetworkBehaviour
     [Header("Look")]
     public float mouseSensitivity = 0.1f;
     public float maxPitch = 85f;
+    [Tooltip("Seconds the view takes to catch up with the mouse (0 = instant). Tiny values just take the edge off.")]
+    public float lookSmoothing = 0.02f;
 
     [Header("Camera feel")]
     public float fieldOfView = 72f;
@@ -63,7 +65,10 @@ public class FirstPersonController : NetworkBehaviour
         false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
     CharacterController controller;
+    PlayerCover cover;
     float pitch;
+    float pitchTarget;     // where the mouse wants the head; pitch eases toward it
+    float pendingYaw;      // mouse turn not applied to the body yet
     float verticalVelocity;
     bool isCrouching;
     readonly List<GameObject> hiddenSceneCameras = new List<GameObject>();
@@ -82,6 +87,7 @@ public class FirstPersonController : NetworkBehaviour
     void Awake()
     {
         controller = GetComponent<CharacterController>();
+        cover = GetComponent<PlayerCover>();
         controller.height = standHeight;
         controller.center = new Vector3(0f, standHeight / 2f, 0f);
     }
@@ -192,11 +198,18 @@ public class FirstPersonController : NetworkBehaviour
 
     void Look(Mouse mouse)
     {
-        if (NetworkUI.MenuOpen || Cursor.lockState != CursorLockMode.Locked) return;
+        if (NetworkUI.MenuOpen || Cursor.lockState != CursorLockMode.Locked) { pendingYaw = 0f; pitchTarget = pitch; return; }
 
+        // The mouse sets a target; the view eases toward it over a few milliseconds (a little weight, no drag)
         Vector2 delta = mouse.delta.ReadValue() * mouseSensitivity;
-        transform.Rotate(0f, delta.x, 0f);              // body turns left/right
-        pitch = Mathf.Clamp(pitch - delta.y, -maxPitch, maxPitch);
+        pendingYaw += delta.x;
+        pitchTarget = Mathf.Clamp(pitchTarget - delta.y, -maxPitch, maxPitch);
+        float k = lookSmoothing > 0f ? 1f - Mathf.Exp(-Time.deltaTime / lookSmoothing) : 1f;
+
+        float yawStep = pendingYaw * k;
+        pendingYaw -= yawStep;
+        transform.Rotate(0f, yawStep, 0f);              // body turns left/right
+        pitch = Mathf.Lerp(pitch, pitchTarget, k);
         cameraPivot.localRotation = Quaternion.Euler(pitch, 0f, 0f); // head looks up/down
 
         if (Mathf.Abs(netPitch.Value - pitch) > 0.5f) netPitch.Value = pitch;
@@ -216,6 +229,7 @@ public class FirstPersonController : NetworkBehaviour
 
         Vector3 move = transform.right * input.x + transform.forward * input.y;
         if (move.sqrMagnitude > 1f) move.Normalize();
+        if (cover != null) move = cover.FilterMove(move);   // in cover: stop at the wall's end (you peek instead)
 
         float speed = walkSpeed;
         if (isCrouching) speed = crouchSpeed;
@@ -348,7 +362,8 @@ public class FirstPersonController : NetworkBehaviour
             yield break;
         }
 
-        pitch = 0f;
+        pitch = pitchTarget = 0f;
+        pendingYaw = 0f;
         cameraPivot.localRotation = Quaternion.identity;
         netPitch.Value = 0f;
         MoveToSpawn();

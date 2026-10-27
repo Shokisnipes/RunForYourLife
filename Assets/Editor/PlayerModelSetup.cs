@@ -14,31 +14,47 @@ public static class PlayerModelSetup
     const string ModelFile = "Martha.fbx";
     const string ControllerPath = Folder + "/PlayerAnimator.controller";
     const string CrouchBackPath = Folder + "/CrouchWalkBack.anim";
+    const string CoverIdlePath = Folder + "/CoverIdle.anim";
     const string PlayerPrefab = "Assets/Prefabs/Player.prefab";
 
-    // FBX file -> clip name, loops?  (not all are used yet: carrying, jumping, stairs and turns come later)
-    static readonly (string file, string clip, bool loop)[] Clips =
+    // FBX file -> clip name, loops?, optional mirrored copy (same file, other side), and the direction the clip
+    // should travel in the body's frame (x = right, y = forward; zero = doesn't travel / not used for moving).
+    // Mixamo clips are authored all sorts of ways (the "Left" sneaks face backwards, the crouch walk drifts 30
+    // degrees); FixClips turns each one so it travels this way, keeping its natural body twist.
+    // Not all are used yet: carrying, jumping, stairs and turns come later.
+    static readonly (string file, string clip, bool loop, string mirror, Vector2 dir)[] Clips =
     {
-        ("Idle.fbx",                      "Idle",           true),
-        ("Walking (1).fbx",               "Walk",           true),
-        ("Running.fbx",                   "Run",            true),
-        ("Walking Backwards.fbx",         "WalkBack",       true),
-        ("Running Backward.fbx",          "RunBack",        true),
-        ("Left Strafe Walking.fbx",       "StrafeLeft",     true),
-        ("Right Strafe Walking.fbx",      "StrafeRight",    true),
-        ("Crouching Idle (1).fbx",        "CrouchIdle",     true),
-        ("Crouch Walk.fbx",               "CrouchWalk",     true),
-        ("Standing To Crouched (1).fbx",  "StandToCrouch",  false),
-        ("Standing W_Briefcase Idle.fbx", "CarryIdle",      true),
-        ("Walk With Briefcase.fbx",       "CarryWalk",      true),
-        ("Running Jump.fbx",              "RunJump",        false),
-        ("Walking Up The Stairs.fbx",     "WalkStairs",     true),
-        ("Running Up Stairs.fbx",         "RunStairs",      true),
-        ("Walking Left Turn.fbx",         "WalkTurnLeft",   false),
-        ("Running Right Turn.fbx",        "RunTurnRight",   false),
-        ("Walking Turn 180.fbx",          "WalkTurn180",    false),
-        ("Running Turn 180.fbx",          "RunTurn180",     false),
+        ("Idle.fbx",                          "Idle",              true,  null,             Vector2.zero),
+        ("Walking (1).fbx",                   "Walk",              true,  null,             Vector2.up),
+        ("Running.fbx",                       "Run",               true,  null,             Vector2.up),
+        ("Walking Backwards.fbx",             "WalkBack",          true,  null,             Vector2.down),
+        ("Running Backward.fbx",              "RunBack",           true,  null,             Vector2.down),
+        ("Left Strafe Walking.fbx",           "StrafeLeft",        true,  null,             Vector2.left),
+        ("Right Strafe Walking.fbx",          "StrafeRight",       true,  null,             Vector2.right),
+        ("Strafe.fbx",                        "RunStrafeRight",    true,  "RunStrafeLeft",  Vector2.right),
+        ("Crouching Idle (1).fbx",            "CrouchIdle",        true,  null,             Vector2.zero),
+        ("Crouch Walk.fbx",                   "CrouchWalk",        true,  null,             Vector2.up),
+        ("Crouched Sneaking Left.fbx",        "CrouchStrafeLeft",  true,  null,             Vector2.left),
+        ("Crouched Sneaking Right.fbx",       "CrouchStrafeRight", true,  null,             Vector2.right),
+        ("Walk Crouching Backward Right.fbx", "CrouchBackRight",   true,  "CrouchBackLeft", new Vector2(1f, -1f).normalized),
+        ("Left Cover Sneak.fbx",              "CoverLeft",         true,  null,             Vector2.left),
+        ("Right Cover Sneak.fbx",             "CoverRight",        true,  null,             Vector2.right),
+        ("Left Turn.fbx",                     "TurnLeft",          false, "TurnRight",      Vector2.zero),
+        ("Crouch Torch Turn Left 90.fbx",     "CrouchTurnLeft",    false, "CrouchTurnRight", Vector2.zero),
+        ("Standing To Crouched (1).fbx",      "StandToCrouch",     false, null,             Vector2.zero),
+        ("Standing W_Briefcase Idle.fbx",     "CarryIdle",         true,  null,             Vector2.zero),
+        ("Walk With Briefcase.fbx",           "CarryWalk",         true,  null,             Vector2.up),
+        ("Running Jump.fbx",                  "RunJump",           false, null,             Vector2.zero),
+        ("Walking Up The Stairs.fbx",         "WalkStairs",        true,  null,             Vector2.up),
+        ("Running Up Stairs.fbx",             "RunStairs",         true,  null,             Vector2.up),
+        ("Walking Left Turn.fbx",             "WalkTurnLeft",      false, null,             Vector2.zero),
+        ("Running Right Turn.fbx",            "RunTurnRight",      false, null,             Vector2.zero),
+        ("Walking Turn 180.fbx",              "WalkTurn180",       false, null,             Vector2.zero),
+        ("Running Turn 180.fbx",              "RunTurn180",        false, null,             Vector2.zero),
     };
+
+    // Clip name -> velocity at playback 1 (m/s, body frame), filled by FixClips
+    static readonly Dictionary<string, Vector2> velocities = new Dictionary<string, Vector2>();
 
     [MenuItem("Tools/RunForYourLife/Player Model Setup")]
     public static void Run()
@@ -47,15 +63,20 @@ public static class PlayerModelSetup
         ExtractTextures(modelPath);
         var avatar = SetUpModel(modelPath);
         if (avatar == null || !avatar.isHuman) { Debug.LogError("Player Model Setup: " + modelPath + " didn't make a Humanoid avatar"); return; }
-        FixClips();
-        var crouchBack = MakeReversedClip(LoadClip("Crouch Walk.fbx"), CrouchBackPath);
-        var speeds = MeasureSpeeds(AssetDatabase.LoadAssetAtPath<GameObject>(modelPath));
-        var controller = BuildController(crouchBack, speeds);
-        UpdatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(modelPath), controller, speeds);
+        log.Clear();
+        var model = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
+        FixClips(model);
+        var crouchBack = MakeReversedClip(LoadClip("CrouchWalk"), CrouchBackPath);
+        var coverIdle = MakePoseClip(LoadClip("CoverRight"), CoverIdlePath);
+        if (crouchBack != null) velocities[crouchBack.name] = -velocities["CrouchWalk"];
+        if (coverIdle != null) velocities[coverIdle.name] = Vector2.zero;
+        var controller = BuildController(model, crouchBack, coverIdle, out var rims);
+        UpdatePrefab(model, controller, rims);
         AssetDatabase.SaveAssets();
-        Debug.Log(string.Format("Player Model Setup done. Clip speeds: walk {0:F2}, run {1:F2}, back {2:F2}, run back {3:F2}, strafe {4:F2}, crouch {5:F2} m/s",
-            speeds.walk, speeds.run, speeds.back, speeds.runBack, speeds.strafe, speeds.crouch));
+        Debug.Log("Player Model Setup done.\n" + log);
     }
+
+    static readonly System.Text.StringBuilder log = new System.Text.StringBuilder();
 
     // Mixamo embeds the textures in the FBX; pull them out so the materials pick them up (and the normal map
     // is flagged as one)
@@ -97,39 +118,88 @@ public static class PlayerModelSetup
     // Humanoid, rename "mixamo.com", loop the right ones. Clips downloaded without "In Place" walk off forward:
     // their travel is pulled out of the pose into root motion, which the Animator ignores (the controller moves
     // us). True in-place clips keep everything baked into the pose (keeps the natural hip sway).
-    static void FixClips()
+    static void FixClips(GameObject model)
     {
+        var go = Object.Instantiate(model);
+        go.hideFlags = HideFlags.HideAndDontSave;
         foreach (var c in Clips)
         {
             string path = Folder + "/" + c.file;
             if (!(AssetImporter.GetAtPath(path) is ModelImporter mi)) { Debug.LogWarning("Missing " + path); continue; }
             mi.animationType = ModelImporterAnimationType.Human;
             mi.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
-            var clips = mi.clipAnimations;
-            if (clips == null || clips.Length == 0) clips = mi.defaultClipAnimations;
-            if (clips.Length == 0) continue;
-            var a = clips[0];
+            var defaults = mi.defaultClipAnimations;
+            if (defaults.Length == 0) continue;
+            var a = defaults[0];
             a.name = c.clip;
             a.loopTime = c.loop;
             a.lockRootRotation = true;
             a.lockRootHeightY = true;
             a.lockRootPositionXZ = false;
-            a.keepOriginalOrientation = false;
+            a.keepOriginalOrientation = true;    // Mixamo faces +Z; "Body Orientation" skews strafes diagonally
             a.keepOriginalPositionY = false;
             a.keepOriginalPositionXZ = false;
             a.heightFromFeet = true;
-            clips[0] = a;
-            mi.clipAnimations = clips;
+            a.mirror = false;
+            a.rotationOffset = 0f;
+            var clips = new List<ModelImporterClipAnimation> { a };
+            if (c.mirror != null)
+            {
+                var m = Copy(a);
+                m.name = c.mirror;
+                m.mirror = true;
+                clips.Add(m);
+            }
+            mi.clipAnimations = clips.ToArray();
             mi.SaveAndReimport();
 
-            if (Travel(LoadClip(c.file)) < 0.1f)
+            bool changed = false;
+            if (Travel(LoadClip(c.clip)) < 0.1f)
             {
-                clips[0].lockRootPositionXZ = true;   // in place
-                mi.clipAnimations = clips;
+                foreach (var clip in clips) clip.lockRootPositionXZ = true;   // in place
+                changed = true;
+            }
+
+            // Turn the clip so it travels the way its name says (a positive offset turns the clip clockwise
+            // back by that many degrees; the mirrored copy turns the other way)
+            if (c.dir != Vector2.zero)
+            {
+                Vector2 v = Velocity(go, LoadClip(c.clip));
+                float measured = Mathf.Atan2(v.x, v.y) * Mathf.Rad2Deg;
+                float wanted = Mathf.Atan2(c.dir.x, c.dir.y) * Mathf.Rad2Deg;
+                float offset = Mathf.DeltaAngle(wanted, measured);
+                if (Mathf.Abs(offset) > 3f)
+                {
+                    clips[0].rotationOffset = offset;
+                    if (clips.Count > 1) clips[1].rotationOffset = -offset;
+                    changed = true;
+                }
+                velocities[c.clip] = c.dir * v.magnitude;
+                if (c.mirror != null) velocities[c.mirror] = new Vector2(-c.dir.x, c.dir.y) * v.magnitude;
+                log.AppendFormat("  {0}: travelled at {1:F0} deg, turned by {2:F0}, {3:F2} m/s\n", c.clip, measured, -offset, v.magnitude);
+            }
+            else
+            {
+                velocities[c.clip] = Vector2.zero;
+                if (c.mirror != null) velocities[c.mirror] = Vector2.zero;
+            }
+            if (changed)
+            {
+                mi.clipAnimations = clips.ToArray();
                 mi.SaveAndReimport();
             }
         }
+        Object.DestroyImmediate(go);
     }
+
+    static ModelImporterClipAnimation Copy(ModelImporterClipAnimation a) => new ModelImporterClipAnimation
+    {
+        takeName = a.takeName, firstFrame = a.firstFrame, lastFrame = a.lastFrame, loopTime = a.loopTime,
+        lockRootRotation = a.lockRootRotation, lockRootHeightY = a.lockRootHeightY, lockRootPositionXZ = a.lockRootPositionXZ,
+        keepOriginalOrientation = a.keepOriginalOrientation, keepOriginalPositionY = a.keepOriginalPositionY,
+        keepOriginalPositionXZ = a.keepOriginalPositionXZ, heightFromFeet = a.heightFromFeet,
+        rotationOffset = a.rotationOffset,
+    };
 
     // m/s the clip moves along the ground (0 for In Place clips)
     static float Travel(AnimationClip clip)
@@ -139,11 +209,16 @@ public static class PlayerModelSetup
         return new Vector2(v.x, v.z).magnitude;
     }
 
-    static AnimationClip LoadClip(string file)
+    // A clip by the name FixClips gave it (e.g. "Run", or a mirrored copy like "RunStrafeLeft")
+    static AnimationClip LoadClip(string name)
     {
-        foreach (var o in AssetDatabase.LoadAllAssetsAtPath(Folder + "/" + file))
-            if (o is AnimationClip clip && !clip.name.StartsWith("__preview")) return clip;
-        Debug.LogWarning("No clip in " + file);
+        foreach (var c in Clips)
+        {
+            if (c.clip != name && c.mirror != name) continue;
+            foreach (var o in AssetDatabase.LoadAllAssetsAtPath(Folder + "/" + c.file))
+                if (o is AnimationClip clip && clip.name == name) return clip;
+        }
+        Debug.LogWarning("No clip named " + name);
         return null;
     }
 
@@ -173,33 +248,39 @@ public static class PlayerModelSetup
         return clip;
     }
 
-    struct Speeds { public float walk, run, back, runBack, strafe, crouch; }
-
-    // How fast each clip "walks" at playback 1: its root motion, or for In Place clips the speed a planted foot
-    // slides backward under the body
-    static Speeds MeasureSpeeds(GameObject model)
+    // One still frame of a clip as a looping pose (there's no cover idle clip: the cover sneak's first frame)
+    static AnimationClip MakePoseClip(AnimationClip source, string path)
     {
-        var go = Object.Instantiate(model);
-        go.hideFlags = HideFlags.HideAndDontSave;
-        var s = new Speeds
+        if (source == null) return null;
+        var clip = new AnimationClip { name = Path.GetFileNameWithoutExtension(path), frameRate = source.frameRate };
+        foreach (var binding in AnimationUtility.GetCurveBindings(source))
         {
-            walk = Measure(go, LoadClip("Walking (1).fbx"), false, 1.4f),
-            run = Measure(go, LoadClip("Running.fbx"), false, 3.6f),
-            back = Measure(go, LoadClip("Walking Backwards.fbx"), false, 1.2f),
-            runBack = Measure(go, LoadClip("Running Backward.fbx"), false, 3f),
-            strafe = Measure(go, LoadClip("Right Strafe Walking.fbx"), true, 1.3f),
-            crouch = Measure(go, LoadClip("Crouch Walk.fbx"), false, 1f),
-        };
-        Object.DestroyImmediate(go);
-        return s;
+            float v = AnimationUtility.GetEditorCurve(source, binding).Evaluate(0f);
+            AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0f, 1f, v));
+        }
+        var settings = AnimationUtility.GetAnimationClipSettings(source);
+        settings.stopTime = 1f;
+        settings.loopTime = true;
+        AnimationUtility.SetAnimationClipSettings(clip, settings);
+
+        var old = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+        if (old != null) { EditorUtility.CopySerialized(clip, old); Object.DestroyImmediate(clip); return old; }
+        AssetDatabase.CreateAsset(clip, path);
+        return clip;
     }
 
-    static float Measure(GameObject go, AnimationClip clip, bool sideways, float fallback)
+    // How a clip moves at playback 1, in m/s (x = right, y = forward): its root motion, or for In Place clips
+    // the opposite of how the planted foot slides under the body
+    static Vector2 Velocity(GameObject go, AnimationClip clip)
+    {
+        if (clip == null) return Vector2.zero;
+        if (Travel(clip) >= 0.1f) return new Vector2(clip.averageSpeed.x, clip.averageSpeed.z);
+        return FootVelocity(go, clip);
+    }
+
+    static Vector2 FootVelocity(GameObject go, AnimationClip clip)
     {
         var anim = go.GetComponent<Animator>();
-        if (clip == null || anim == null) return fallback;
-        float travel0 = Travel(clip);
-        if (travel0 >= 0.1f) return travel0;   // not In Place: the clip knows its own speed
         var feet = new[] { anim.GetBoneTransform(HumanBodyBones.LeftFoot), anim.GetBoneTransform(HumanBodyBones.RightFoot) };
         const int samples = 120;
         var pos = new Vector3[2, samples + 1];
@@ -209,28 +290,67 @@ public static class PlayerModelSetup
             for (int f = 0; f < 2; f++) pos[f, i] = go.transform.InverseTransformPoint(feet[f].position);
         }
 
-        // The lower foot is the one on the ground; follow it as it slides back under the body
+        // Direction: only count moments where one foot is clearly the one on the ground (2 cm lower than the
+        // other) and see which way it slides
+        Vector3 slide = Vector3.zero;
+        for (int i = 0; i < samples; i++)
+        {
+            float a = pos[1, i].y - pos[0, i].y, b = pos[1, i + 1].y - pos[0, i + 1].y;
+            int f;
+            if (a > 0.02f && b > 0.02f) f = 0;
+            else if (a < -0.02f && b < -0.02f) f = 1;
+            else continue;
+            slide += pos[f, i + 1] - pos[f, i];
+        }
+        Vector2 dir = new Vector2(-slide.x, -slide.z);
+        if (dir.sqrMagnitude < 0.0001f) return Vector2.zero;
+        dir.Normalize();
+
+        // Speed: follow whichever foot is lower all the way round, along that direction
         float travel = 0f;
         for (int i = 0; i < samples; i++)
         {
             int f = pos[0, i].y + pos[0, i + 1].y < pos[1, i].y + pos[1, i + 1].y ? 0 : 1;
             Vector3 d = pos[f, i + 1] - pos[f, i];
-            travel += Mathf.Abs(sideways ? d.x : d.z);
+            travel += Mathf.Abs(d.x * dir.x + d.z * dir.y);
         }
-        float speed = travel / clip.length;
-        if (speed < 0.2f || speed > 10f) { Debug.LogWarning("Couldn't measure " + clip.name + ", using " + fallback); return fallback; }
-        return speed;
+        return dir * (travel / clip.length);
     }
 
-    // Two 2D blend trees on MoveX / MoveZ (local velocity, m/s): standing and crouched. Clips sit at their
-    // natural speeds; PlayerAnimator plays them faster when we move faster than that.
-    static AnimatorController BuildController(AnimationClip crouchBack, Speeds sp)
+    // Fastest clip speed in each direction of a blend tree (PlayerAnimator plays clips faster beyond these)
+    struct Rim { public float forward, back, side; }
+
+    static Rim AddClips(BlendTree tree, GameObject go, params AnimationClip[] clips)
     {
+        var rim = new Rim();
+        foreach (var clip in clips)
+        {
+            if (clip == null) continue;
+            velocities.TryGetValue(clip.name, out Vector2 v);
+            tree.AddChild(clip, v);
+            log.AppendFormat("  {0} / {1}: ({2:F2}, {3:F2}) m/s\n", tree.name, clip.name, v.x, v.y);
+            if (Mathf.Abs(v.x) > Mathf.Abs(v.y)) rim.side = Mathf.Max(rim.side, Mathf.Abs(v.x));
+            else if (v.y > 0f) rim.forward = Mathf.Max(rim.forward, v.y);
+            else rim.back = Mathf.Max(rim.back, -v.y);
+        }
+        return rim;
+    }
+
+    struct Rims { public Rim stand, crouch, cover; }
+
+    // Three 2D blend trees on MoveX / MoveZ (velocity in the model's own frame, m/s): standing, crouched and in
+    // cover (back to a wall; in those clips she faces -Z). Each clip sits at the velocity it really moves at.
+    static AnimatorController BuildController(GameObject model, AnimationClip crouchBack, AnimationClip coverIdle, out Rims rims)
+    {
+        var go = Object.Instantiate(model);
+        go.hideFlags = HideFlags.HideAndDontSave;
+
         AssetDatabase.DeleteAsset(ControllerPath);
         var ctrl = AnimatorController.CreateAnimatorControllerAtPath(ControllerPath);
         ctrl.AddParameter("MoveX", AnimatorControllerParameterType.Float);
         ctrl.AddParameter("MoveZ", AnimatorControllerParameterType.Float);
         ctrl.AddParameter("Crouch", AnimatorControllerParameterType.Bool);
+        ctrl.AddParameter("Cover", AnimatorControllerParameterType.Bool);
 
         var layers = ctrl.layers;
         layers[0].iKPass = true;   // head looks where the player looks
@@ -238,35 +358,39 @@ public static class PlayerModelSetup
 
         var stand = ctrl.CreateBlendTreeInController("Stand", out var standTree, 0);
         Setup2D(standTree);
-        standTree.AddChild(LoadClip("Idle.fbx"), Vector2.zero);
-        standTree.AddChild(LoadClip("Walking (1).fbx"), new Vector2(0f, sp.walk));
-        standTree.AddChild(LoadClip("Running.fbx"), new Vector2(0f, sp.run));
-        standTree.AddChild(LoadClip("Walking Backwards.fbx"), new Vector2(0f, -sp.back));
-        standTree.AddChild(LoadClip("Running Backward.fbx"), new Vector2(0f, -sp.runBack));
-        standTree.AddChild(LoadClip("Left Strafe Walking.fbx"), new Vector2(-sp.strafe, 0f));
-        standTree.AddChild(LoadClip("Right Strafe Walking.fbx"), new Vector2(sp.strafe, 0f));
+        rims.stand = AddClips(standTree, go, LoadClip("Idle"), LoadClip("Walk"), LoadClip("Run"), LoadClip("WalkBack"),
+            LoadClip("RunBack"), LoadClip("StrafeLeft"), LoadClip("StrafeRight"), LoadClip("RunStrafeLeft"), LoadClip("RunStrafeRight"));
 
         var crouch = ctrl.CreateBlendTreeInController("Crouch", out var crouchTree, 0);
         Setup2D(crouchTree);
-        var crouchWalk = LoadClip("Crouch Walk.fbx");
-        crouchTree.AddChild(LoadClip("Crouching Idle (1).fbx"), Vector2.zero);
-        crouchTree.AddChild(crouchWalk, new Vector2(0f, sp.crouch));
-        if (crouchBack != null) crouchTree.AddChild(crouchBack, new Vector2(0f, -sp.crouch));
-        // No crouch strafe clips yet: the crouch walk stands in sideways
-        crouchTree.AddChild(crouchWalk, new Vector2(-sp.crouch, 0f));
-        crouchTree.AddChild(crouchWalk, new Vector2(sp.crouch, 0f));
+        rims.crouch = AddClips(crouchTree, go, LoadClip("CrouchIdle"), LoadClip("CrouchWalk"), crouchBack,
+            LoadClip("CrouchStrafeLeft"), LoadClip("CrouchStrafeRight"), LoadClip("CrouchBackRight"), LoadClip("CrouchBackLeft"));
+
+        var cover = ctrl.CreateBlendTreeInController("Cover", out var coverTree, 0);
+        Setup2D(coverTree);
+        rims.cover = AddClips(coverTree, go, coverIdle, LoadClip("CoverLeft"), LoadClip("CoverRight"));
+        Object.DestroyImmediate(go);
 
         var sm = ctrl.layers[0].stateMachine;
         sm.defaultState = stand;
-        var down = stand.AddTransition(crouch);
-        down.hasExitTime = false; down.duration = 0.25f;
-        down.AddCondition(AnimatorConditionMode.If, 0f, "Crouch");
-        var up = crouch.AddTransition(stand);
-        up.hasExitTime = false; up.duration = 0.25f;
-        up.AddCondition(AnimatorConditionMode.IfNot, 0f, "Crouch");
+        Link(stand, crouch, ("Crouch", true), ("Cover", false));
+        Link(crouch, stand, ("Crouch", false));
+        Link(stand, cover, ("Cover", true));
+        Link(crouch, cover, ("Cover", true));
+        Link(cover, crouch, ("Cover", false), ("Crouch", true));
+        Link(cover, stand, ("Cover", false), ("Crouch", false));
 
         EditorUtility.SetDirty(ctrl);
         return ctrl;
+    }
+
+    static void Link(AnimatorState from, AnimatorState to, params (string param, bool value)[] conditions)
+    {
+        var t = from.AddTransition(to);
+        t.hasExitTime = false;
+        t.duration = 0.3f;
+        foreach (var c in conditions)
+            t.AddCondition(c.value ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot, 0f, c.param);
     }
 
     static void Setup2D(BlendTree tree)
@@ -277,7 +401,7 @@ public static class PlayerModelSetup
     }
 
     // Swap the capsule on the Player prefab for the model
-    static void UpdatePrefab(GameObject model, AnimatorController controller, Speeds sp)
+    static void UpdatePrefab(GameObject model, AnimatorController controller, Rims rims)
     {
         var root = PrefabUtility.LoadPrefabContents(PlayerPrefab);
         try
@@ -301,15 +425,17 @@ public static class PlayerModelSetup
 
             var pa = go.GetComponent<PlayerAnimator>();
             if (pa == null) pa = go.AddComponent<PlayerAnimator>();
-            pa.walkClipSpeed = sp.walk;
-            pa.runClipSpeed = sp.run;
-            pa.walkBackClipSpeed = sp.back;
-            pa.runBackClipSpeed = sp.runBack;
-            pa.strafeClipSpeed = sp.strafe;
-            pa.crouchClipSpeed = sp.crouch;
+            pa.standForwardSpeed = rims.stand.forward;
+            pa.standBackSpeed = rims.stand.back;
+            pa.standSideSpeed = rims.stand.side;
+            pa.crouchForwardSpeed = rims.crouch.forward;
+            pa.crouchBackSpeed = rims.crouch.back;
+            pa.crouchSideSpeed = rims.crouch.side;
+            pa.coverSideSpeed = rims.cover.side;
 
             var fpc = root.GetComponent<FirstPersonController>();
             if (fpc != null) fpc.body = null;   // the capsule is gone; PlayerAnimator handles the model
+            if (root.GetComponent<PlayerCover>() == null) root.AddComponent<PlayerCover>();
 
             PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefab);
         }

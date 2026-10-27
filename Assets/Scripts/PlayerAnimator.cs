@@ -6,23 +6,30 @@ using UnityEngine;
 // Your own player: the head is shrunk away (you look out from where it would be) and the body sits a bit
 // behind the camera, so looking down shows your arms, chest and feet instead of the inside of your neck.
 // Other players: the head and upper body turn to where they're looking (synced pitch).
+// In cover (PlayerCover) the body turns its back to the wall and plays the cover sneak.
 // The Animator Controller and the natural clip speeds come from Tools > RunForYourLife > Player Model Setup.
 [RequireComponent(typeof(Animator))]
 public class PlayerAnimator : MonoBehaviour
 {
-    [Header("Natural clip speeds (m/s at playback 1; measured by Player Model Setup)")]
-    [Tooltip("How fast the Walking clip moves forward.")]
-    public float walkClipSpeed = 1.4f;
-    [Tooltip("How fast the Running clip moves forward.")]
-    public float runClipSpeed = 3.6f;
-    [Tooltip("How fast the Walking Backwards clip moves.")]
-    public float walkBackClipSpeed = 1.2f;
-    [Tooltip("How fast the Running Backward clip moves.")]
-    public float runBackClipSpeed = 3f;
-    [Tooltip("How fast the strafe walking clips move sideways.")]
-    public float strafeClipSpeed = 1.3f;
-    [Tooltip("How fast the Crouch Walk clip moves.")]
-    public float crouchClipSpeed = 1f;
+    [Header("Fastest clip in each direction (m/s at playback 1; measured by Player Model Setup)")]
+    [Tooltip("Standing: fastest forward clip (Running).")]
+    public float standForwardSpeed = 3.1f;
+    [Tooltip("Standing: fastest backward clip.")]
+    public float standBackSpeed = 1.7f;
+    [Tooltip("Standing: fastest sideways clip.")]
+    public float standSideSpeed = 1.5f;
+    [Tooltip("Crouched: fastest forward clip.")]
+    public float crouchForwardSpeed = 1.6f;
+    [Tooltip("Crouched: fastest backward clip.")]
+    public float crouchBackSpeed = 1.6f;
+    [Tooltip("Crouched: fastest sideways clip.")]
+    public float crouchSideSpeed = 1.2f;
+    [Tooltip("In cover: how fast the cover sneak moves along the wall.")]
+    public float coverSideSpeed = 0.7f;
+
+    [Header("Cover")]
+    [Tooltip("How quickly the body turns its back to the wall (and back again).")]
+    public float coverTurnSpeed = 8f;
 
     [Header("Feel")]
     [Tooltip("Seconds to smooth the movement input to the animator (higher = softer starts and stops).")]
@@ -51,9 +58,11 @@ public class PlayerAnimator : MonoBehaviour
     static readonly int MoveXId = Animator.StringToHash("MoveX");
     static readonly int MoveZId = Animator.StringToHash("MoveZ");
     static readonly int CrouchId = Animator.StringToHash("Crouch");
+    static readonly int CoverId = Animator.StringToHash("Cover");
 
     Animator animator;
     FirstPersonController player;
+    PlayerCover cover;
     Transform head;
     Vector3 lastPos;
     Vector3 smoothVelocity;
@@ -64,6 +73,7 @@ public class PlayerAnimator : MonoBehaviour
         animator = GetComponent<Animator>();
         animator.applyRootMotion = false;
         player = GetComponentInParent<FirstPersonController>();
+        cover = GetComponentInParent<PlayerCover>();
         // Shrinking from the neck (not the head) folds the collar away too, so looking down shows no stump
         head = animator.GetBoneTransform(HumanBodyBones.Neck);
         if (head == null) head = animator.GetBoneTransform(HumanBodyBones.Head);
@@ -94,33 +104,44 @@ public class PlayerAnimator : MonoBehaviour
         if (player.IsGrabbed || player.IsDead || v.sqrMagnitude > 15f * 15f) v = Vector3.zero;   // carried or teleported
         smoothVelocity = Vector3.Lerp(smoothVelocity, v, 1f - Mathf.Exp(-12f * dt));
 
-        Vector3 local = player.transform.InverseTransformDirection(smoothVelocity);
+        // In cover the body turns its back to the wall (faces out of it). Otherwise it faces where the player faces.
+        bool inCover = cover != null && cover.InCover;
+        Quaternion facing = inCover
+            ? Quaternion.Inverse(player.transform.rotation) * Quaternion.LookRotation(cover.WallNormal)
+            : Quaternion.identity;
+        transform.localRotation = Quaternion.Slerp(transform.localRotation, facing, 1f - Mathf.Exp(-coverTurnSpeed * dt));
+
+        // Velocity in the body's own frame (the blend trees are laid out that way)
+        Vector3 local = transform.InverseTransformDirection(smoothVelocity);
         Vector2 flat = new Vector2(local.x, local.z);
         float speed = flat.magnitude;
         bool crouched = player.IsCrouching;
 
-        // The blend tree has clips placed at their natural speeds. Up to the fastest clip in this direction
-        // we blend; beyond it we play that clip faster, so the feet keep up with the ground.
+        // The blend trees have clips placed at the velocities they really move at. Up to the fastest clip in this
+        // direction we blend; beyond it we play that clip faster, so the feet keep up with the ground.
         Vector2 dir = speed > moveThreshold ? flat / speed : Vector2.zero;
-        float edge = crouched ? crouchClipSpeed : EdgeSpeed(dir);
+        float edge = inCover ? coverSideSpeed
+                   : crouched ? EdgeSpeed(dir, crouchForwardSpeed, crouchBackSpeed, crouchSideSpeed)
+                   : EdgeSpeed(dir, standForwardSpeed, standBackSpeed, standSideSpeed);
         float blendSpeed = speed > moveThreshold ? Mathf.Min(speed, edge) : 0f;
         float playback = speed > edge && edge > 0.01f ? Mathf.Min(speed / edge, maxPlayback) : 1f;
 
         animator.SetFloat(MoveXId, dir.x * blendSpeed, moveDamping, dt);
         animator.SetFloat(MoveZId, dir.y * blendSpeed, moveDamping, dt);
         animator.SetBool(CrouchId, crouched);
+        animator.SetBool(CoverId, inCover);
         animator.speed = Mathf.Lerp(animator.speed, playback, 1f - Mathf.Exp(-8f * dt));
 
         crouchBlend = Mathf.MoveTowards(crouchBlend, crouched ? 1f : 0f, dt * 4f);
     }
 
-    // Fastest clip speed in this direction: forward = running, backward = running backward, sideways = strafe
-    float EdgeSpeed(Vector2 dir)
+    // Fastest clip speed in this direction, blended between the forward/backward and sideways ones
+    static float EdgeSpeed(Vector2 dir, float forward, float back, float side)
     {
         float ax = Mathf.Abs(dir.x), az = Mathf.Abs(dir.y);
-        if (ax + az < 0.001f) return walkClipSpeed;
-        float along = dir.y >= 0f ? runClipSpeed : runBackClipSpeed;
-        return (az * along + ax * strafeClipSpeed) / (ax + az);
+        if (ax + az < 0.001f) return forward;
+        float along = dir.y >= 0f ? forward : back;
+        return (az * along + ax * side) / (ax + az);
     }
 
     void LateUpdate()
