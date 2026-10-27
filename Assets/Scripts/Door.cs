@@ -40,16 +40,11 @@ public class Door : MonoBehaviour
     public Vector3 Inward => transform.forward;
 
     float leftAngle, rightAngle;
-    Vector3 leftRest, rightRest;
+    Vector3 leftRest;
+    bool restKnown;
 
     void OnEnable() => All.Add(this);
     void OnDisable() => All.Remove(this);
-
-    void Awake()
-    {
-        if (leftHinge != null) leftRest = leftHinge.localPosition;
-        if (rightHinge != null) rightRest = rightHinge.localPosition;
-    }
 
     // Called on every machine by DoorManager. instant = no swing (first sync, or a client catching up)
     public void Show(State state, bool instant)
@@ -73,6 +68,10 @@ public class Door : MonoBehaviour
 
     void Pose()
     {
+        // Where the left hinge sits, read the first time (BuildingBuilder sets the hinges after AddComponent, so
+        // Awake is too early) - a torn door drops a little from there
+        if (!restKnown && leftHinge != null) { leftRest = leftHinge.localPosition; restKnown = true; }
+
         // A torn door hangs crooked off one hinge
         bool torn = Current == State.Torn;
         if (leftHinge != null)
