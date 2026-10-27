@@ -23,6 +23,7 @@ Shader "RunForYourLife/RetroPost"
             float _RetroAmount;   // 0 = off (pass the picture through), 1 = on
             float _RetroSteps;    // colour steps per channel
             float _RetroDither;   // 0 = hard bands, 1 = fully dithered
+            float _RetroShadowLift; // gamma on the picture before stepping: 1 = unchanged, lower = brighter darks
 
             static const float Bayer4[16] =
             {
@@ -40,6 +41,8 @@ Shader "RunForYourLife/RetroPost"
 
                 // Work in display (gamma) space so the steps are even to the eye
                 float3 g = LinearToSRGB(saturate(c.rgb));
+                // Lift the darks before stepping, or the darkest night colours all round down to black
+                g = pow(g, _RetroShadowLift > 0.0 ? _RetroShadowLift : 1.0);   // 0 = never set: leave it alone
                 uint2 px = uint2(input.positionCS.xy) % 4;
                 float threshold = (Bayer4[px.y * 4 + px.x] + 0.5) / 16.0;     // 0..1
                 float offset = lerp(0.5, threshold, _RetroDither);

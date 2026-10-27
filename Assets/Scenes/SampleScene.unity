@@ -529,13 +529,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 426872983}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: 0, y: -0.7071068, z: 0, w: 0.7071068}
   m_LocalPosition: {x: 5, y: 0, z: -50}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: -90, z: 0}
 --- !u!1001 &462968077
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -696,6 +696,13 @@ MonoBehaviour:
   liftTime: 1.2
   carryDuration: 3
   holdOffset: {x: 0.05, y: -0.05, z: 0.3}
+  swipeArmTime: 0.8
+  swipeAimHeight: 1
+  gripCloseSpeed: 4
+  gripFingerCurl: {x: 55, y: 65, z: 45}
+  gripThumbCurl: {x: 20, y: 30, z: 25}
+  gripAlongPalm: 0.8
+  gripPalmDepth: 0.04
   plantPoint: 0.25
   liftPoint: 0.55
   minimumSwing: 0.008
@@ -941,8 +948,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GenomeManager
   genomes: []
-  allowClimber: 0
-  alwaysClimber: 0
+  allowClimber: 1
+  alwaysClimber: 1
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -1067,7 +1074,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameFlow
   ShowTopMostFoldoutHeaderGroup: 1
-  prepSeconds: 480
+  prepSeconds: 5
   nightSeconds: 360
 --- !u!114 &1018997749
 MonoBehaviour:
@@ -1672,7 +1679,7 @@ MonoBehaviour:
   state: 0
   walkSpeed: 2.5
   huntSpeed: 4
-  pursuitSpeed: 7
+  pursuitSpeed: 8.5
   lungeSpeed: 12
   lungeTime: 1.5
   turnSpeed: 90
@@ -1684,6 +1691,7 @@ MonoBehaviour:
   viewAngle: 110
   crouchVisibility: 0.6
   feelRange: 6
+  chaseSightMultiplier: 1.6
   hearingMultiplier: 1
   waypoints: []
   patrolCenter: {fileID: 1700436254}
@@ -1693,6 +1701,9 @@ MonoBehaviour:
   loseSightTime: 2
   grabRange: 5
   grabWindup: 0.5
+  grabWidth: 2.5
+  grabOvershoot: 1.5
+  chaseSnapDistance: 3
   grabEscapeRange: 7
   grabHoldTime: 2
   catchCooldown: 3
@@ -1899,7 +1910,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::RetroLook
   pixelHeight: 300
   colourSteps: 32
-  dither: 0.35
+  dither: 0.271
   retroVolume: {fileID: 2014776696}
   forceOnAtStart: 0
 --- !u!114 &2014776696

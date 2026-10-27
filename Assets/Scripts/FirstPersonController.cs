@@ -97,6 +97,7 @@ public class FirstPersonController : NetworkBehaviour
     public bool IsGrabbed => netGrabbed.Value;   // synced, so the monster ignores whoever it's holding
     public bool IsCrouching => netCrouching.Value;
     public bool IsDead => netDead.Value;         // stays dead for the rest of the night (task 8 adds rescue)
+    public float FovOffset { get; set; }         // added to the view's field of view (ChaseStress narrows it)
     public bool IsInMonsterHand => netCarrierId.Value != NoCarrier;
     public bool IsDropped => IsGrabbed && !IsInMonsterHand;   // the monster let go: the body lies on the floor
 
@@ -207,7 +208,7 @@ public class FirstPersonController : NetworkBehaviour
 
         if (ownCamera != null)
         {
-            float target = fieldOfView + (sprinting && CurrentSpeed > walkSpeed ? sprintFovBoost : 0f);
+            float target = fieldOfView + FovOffset + (sprinting && CurrentSpeed > walkSpeed ? sprintFovBoost : 0f);
             ownCamera.fieldOfView = Mathf.Lerp(ownCamera.fieldOfView, target, 1f - Mathf.Exp(-6f * dt));
         }
     }

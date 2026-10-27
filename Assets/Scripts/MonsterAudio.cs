@@ -85,6 +85,12 @@ public class MonsterAudio : MonoBehaviour
         music = Make2D();
         heartbeat = Make2D();
 
+        // The threat stays sharp when ChaseStress muffles your hearing (low-pass on the listener)
+        steps.bypassListenerEffects = true;
+        voice.bypassListenerEffects = true;
+        music.bypassListenerEffects = true;
+        heartbeat.bypassListenerEffects = true;
+
         lastPosition = transform.position;
         ScheduleGrowl();
     }
@@ -188,6 +194,20 @@ public class MonsterAudio : MonoBehaviour
             s.PlayOneShot(clip, deathVolume);
             Destroy(go, clip.length + 0.1f);
         }
+    }
+
+    // How loud the heartbeat is right now, 0-1 relative to its recent beats (ChaseStress pulses the screen with it)
+    readonly float[] beatSamples = new float[256];
+    float beatPeak = 0.001f;
+    public float HeartbeatPulse()
+    {
+        if (heartbeat == null || !heartbeat.isPlaying || heartbeat.volume <= 0.001f) return 0f;
+        heartbeat.GetOutputData(beatSamples, 0);
+        float sum = 0f;
+        foreach (float v in beatSamples) sum += v * v;
+        float rms = Mathf.Sqrt(sum / beatSamples.Length);
+        beatPeak = Mathf.Max(rms, beatPeak * Mathf.Exp(-0.5f * Time.deltaTime), 0.001f);
+        return Mathf.Clamp01(rms / beatPeak);
     }
 
     // ---------- Helpers ----------

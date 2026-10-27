@@ -73,6 +73,11 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     public float carryDuration = 3f;        // how long it holds you up
     [Tooltip("Where it holds you, in front of its face (normal human meters, scaled automatically).")]
     public Vector3 holdOffset = new Vector3(0.05f, -0.05f, 0.3f);
+    [Tooltip("Running grab: how much of the wind-up it takes the arm to swing out at you (0.8 = arm fully out just " +
+             "before the hand closes).")]
+    [Range(0.2f, 1f)] public float swipeArmTime = 0.8f;
+    [Tooltip("Running grab: where the hand aims on you, above your feet (normal human meters, not scaled).")]
+    public float swipeAimHeight = 1f;
     [Tooltip("How fast the hand closes around you on a catch and opens when it lets go (full close per second).")]
     public float gripCloseSpeed = 4f;
     [Tooltip("How far each finger joint bends toward the palm when gripping (degrees: knuckle, middle, tip). " +
@@ -405,6 +410,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         }
         else smoothedHand = HandPosition;
 
+        UpdateSwipe(dt);
         UpdateCarry(dt);
     }
 
@@ -412,6 +418,36 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
 
     // Extra time a doorway catch takes (drag to the door + out through it)
     public float DoorPullExtraTime => pullTime + throughDoorTime;
+
+    // ---------- Running grab: the arm swings out at you while it charges ----------
+
+    Transform swipeTarget;
+    float swipeUntil, swipeRate, swipeWeight;
+    Vector3 swipeGoal;
+
+    // Called on every computer when a running grab starts
+    public void StartSwipe(Transform victim, float windup)
+    {
+        swipeTarget = victim;
+        swipeUntil = Time.time + windup + 0.25f;   // a missed swipe hangs out a moment, then comes back
+        swipeRate = 1f / Mathf.Max(0.05f, windup * swipeArmTime);
+        swipeGoal = victim.position + Vector3.up * swipeAimHeight;
+    }
+
+    void UpdateSwipe(float dt)
+    {
+        bool on = swipeTarget != null && Time.time < swipeUntil && !carrying;
+        swipeWeight = Mathf.MoveTowards(swipeWeight, on ? 1f : 0f, dt * (on ? swipeRate : 3f));
+        if (swipeTarget == null) return;
+        swipeGoal = Vector3.Lerp(swipeGoal, swipeTarget.position + Vector3.up * swipeAimHeight, 1f - Mathf.Exp(-12f * dt));
+        if (on)
+        {
+            // Eyes on the prey
+            lookPos = Vector3.Lerp(lookPos, swipeGoal, 1f - Mathf.Exp(-8f * dt));
+            currentLookWeight = Mathf.MoveTowards(currentLookWeight, lookWeight, dt * 3f);
+        }
+        if (swipeWeight <= 0f && !on) swipeTarget = null;
+    }
 
     // Called on every computer when it catches someone
     public void StartCarry(Vector3 victimPosition, bool throughDoor, Vector3 doorPoint)
@@ -422,10 +458,11 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         carryDoor = doorPoint;
 
         // If the arm was already reaching, start the carry from where the hand is (no snapping)
-        bool handWasIn = currentReachWeight > 0.5f;
+        float armOut = Mathf.Max(currentReachWeight, swipeWeight);   // reaching through a door, or a running grab
+        bool handWasIn = armOut > 0.5f;
         carryFrom = handWasIn ? HandPosition : victimPosition + Vector3.up * 1f;   // where the hand really is
         carryTarget = carryFrom;
-        if (handWasIn) carryWeight = currentReachWeight;
+        if (handWasIn) carryWeight = armOut;
     }
 
     void UpdateCarry(float dt)
@@ -1147,6 +1184,12 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         else if (doorwayPosture)
         {
             animator.SetIKPositionWeight(reachHand, 0f);   // LateUpdate threads the arm through the door
+        }
+        else if (swipeWeight > currentReachWeight)
+        {
+            // Running grab: the arm swings out at the victim over the run animation
+            animator.SetIKPositionWeight(reachHand, swipeWeight);
+            animator.SetIKPosition(reachHand, swipeGoal);
         }
         else
         {

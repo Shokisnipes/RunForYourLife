@@ -69,11 +69,11 @@ public static class RetroLookSetup
             grain.intensity.Override(0.3f);
             grain.response.Override(0.7f);
             var vig = Add<Vignette>(profile);
-            vig.intensity.Override(0.45f);
+            vig.intensity.Override(0.3f);
             vig.smoothness.Override(0.5f);
             var color = Add<ColorAdjustments>(profile);
             color.saturation.Override(-12f);
-            color.contrast.Override(18f);
+            color.contrast.Override(8f);    // more crushes the night to black
             EditorUtility.SetDirty(profile);
         }
 

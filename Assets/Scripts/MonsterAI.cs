@@ -41,7 +41,7 @@ public class MonsterAI : NetworkBehaviour
     [Header("Movement")]
     public float walkSpeed = 2.5f;        // slow, lumbering patrol
     public float huntSpeed = 4f;          // investigating / searching
-    public float pursuitSpeed = 7f;       // chasing after the lunge
+    public float pursuitSpeed = 8.5f;     // chasing after the lunge (players sprint at 6: it gains on you)
     public float lungeSpeed = 12f;        // the sudden burst when a chase starts
     public float lungeTime = 1.5f;
     public float turnSpeed = 90f;         // degrees/sec when it turns to stare
@@ -55,6 +55,10 @@ public class MonsterAI : NetworkBehaviour
     public float viewAngle = 120f;          // full cone width (horizontal)
     public float crouchVisibility = 0.6f;   // crouching shrinks how far it can see you
     public float feelRange = 6f;            // notices you this close even from behind
+    [Tooltip("Once it's staring at you or chasing you, it keeps track of you this many times further than it first " +
+             "spots you. Without it, backing away during the stare puts you just out of range and it loses you, " +
+             "searches, spots you again and stares again (run, stop, run). Hiding behind something still loses it.")]
+    public float chaseSightMultiplier = 1.6f;
 
     [Header("Hearing")]
     public float hearingMultiplier = 1f;
@@ -71,8 +75,18 @@ public class MonsterAI : NetworkBehaviour
     [Header("Chase")]
     public float loseSightTime = 2f;
     public float grabRange = 5f;            // how far its hand reaches in the open
-    public float grabWindup = 0.5f;         // stops, hand comes down... still there after this? caught
-    public float grabEscapeRange = 7f;      // you must get this far away during the wind-up to dodge
+    [Tooltip("Seconds from starting the grab to the hand closing. It keeps charging straight ahead meanwhile.")]
+    public float grabWindup = 0.5f;
+    [Tooltip("Running grab: you're caught if you're this close (m) to its line of charge when the hand closes. " +
+             "Sprint sideways out of its path during the wind-up to dodge.")]
+    public float grabWidth = 2.5f;
+    [Tooltip("Running grab: how far (m) past the reach range ahead of it the hand still catches you.")]
+    public float grabOvershoot = 1.5f;
+    [Tooltip("Chasing: you still count as out in the street when you're this close (m) to ground it can stand on, with " +
+             "nothing solid in between. Covers the pavement along walls where its big body doesn't fit; without it the " +
+             "chase stalls there (run, stop, run). Keep it small or it stands outside doorways instead of reaching in.")]
+    public float chaseSnapDistance = 3f;
+    public float grabEscapeRange = 7f;      // Reach (doorway) grabs only: get this far away to dodge
     public float grabHoldTime = 3.5f;       // stands still holding you up after a catch
     public float catchCooldown = 4f;
 
@@ -109,6 +123,7 @@ public class MonsterAI : NetworkBehaviour
     float windupStart = -1f;
     float arrivedTime = -1f;
     float grabStart = -1f;
+    Vector3 grabDir;   // running grab: the line it charges along (locked when the grab starts)
     ReachPoint currentReachPoint;
 
     enum ReachPhase { Peek, Enter, Feel, Retract }
@@ -288,6 +303,7 @@ public class MonsterAI : NetworkBehaviour
         grabStart = -1f;
         agent.isStopped = false;
         agent.updateRotation = true;
+        agent.autoBraking = newState != MonsterState.Chase;   // chasing: full speed right up to you, no easing off
 
         switch (newState)
         {
@@ -371,38 +387,39 @@ public class MonsterAI : NetworkBehaviour
         Vector3 playerPos = target.transform.position;
         Vector3 hand = transform.position + Vector3.up * 4f;
 
-        // Mid-grab: stopped, turning to face you, hand coming down
+        // Mid-grab: it doesn't stop. It charges on in a straight line while the hand swipes down,
+        // so running straight away gets you caught; sprinting sideways out of its path dodges it.
         if (grabStart >= 0f)
         {
-            FaceTowards(playerPos);
             if (Time.time - grabStart < grabWindup) return;
 
             grabStart = -1f;
-            if (CanGrab(target, grabEscapeRange, hand)) { CatchPlayer(); return; }
-
-            // Missed! Back to the chase
-            agent.isStopped = false;
-            agent.updateRotation = true;
+            if (InGrabPath(target, hand)) { CatchPlayer(); return; }
+            // Missed! Back to the chase (it re-paths to you below)
         }
         else if (CanGrab(target, grabRange, hand))
         {
             grabStart = Time.time;
-            agent.velocity = Vector3.zero;
-            agent.isStopped = true;
-            agent.updateRotation = false;
-            GrabAnimRpc();
+            grabDir = playerPos - transform.position;
+            grabDir.y = 0f;
+            grabDir = grabDir.sqrMagnitude > 0.01f ? grabDir.normalized : transform.forward;
+            // Commit to the line: aim well past where you are now and stop steering
+            agent.SetDestination(transform.position + grabDir * (grabRange + 10f));
+            SwipeRpc(target.NetworkObject, grabWindup);
             return;
         }
 
         bool lunging = Time.time - stateStartTime < lungeTime;
         agent.speed = lunging ? lungeSpeed : pursuitSpeed;
 
+        // Run for the street spot nearest you (on the pavement it can't fit onto, that's the curb beside you)
+        bool nearStreet = StreetPointNear(target, out var chasePoint);
         if (Time.time >= nextPathCheck)
         {
             nextPathCheck = Time.time + 0.3f;
-            targetReachable = IsReachable(playerPos);
+            targetReachable = nearStreet && IsReachable(chasePoint, 0.5f);
         }
-        agent.SetDestination(playerPos);   // if unreachable, this walks to the closest point
+        agent.SetDestination(nearStreet ? chasePoint : playerPos);   // if unreachable, this walks to the closest point
 
         // Lost sight: search where it thinks you went, or peek in if you went indoors
         if (Time.time - lastSeenTime > loseSightTime)
@@ -446,7 +463,7 @@ public class MonsterAI : NetworkBehaviour
         if (seesTarget && Time.time >= nextPathCheck)
         {
             nextPathCheck = Time.time + 0.3f;
-            if (IsReachable(target.transform.position)) { SetState(MonsterState.Chase); return; }
+            if (StreetPointNear(target, out var street) && IsReachable(street, 0.5f)) { SetState(MonsterState.Chase); return; }
         }
 
         Vector3 door = currentReachPoint.DoorPoint;
@@ -652,6 +669,7 @@ public class MonsterAI : NetworkBehaviour
             float range = (light != null && light.IsOn) ? flashlightSightRange : sightRange;
             if (StreetLamp.IsUnderLight(player.transform.position)) range = Mathf.Max(range, litSightRange);
             if (player.IsCrouching) range *= crouchVisibility;
+            if (player == target && (state == MonsterState.Notice || state == MonsterState.Chase)) range *= chaseSightMultiplier;
             if (dist > range) continue;
 
             // Cone is horizontal, so it can look straight down at you
@@ -664,6 +682,25 @@ public class MonsterAI : NetworkBehaviour
             if (dist < bestDist) { best = player; bestDist = dist; }
         }
         return best;
+    }
+
+    // Running grab: are you still in its path (ahead of it and close to its line of charge)?
+    bool InGrabPath(FirstPersonController player, Vector3 handOrigin)
+    {
+        Vector3 local = player.transform.position - transform.position;
+        float ahead = Vector3.Dot(local, grabDir);
+        float side = Mathf.Abs(Vector3.Dot(local, Vector3.Cross(Vector3.up, grabDir)));
+        if (ahead < -1f || ahead > grabRange + grabOvershoot || side > grabWidth) return false;
+        return LineClear(handOrigin, player);
+    }
+
+    // The nearest ground it can stand on, if you're close to it and not behind a wall (indoors you're out of the street)
+    bool StreetPointNear(FirstPersonController player, out Vector3 point)
+    {
+        point = player.transform.position;
+        if (!NavMesh.SamplePosition(point, out var hit, chaseSnapDistance, Filter)) return false;
+        point = hit.position;
+        return LineClear(hit.position + Vector3.up * 1.5f, player);
     }
 
     bool CanGrab(FirstPersonController player, float range, Vector3 handOrigin)
@@ -788,16 +825,16 @@ public class MonsterAI : NetworkBehaviour
         // Stand still while the grab plays out, then go back to patrolling
         holding = true;
         holdUntil = Time.time + grabHoldTime + extra;
-        agent.velocity = Vector3.zero;
-        agent.isStopped = true;
+        agent.isStopped = true;   // skids to a halt from a run (acceleration 30) instead of freezing
         agent.updateRotation = false;
     }
 
+    // Everyone: the arm swings out at that player while it runs
     [Rpc(SendTo.Everyone)]
-    void GrabAnimRpc()
+    void SwipeRpc(NetworkObjectReference victim, float windup)
     {
         var anim = GetComponentInChildren<MonsterAnimator>();
-        if (anim != null) anim.PlayGrab();
+        if (anim != null && victim.TryGet(out NetworkObject obj)) anim.StartSwipe(obj.transform, windup);
     }
 
     [Rpc(SendTo.Everyone)]

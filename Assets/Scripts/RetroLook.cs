@@ -20,6 +20,9 @@ public class RetroLook : MonoBehaviour
     [Range(4, 64)] public float colourSteps = 32f;
     [Tooltip("0 = hard colour bands, 1 = bands broken up with a fine dither pattern.")]
     [Range(0f, 1f)] public float dither = 0.35f;
+    [Tooltip("Brightens the dark parts before the colour steps (1 = unchanged, lower = brighter shadows). Without it " +
+             "the darkest night colours all round down to black.")]
+    [Range(0.5f, 1f)] public float shadowLift = 0.8f;
 
     [Header("Glow and grain")]
     [Tooltip("Global Volume with the retro profile (more bloom, grain, vignette). Weight is set by this script.")]
@@ -35,6 +38,7 @@ public class RetroLook : MonoBehaviour
     static readonly int AmountId = Shader.PropertyToID("_RetroAmount");
     static readonly int StepsId = Shader.PropertyToID("_RetroSteps");
     static readonly int DitherId = Shader.PropertyToID("_RetroDither");
+    static readonly int ShadowLiftId = Shader.PropertyToID("_RetroShadowLift");
 
     UniversalRenderPipelineAsset urp;
     float normalScale;
@@ -70,6 +74,7 @@ public class RetroLook : MonoBehaviour
         if (On && Screen.height != appliedHeight) Apply();
         Shader.SetGlobalFloat(StepsId, colourSteps);
         Shader.SetGlobalFloat(DitherId, dither);
+        Shader.SetGlobalFloat(ShadowLiftId, shadowLift);
     }
 
     void Apply()
@@ -87,6 +92,7 @@ public class RetroLook : MonoBehaviour
         Shader.SetGlobalFloat(AmountId, On ? 1f : 0f);
         Shader.SetGlobalFloat(StepsId, colourSteps);
         Shader.SetGlobalFloat(DitherId, dither);
+        Shader.SetGlobalFloat(ShadowLiftId, shadowLift);
         if (retroVolume != null) retroVolume.weight = On ? 1f : 0f;
     }
 

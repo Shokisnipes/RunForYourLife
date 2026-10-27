@@ -250,6 +250,7 @@ GameObject:
   - component: {fileID: 5035217578270714404}
   - component: {fileID: 1649352431673675213}
   - component: {fileID: 8687374790113809673}
+  - component: {fileID: 1272151106869941223}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -460,6 +461,30 @@ MonoBehaviour:
   peekRoll: 8
   peekSpeed: 3
   peekLookAngle: 175
+--- !u!114 &1272151106869941223
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6986788303379592695}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 606a7543679904d4690f3f2998715243, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ChaseStress
+  giantFearDistance: 45
+  climberFearDistance: 20
+  chasedFloor: 0.35
+  riseSpeed: 1.2
+  fallSpeed: 0.2
+  vignette: 0.3
+  vignettePulse: 0.08
+  fovSqueeze: 5
+  saturation: -40
+  chromaticAberration: 0.6
+  muffledCutoff: 1200
+  fear: 0
 --- !u!1 &7100166854369933953
 GameObject:
   m_ObjectHideFlags: 0
