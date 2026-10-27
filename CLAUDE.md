@@ -16,6 +16,9 @@ when it's done and tested.
   client: locomotion blend, stride matching, foot plants -> footsteps/shake, head look IK, reach/carry IK, floor snap).
   `MonsterAudio` (breathing, footsteps, growls, scream, chase music, heartbeat, death sounds). `PoseAdjuster` (per-bone
   rotation tweaks). `ReachPoint` = doorway marker the giant crouches at.
+- **Climber** (Climber genome; the giant hides): `ClimberAI` (host only; crawls the streets on NavMesh agent type
+  "Climber", too tall for doorways; scripted climb up/down walls to the roof) + `ClimberAnimator` on its Model child.
+  Each monster only shows up when the genome's Access matches it (synced `netInPlay`).
 - **Senses:** `NoiseSystem.Emit(pos, radius)`; `FootstepNoise` sends player steps to the host by RPC. Flashlight on or
   standing under a lit `StreetLamp` makes players visible from further.
 - **Feel:** `CameraShake` (on the player camera), `Flashlight` (procedural cookie), head bob in FirstPersonController.
@@ -23,7 +26,8 @@ when it's done and tested.
 
 ## Editor tools (Tools > RunForYourLife)
 Building Generator, Upgrade Existing Buildings, Add Reach Points To Existing Buildings, Building Texturer (Use Texture
-Set), Street Lamps, Monster Animator Builder, Make It Look Good. Prefer improving these tools over hand-editing scenes.
+Set), Street Lamps, Monster Animator Builder, Climber Setup (clips, agent type, controller, scene object, NavMesh bake),
+Make It Look Good. Prefer improving these tools over hand-editing scenes.
 
 ## Conventions and lessons learned
 - Expose tuning values in the Inspector with tooltips. Comment scripts in plain language.

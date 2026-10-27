@@ -34,6 +34,9 @@ public class MonsterAI : NetworkBehaviour
     public bool SyncedReaching => netReaching.Value;
     public Vector3 SyncedHandTarget => netHandTarget.Value;
     public Vector3 SyncedDoorPoint => netDoorPoint.Value;
+    // False when this run's genome isn't a Reacher: the giant stays hidden all game
+    readonly NetworkVariable<bool> netInPlay = new NetworkVariable<bool>(true);
+    bool inPlay = true;
 
     [Header("Movement")]
     public float walkSpeed = 2.5f;        // slow, lumbering patrol
@@ -146,6 +149,7 @@ public class MonsterAI : NetworkBehaviour
         flashlightSightRange = baseFlashSight * genome.sightRangeMultiplier;
         litSightRange = baseLitSight * genome.sightRangeMultiplier;
         hearingMultiplier = baseHearing * genome.hearingMultiplier;
+        inPlay = genome.access == GenomeAccess.Reacher;
     }
 
     void OnEnable() => NoiseSystem.OnNoise += HearNoise;
@@ -194,8 +198,9 @@ public class MonsterAI : NetworkBehaviour
 
     void Update()
     {
+        if (IsServer && IsSpawned && netInPlay.Value != inPlay) netInPlay.Value = inPlay;
         var flow = GameFlow.Instance;
-        bool active = flow == null || flow.MonsterActive;
+        bool active = (flow == null || flow.MonsterActive) && netInPlay.Value;
         if (IsSpawned) UpdateAsleep(active);
         if (!IsServer || !IsSpawned || !active) return;
 

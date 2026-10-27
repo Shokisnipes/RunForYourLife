@@ -1,7 +1,7 @@
 using UnityEngine;
 
 public enum GenomeSense { Sight, Hearing }
-public enum GenomeAccess { Reacher, Climber }   // Climber is a stub until task 4
+public enum GenomeAccess { Reacher, Climber }   // Reacher = the giant, Climber = the climber
 
 // One monster "recipe": how it perceives and how it gets at players. GenomeManager picks one per run.
 [CreateAssetMenu(menuName = "RunForYourLife/Monster Genome", fileName = "MonsterGenome")]

@@ -6,8 +6,10 @@ public class GenomeManager : MonoBehaviour
 {
     [Tooltip("Genomes to pick from. Leave empty to use the built-in Sight/Hearing x Reacher set.")]
     public MonsterGenome[] genomes;
-    [Tooltip("Climber is not built yet (task 4); keep off so the giant never rolls it.")]
-    public bool allowClimber = false;
+    [Tooltip("Off = only Reacher genomes (the giant) are picked.")]
+    public bool allowClimber = true;
+    [Tooltip("Testing: always pick a Climber genome.")]
+    public bool alwaysClimber = false;
 
     public static MonsterGenome Current { get; private set; }
 
@@ -30,19 +32,25 @@ public class GenomeManager : MonoBehaviour
             {
                 MonsterGenome.CreateDefault(GenomeSense.Sight, GenomeAccess.Reacher),
                 MonsterGenome.CreateDefault(GenomeSense.Hearing, GenomeAccess.Reacher),
+                MonsterGenome.CreateDefault(GenomeSense.Sight, GenomeAccess.Climber),
+                MonsterGenome.CreateDefault(GenomeSense.Hearing, GenomeAccess.Climber),
             };
         }
 
         var pool = new System.Collections.Generic.List<MonsterGenome>();
         foreach (var g in genomes)
-            if (g != null && (allowClimber || g.access != GenomeAccess.Climber)) pool.Add(g);
+            if (g != null && (allowClimber || g.access != GenomeAccess.Climber) &&
+                (!alwaysClimber || g.access == GenomeAccess.Climber)) pool.Add(g);
         if (pool.Count == 0) { Debug.LogWarning("GenomeManager: no usable genomes."); return; }
 
         Current = pool[Random.Range(0, pool.Count)];
-        var monster = FindAnyObjectByType<MonsterAI>();
-        if (monster == null) { Debug.LogWarning("GenomeManager: no MonsterAI in scene."); return; }
-
-        monster.ApplyGenome(Current);
+        // Every monster gets the genome; only the one matching its Access shows up (Reacher = giant, Climber = climber)
+        var giant = FindAnyObjectByType<MonsterAI>();
+        var climber = FindAnyObjectByType<ClimberAI>();
+        if (giant != null) giant.ApplyGenome(Current);
+        if (climber != null) climber.ApplyGenome(Current);
+        if (Current.access == GenomeAccess.Climber && climber == null)
+            Debug.LogWarning("GenomeManager: Climber genome but no ClimberAI in scene (Tools > RunForYourLife > Climber Setup).");
         Debug.Log($"Genome picked: {Current.name} (sense {Current.sense}, access {Current.access}, " +
                   $"sight x{Current.sightRangeMultiplier}, hearing x{Current.hearingMultiplier})");
     }
