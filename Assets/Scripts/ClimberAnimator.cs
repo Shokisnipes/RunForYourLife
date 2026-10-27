@@ -3,7 +3,7 @@ using UnityEngine;
 // On the climber's Model child; runs on every client. Picks crawl / run / climb from ClimberAI's synced state and
 // speeds the clips up or down to match how fast the climber really moves (the Mixamo clips are "In Place").
 [RequireComponent(typeof(Animator))]
-public class ClimberAnimator : MonoBehaviour
+public class ClimberAnimator : MonoBehaviour, IMonsterGrabber
 {
     [Tooltip("Metres per second the crawl clip looks right at normal speed.")]
     public float crawlClipSpeed = 2.5f;
@@ -27,6 +27,22 @@ public class ClimberAnimator : MonoBehaviour
     float grabUntil = -1f, grabWeight;
     int grabLayer = -1;
 
+    Transform leftHand, rightHand, head;
+
+    // Read by the player it caught: the hand that's furthest forward holds you, and you face its head
+    public Vector3 HandPosition
+    {
+        get
+        {
+            Transform root = ai != null ? ai.transform : transform;
+            if (leftHand == null || rightHand == null) return root.position + root.forward * 0.8f + Vector3.up * 1.2f;
+            float l = Vector3.Dot(leftHand.position - root.position, root.forward);
+            float r = Vector3.Dot(rightHand.position - root.position, root.forward);
+            return (l > r ? leftHand : rightHand).position;
+        }
+    }
+    public Vector3 HeadPosition => head != null ? head.position : (ai != null ? ai.transform.position : transform.position) + Vector3.up * 1.5f;
+
     // Read by ClimberAudio to time the steps
     public Animator Anim => anim;
     public int Mode { get; private set; }        // 0 ground, 1 climbing up, 2 climbing down
@@ -45,6 +61,12 @@ public class ClimberAnimator : MonoBehaviour
         ai = GetComponentInParent<ClimberAI>();
         lastPos = ai != null ? ai.transform.position : transform.position;
         grabLayer = anim.GetLayerIndex("Grab");
+        if (anim.isHuman)
+        {
+            leftHand = anim.GetBoneTransform(HumanBodyBones.LeftHand);
+            rightHand = anim.GetBoneTransform(HumanBodyBones.RightHand);
+            head = anim.GetBoneTransform(HumanBodyBones.Head);
+        }
     }
 
     // Called on every client by ClimberAI: hold the grab pose for this long, then let it fade out

@@ -50120,7 +50120,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GenomeManager
   genomes: []
   allowClimber: 1
-  alwaysClimber: 0
+  alwaysClimber: 1
 --- !u!1 &766424683
 GameObject:
   m_ObjectHideFlags: 0
@@ -74913,7 +74913,7 @@ MonoBehaviour:
   grabRange: 1.8
   grabWindup: 0.35
   grabEscapeRange: 2.6
-  grabHoldTime: 2.5
+  grabHoldTime: 3.2
   catchCooldown: 4
   climbSpeed: 1.6
   wallGap: 0.35

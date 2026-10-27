@@ -289,12 +289,12 @@ public class FirstPersonController : NetworkBehaviour
     void CaughtRpc(NetworkObjectReference monsterRef, float extraTime)
     {
         if (grabbed) return;
-        MonsterAnimator monster = null;
-        if (monsterRef.TryGet(out NetworkObject obj)) monster = obj.GetComponentInChildren<MonsterAnimator>();
+        IMonsterGrabber monster = null;   // the giant's MonsterAnimator or the climber's ClimberAnimator
+        if (monsterRef.TryGet(out NetworkObject obj)) monster = obj.GetComponentInChildren<IMonsterGrabber>();
         StartCoroutine(GrabbedSequence(monster, carriedTime + extraTime));
     }
 
-    IEnumerator GrabbedSequence(MonsterAnimator monster, float holdTime)
+    IEnumerator GrabbedSequence(IMonsterGrabber monster, float holdTime)
     {
         Debug.Log("You were caught!");
         grabbed = true;

@@ -62,8 +62,8 @@ public class ClimberAI : NetworkBehaviour
     [Tooltip("Short pause before the grab lands. Get this far away in time and it misses.")]
     public float grabWindup = 0.35f;
     public float grabEscapeRange = 2.6f;
-    [Tooltip("Stays still this long after a catch.")]
-    public float grabHoldTime = 2.5f;
+    [Tooltip("Stays still holding you this long after a catch (match the player's Carried Time).")]
+    public float grabHoldTime = 3.2f;
     public float catchCooldown = 4f;
 
     [Header("Climbing")]

@@ -8,7 +8,7 @@ using UnityEngine;
 // - Head slowly turns to track you, arm reaches for you when it's peeking into a building
 [RequireComponent(typeof(Animator))]
 [DefaultExecutionOrder(100)]   // after PoseAdjuster, so the doorway arm solve is the last word on the pose
-public class MonsterAnimator : MonoBehaviour
+public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
 {
     [Header("Speed mapping (monster speed in m/s)")]
     public float walkSpeed = 2.5f;          // the walk clip plays fully at this speed
