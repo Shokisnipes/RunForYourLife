@@ -118,8 +118,28 @@ public class DoorManager : NetworkBehaviour
         if (door < 0 || door >= states.Count) return;
         var state = (Door.State)states[door];
         if (state == Door.State.Torn) return;   // hanging off its hinges
+        if (state == Door.State.Open && InTheWay(doors[door])) return;   // won't shut on the giant's arm / the Climber
         states[door] = (byte)(state == Door.State.Closed ? Door.State.Open : Door.State.Closed);
         NoiseSystem.Emit(doors[door].Center, noiseRadius);
+    }
+
+    // Something stopping this door from closing: the giant's arm reaching through it, or the Climber in the doorway.
+    // Uses synced state, so every machine agrees (and can show the hint).
+    static MonsterAI[] giants;
+    static ClimberAI[] climbers;
+    public static bool InTheWay(Door door)
+    {
+        if (giants == null || giants.Length == 0 || giants[0] == null) giants = FindObjectsByType<MonsterAI>();
+        if (climbers == null || climbers.Length == 0 || climbers[0] == null) climbers = FindObjectsByType<ClimberAI>();
+        foreach (var g in giants)
+            if (g != null && g.IsSpawned && g.SyncedReaching && Vector3.Distance(g.SyncedDoorPoint, door.Center) < 2f) return true;
+        foreach (var c in climbers)
+        {
+            if (c == null || !c.IsSpawned) continue;
+            Vector3 d = door.transform.InverseTransformPoint(c.transform.position);
+            if (Mathf.Abs(d.x) < 1.6f && Mathf.Abs(d.z) < 1.4f && d.y > -1f && d.y < 3f) return true;
+        }
+        return false;
     }
 
     // Host: the door in this doorway is closed?
@@ -195,7 +215,9 @@ public class DoorManager : NetworkBehaviour
         int door = Aimed(me);
         if (door < 0) return;
         var state = (Door.State)states[door];
-        string msg = state == Door.State.Torn ? "Door torn off its hinges" : state == Door.State.Open ? "E - close door" : "E - open door";
+        string msg = state == Door.State.Torn ? "Door torn off its hinges"
+                   : state == Door.State.Open ? (InTheWay(doors[door]) ? "Something's in the way!" : "E - close door")
+                   : "E - open door";
         var style = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 18 };
         style.normal.textColor = Color.white;
         GUI.Label(new Rect((Screen.width - 420f) / 2f, Screen.height - 140f, 420f, 26f), msg, style);

@@ -17,6 +17,8 @@ public class BuildingPalette : ScriptableObject
     public Material windowFrame;
     public Material windowDark;
     public Material windowLit;
+    [Tooltip("See-through glass for ground-floor windows (you can look out, and in). Assets/Materials/Window_Glass.mat.")]
+    public Material windowGlass;
     public Material propMetal;
     [Tooltip("See-through material for wall decals (grime, posters, graffiti); their pictures are made in code. " +
              "Empty = no decals. Filled by the Building Generator / Texturer (Assets/Materials/Decal.mat).")]

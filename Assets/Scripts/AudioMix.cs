@@ -14,6 +14,7 @@ using UnityEngine;
 //   hatch creak                   -14 dB         (a warning: the room below is 4-5 m away)
 //   hatch landing thump           -18 dB
 //   door torn open by the giant   -14 dB
+//   window smashed by the Climber -14 dB
 //   door closing / opening        -27 / -28 dB   (your own sneaky actions: just above your footsteps)
 //   climber crawl steps           -24 dB         (climbing steps -27)
 //   giant breathing               -24 dB

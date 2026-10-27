@@ -1013,6 +1013,7 @@ GameObject:
   - component: {fileID: 1018997749}
   - component: {fileID: 1018997750}
   - component: {fileID: 1018997751}
+  - component: {fileID: 1018997752}
   m_Layer: 0
   m_Name: GameFlow
   m_TagString: Untagged
@@ -1075,7 +1076,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameFlow
   ShowTopMostFoldoutHeaderGroup: 1
-  prepSeconds: 30
+  prepSeconds: 2
   nightSeconds: 360
 --- !u!114 &1018997749
 MonoBehaviour:
@@ -1138,6 +1139,23 @@ MonoBehaviour:
   openVolume: 0.19
   closeVolume: 0.55
   tornVolume: 1
+--- !u!114 &1018997752
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1018997745}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e14e3a2b7b8f7ff4680816fbaddc1f38, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WindowManager
+  ShowTopMostFoldoutHeaderGroup: 1
+  noiseRadius: 30
+  smashClip: {fileID: 8300000, guid: ef4ad8c7b77a76e45977778574a9d7de, type: 3}
+  smashVolume: 0.81
+  soundRange: 45
 --- !u!1 &1118492851
 GameObject:
   m_ObjectHideFlags: 0
@@ -1280,6 +1298,8 @@ MonoBehaviour:
   hatchPeekTime: 1.2
   landPause: 0.6
   hatchCloseDelay: 1.5
+  windowSmashTime: 0.7
+  windowCrawlTime: 1
   searchDuration: 12
   searchArea: 12
 --- !u!114 &1118492856

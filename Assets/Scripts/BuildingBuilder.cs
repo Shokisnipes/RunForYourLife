@@ -187,6 +187,7 @@ public static class BuildingBuilder
 
         // Windows, roof edge, rooftop clutter, sidewalk
         AddDetails(b, s.width, s.depth, height, t, s.doorOffset, s.doorWidth, s.details, pal, rng, wall);
+        CutWindows(b);   // real openings behind the ground-floor windows (the Climber smashes its way through)
 
         // Sloped roof on top, then the outside variety
         if (sloped) RoofBuilder.Build(b, s.roof, s.width, s.depth, height + t, Range(rng, 28f, 40f), wall, tile, rng);
@@ -487,9 +488,10 @@ public static class BuildingBuilder
 
     struct WindowMats
     {
-        public Material frame, dark, lit;
+        public Material frame, dark, lit, glass;
         public WindowMats(BuildingPalette pal)
         {
+            glass = pal != null && pal.windowGlass != null ? pal.windowGlass : null;   // null: ground floor uses dark/lit too
             frame = pal != null && pal.windowFrame != null ? pal.windowFrame : Fallback("Window_Frame", new Color(0.08f, 0.08f, 0.09f), Color.black, 0.3f);
             dark = pal != null && pal.windowDark != null ? pal.windowDark : Fallback("Window_Dark", new Color(0.03f, 0.035f, 0.045f), Color.black, 0.92f);
             lit = pal != null && pal.windowLit != null ? pal.windowLit : Fallback("Window_Lit", new Color(1f, 0.85f, 0.6f), new Color(1f, 0.72f, 0.42f) * 1.6f, 0.6f);
@@ -520,6 +522,15 @@ public static class BuildingBuilder
                 Window(parent, faceCenter + along * s + Vector3.up * y, normal, size, o, m, rng);
             }
         }
+
+        // High-windowed buildings (warehouses) get a low row too, every other column: a way in for the Climber
+        if (o.highWindows)
+            for (int c = 0; c < cols; c += 2)
+            {
+                float s = -length / 2f + spacing * (c + 0.5f);
+                if (isFront && Mathf.Abs(s - doorOffset) < doorWidth / 2f + 0.9f) continue;
+                Window(parent, faceCenter + along * s + Vector3.up * 1.75f, normal, new Vector2(WindowW, WindowH), o, m, rng);
+            }
     }
 
     // One big window each side of a shop's door
@@ -541,14 +552,44 @@ public static class BuildingBuilder
     {
         Quaternion rot = Quaternion.LookRotation(normal);
         bool lit = rng.NextDouble() < o.litChance;
+        bool ground = pos.y - size.y / 2f < 2.2f;   // sill low enough to climb in from the street
 
-        var frame = Part(parent, "Window_Frame", PrimitiveType.Cube, pos + normal * 0.025f,
-                         new Vector3(size.x + 0.16f, size.y + 0.16f, 0.05f), m.frame, false, 0f);
-        frame.localRotation = rot;
-
-        var glass = Part(parent, lit ? "Window_Lit" : "Window_Dark", PrimitiveType.Cube, pos + normal * 0.045f,
+        Transform glass;
+        if (!ground)
+        {
+            // Upper floors: a frame and glass on the face of a solid wall
+            var frame = Part(parent, "Window_Frame", PrimitiveType.Cube, pos + normal * 0.025f,
+                             new Vector3(size.x + 0.16f, size.y + 0.16f, 0.05f), m.frame, false, 0f);
+            frame.localRotation = rot;
+            glass = Part(parent, lit ? "Window_Lit" : "Window_Dark", PrimitiveType.Cube, pos + normal * 0.045f,
                          new Vector3(size.x, size.y, 0.03f), lit ? m.lit : m.dark, false, 0f);
+        }
+        else
+        {
+            // Ground floor: a real opening (CutWindows), a frame round its edge and a pane of glass that can break.
+            // "Window_Frame" stays as an empty marker of the frame's size (BuildingDressing keeps decals off it).
+            var marker = new GameObject("Window_Frame").transform;
+            marker.SetParent(parent, false);
+            marker.localPosition = pos + normal * 0.025f;
+            marker.localRotation = rot;
+            marker.localScale = new Vector3(size.x + 0.16f, size.y + 0.16f, 0.05f);
+            Vector3 right = rot * Vector3.right;
+            foreach (float side in new[] { -1f, 1f })
+            {
+                Part(parent, "Window_Bar", PrimitiveType.Cube, pos + Vector3.up * side * (size.y / 2f + 0.04f) + normal * 0.03f,
+                     new Vector3(size.x + 0.16f, 0.08f, 0.06f), m.frame, false, 0f).localRotation = rot;
+                Part(parent, "Window_Bar", PrimitiveType.Cube, pos + right * side * (size.x / 2f + 0.04f) + normal * 0.03f,
+                     new Vector3(0.08f, size.y, 0.06f), m.frame, false, 0f).localRotation = rot;
+            }
+            // Clear glass you can see through (lit-window glow is for the upper floors)
+            bool clear = m.glass != null;
+            glass = Part(parent, clear ? "Window_Glass" : lit ? "Window_Lit" : "Window_Dark", PrimitiveType.Cube, pos + normal * 0.02f,
+                         new Vector3(size.x, size.y, 0.03f), clear ? m.glass : lit ? m.lit : m.dark, true, 0f);
+            glass.gameObject.isStatic = false;   // it breaks
+            if (clear) lit = false;
+        }
         glass.localRotation = rot;
+        if (ground) glass.gameObject.AddComponent<BreakableWindow>();
         if (lit && rng.NextDouble() < o.flickerChance / Mathf.Max(o.litChance, 0.01f))
             glass.gameObject.AddComponent<WindowFlicker>();
     }
@@ -625,6 +666,59 @@ public static class BuildingBuilder
         rh.size = s;
         created?.Add(hatch.gameObject);
         return rh;
+    }
+
+    // Cuts a real opening in the outside wall behind every ground-floor window: the wall cube it sits on is replaced
+    // by the pieces around the hole (left, right, below the sill, above the head), keeping its name, material and tiling
+    static void CutWindows(Transform b)
+    {
+        var details = b.Find("Details");
+        if (details == null) return;
+        foreach (var w in details.GetComponentsInChildren<BreakableWindow>())
+        {
+            Transform g = w.transform;
+            Vector3 n = g.localRotation * Vector3.forward;
+            bool alongX = Mathf.Abs(n.z) > 0.5f;   // front/back walls run along X, side walls along Z
+            float c = alongX ? g.localPosition.x : g.localPosition.z;
+            float half = g.localScale.x / 2f;
+            float y0 = g.localPosition.y - g.localScale.y / 2f, y1 = g.localPosition.y + g.localScale.y / 2f;
+            float plane = alongX ? g.localPosition.z : g.localPosition.x;
+
+            foreach (Transform wall in b)
+            {
+                if (!wall.name.StartsWith("Wall_") || wall.GetComponent<BoxCollider>() == null) continue;
+                Vector3 p = wall.localPosition, s = wall.localScale;
+                float thick = alongX ? s.z : s.x, wp = alongX ? p.z : p.x;
+                if (Mathf.Abs(Mathf.Abs(plane - wp) - thick / 2f) > 0.15f) continue;   // the glass isn't on this wall's face
+                float a0 = alongX ? p.x - s.x / 2f : p.z - s.z / 2f, a1 = alongX ? p.x + s.x / 2f : p.z + s.z / 2f;
+                float b0 = p.y - s.y / 2f, b1 = p.y + s.y / 2f;
+                if (c - half < a0 - 0.01f || c + half > a1 + 0.01f || y0 < b0 - 0.01f || y1 > b1 + 0.01f) continue;
+                SplitAroundHole(b, wall, alongX, wp, thick, a0, a1, b0, b1, c - half, c + half, y0, y1);
+                break;
+            }
+        }
+    }
+
+    static void SplitAroundHole(Transform b, Transform wall, bool alongX, float wp, float thick,
+                                float a0, float a1, float b0, float b1, float h0, float h1, float y0, float y1)
+    {
+        var mat = wall.GetComponent<MeshRenderer>().sharedMaterial;
+        float tile = wall.TryGetComponent(out BoxUV uv) ? uv.metersPerTile : 2.5f;
+        string name = wall.name;
+        Object.DestroyImmediate(wall.gameObject);
+
+        void Piece(string n, float u0, float u1, float v0, float v1)
+        {
+            if (u1 - u0 < 0.01f || v1 - v0 < 0.01f) return;
+            float u = (u0 + u1) / 2f, v = (v0 + v1) / 2f;
+            Vector3 pos = alongX ? new Vector3(u, v, wp) : new Vector3(wp, v, u);
+            Vector3 size = alongX ? new Vector3(u1 - u0, v1 - v0, thick) : new Vector3(thick, v1 - v0, u1 - u0);
+            Box(b, n, pos, size, mat, tile);
+        }
+        Piece(name, a0, h0, b0, b1);            // left of the opening, full height
+        Piece(name + "_R", h1, a1, b0, b1);     // right of it
+        Piece(name + "_Sill", h0, h1, b0, y0);  // under it
+        Piece(name + "_Head", h0, h1, y1, b1);  // over it
     }
 
     // Apartment block: a stairwell hole in the ground-floor ceiling right under the roof hatch, so the Climber can drop

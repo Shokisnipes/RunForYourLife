@@ -9,12 +9,15 @@ public enum ClimberState
     ToWall, ClimbUp, OnRoof, ToEdge, ClimbDown,   // up and down the outside walls
     ToHatch, DropIn, ToUnderHatch, ClimbOut,      // in and out through a roof hatch
     Perch, LeapDown,                              // watching the door from the roof edge, jumping off a roof
+    ToWindow, ThroughWindow,                      // in or out through a ground-floor window (smashing the glass)
 }
 
 // The Climber genome's monster: a lanky crawler that hunts on the streets and, when you hide inside, climbs the
 // building's wall to the roof. Host runs all of this; everyone else sees it through NetworkTransform and the
 // synced state (ClimberAnimator). It walks in through open front doors but can't open a closed one (Door cuts a
-// closed doorway out of its NavMesh), so shutting the door behind you sends it up to the roof hatch.
+// closed doorway out of its NavMesh), so shutting the door behind you sends it up to the roof hatch or through a
+// ground-floor window (it smashes the glass), whichever is quicker. Sloped-roof houses can't be climbed: windows only.
+// A boarded window (or one behind a closed shutter) it can't use.
 [RequireComponent(typeof(NavMeshAgent))]
 public class ClimberAI : NetworkBehaviour
 {
@@ -124,6 +127,12 @@ public class ClimberAI : NetworkBehaviour
     [Tooltip("Lid closes this long after it's through.")]
     public float hatchCloseDelay = 1.5f;
 
+    [Header("Windows")]
+    [Tooltip("Seconds it spends punching out the glass before it climbs through.")]
+    public float windowSmashTime = 0.7f;
+    [Tooltip("Seconds to climb through a window, sill to floor.")]
+    public float windowCrawlTime = 1.0f;
+
     [Header("Search")]
     public float searchDuration = 12f;
     public float searchArea = 12f;
@@ -141,6 +150,8 @@ public class ClimberAI : NetworkBehaviour
     {
         public Vector3 center, right, fwd; public float halfX, halfZ, topY; public RoofHatch hatch;
         public bool hasDoor; public Vector3 door, doorOut;   // front door at ground level, and which way is outside
+        public bool climbable = true;                          // false: a sloped roof (no climbing onto it)
+        public readonly List<BreakableWindow> windows = new List<BreakableWindow>();   // ground-floor windows
     }
     struct ClimbPlan { public Vector3 foot, wallBase, wallTop, roofPoint, outward; }
     readonly List<Roof> roofs = new List<Roof>();
@@ -162,7 +173,14 @@ public class ClimberAI : NetworkBehaviour
     bool OnRoof => currentRoof != null;
     bool Indoors => indoorsRoof != null;
     bool Climbing => state == ClimberState.ClimbUp || state == ClimberState.ClimbDown ||
-                     state == ClimberState.DropIn || state == ClimberState.ClimbOut || state == ClimberState.LeapDown;
+                     state == ClimberState.DropIn || state == ClimberState.ClimbOut || state == ClimberState.LeapDown ||
+                     state == ClimberState.ThroughWindow;
+
+    // The window it's heading for / climbing through
+    BreakableWindow useWindow;
+    bool windowIn;                    // true = getting in, false = getting out
+    Roof windowBuilding;
+    Vector3 windowOutside, windowInside;
 
     void Awake()
     {
@@ -211,14 +229,15 @@ public class ClimberAI : NetworkBehaviour
     }
 
     // Every building's roof, from the "Roof" boxes the Building Generator makes. A roof with a hatch is split into
-    // pieces (Roof, Roof_N, Roof_W, Roof_E); they're merged back into one footprint per building.
+    // pieces (Roof, Roof_N, Roof_W, Roof_E); they're merged back into one footprint per building. Houses with a
+    // sloped roof have a "Ceiling" box instead: they count as buildings (windows, doors) but can't be climbed.
     void FindRoofs()
     {
         roofs.Clear();
         var pieces = new Dictionary<Transform, List<BoxCollider>>();
         foreach (var box in FindObjectsByType<BoxCollider>())
         {
-            if (box.name != "Roof" && !box.name.StartsWith("Roof_")) continue;
+            if (box.name != "Roof" && !box.name.StartsWith("Roof_") && box.name != "Ceiling") continue;
             var building = box.transform.parent != null ? box.transform.parent : box.transform;
             if (!pieces.TryGetValue(building, out var list)) pieces[building] = list = new List<BoxCollider>();
             list.Add(box);
@@ -249,7 +268,14 @@ public class ClimberAI : NetworkBehaviour
                 halfX = (max.x - min.x) * 0.5f * Mathf.Abs(s.x),
                 halfZ = (max.z - min.z) * 0.5f * Mathf.Abs(s.z),
                 topY = topY,
+                climbable = !pair.Value.TrueForAll(b => b.name == "Ceiling"),
             });
+        }
+
+        foreach (var w in BreakableWindow.All)
+        {
+            var roof = BuildingAt(w.Center);
+            if (roof != null) roof.windows.Add(w);
         }
 
         foreach (var hatch in RoofHatch.All)
@@ -349,6 +375,8 @@ public class ClimberAI : NetworkBehaviour
             case ClimberState.ClimbOut:    UpdateClimbOut(); break;
             case ClimberState.Perch:       UpdatePerch(); break;
             case ClimberState.LeapDown:    UpdateLeapDown(); break;
+            case ClimberState.ToWindow:    UpdateToWindow(); break;
+            case ClimberState.ThroughWindow: UpdateThroughWindow(); break;
         }
 
         bool running = canRun && state == ClimberState.Chase && target != null &&
@@ -408,6 +436,10 @@ public class ClimberAI : NetworkBehaviour
                 agent.speed = huntSpeed;
                 agent.SetDestination(plan.roofPoint);
                 break;
+            case ClimberState.ToWindow:
+                agent.speed = huntSpeed;
+                agent.SetDestination(windowIn ? windowOutside : windowInside);
+                break;
         }
     }
 
@@ -425,7 +457,7 @@ public class ClimberAI : NetworkBehaviour
         if (Indoors && !IsReachable(point))
         {
             if (building == indoorsRoof) SetState(ClimberState.Investigate);   // same building: get as close as it can
-            else if (state != ClimberState.ToUnderHatch && ReadyToLeave()) SetState(ClimberState.ToUnderHatch);
+            else if (state != ClimberState.ToUnderHatch && state != ClimberState.ToWindow && ReadyToLeave()) LeaveBuilding();
             return;
         }
 
@@ -453,11 +485,12 @@ public class ClimberAI : NetworkBehaviour
             return;
         }
 
-        // Inside a building: climb it. Already on the way to that wall? Keep going.
+        // Inside a building: get in by its roof hatch or a window, whichever is quicker. Already on the way? Keep going.
         if (building != null)
         {
             if (state == ClimberState.ToWall && building == climbTarget) return;
-            if (PlanClimb(building, transform.position, true)) { climbTarget = building; SetState(ClimberState.ToWall); return; }
+            if (state == ClimberState.ToWindow && windowIn && building == windowBuilding) return;
+            if (EnterBuilding(building)) return;
         }
         SetState(ClimberState.Investigate);   // somewhere it can't get to: go as close as it can
     }
@@ -469,18 +502,184 @@ public class ClimberAI : NetworkBehaviour
     float nextInsideCheck;
     void TrackInside()
     {
-        if (OnRoof || Climbing || state == ClimberState.ToUnderHatch || Time.time < nextInsideCheck) return;
+        if (OnRoof || Climbing || state == ClimberState.ToUnderHatch || state == ClimberState.ToWindow || Time.time < nextInsideCheck) return;
         nextInsideCheck = Time.time + 0.5f;
         var inside = BuildingAt(transform.position);
         if (inside == null || transform.position.y > inside.topY - 1f) { indoorsRoof = null; return; }
         bool wayOut = inside.hasDoor && IsReachable(inside.door + inside.doorOut * 3f);
-        indoorsRoof = wayOut || inside.hatch == null ? null : inside;
+        indoorsRoof = wayOut || (inside.hatch == null && !inside.windows.Exists(w => w.Usable)) ? null : inside;
+    }
+
+    // ---------- Windows ----------
+
+    // Where it stands outside and lands inside for this window (both on its NavMesh, each on its own side of the wall)
+    bool WindowPoints(BreakableWindow w, out Vector3 outside, out Vector3 inside)
+    {
+        outside = inside = Vector3.zero;
+        Vector3 o = w.Center + w.Outward * 0.9f, i = w.Center - w.Outward * 1.1f;
+        o.y = i.y = w.SillY;
+        if (!NavMesh.SamplePosition(o, out var a, 1.6f, Filter) || a.position.y > w.SillY - 0.3f) return false;
+        if (!NavMesh.SamplePosition(i, out var b, 1.6f, Filter) || b.position.y > w.SillY - 0.3f) return false;
+        if (Vector3.Dot(a.position - w.Center, w.Outward) < 0.3f || Vector3.Dot(b.position - w.Center, w.Outward) > -0.3f) return false;
+        Vector3 fa = a.position - w.Center, fb = b.position - w.Center;
+        fa.y = fb.y = 0f;
+        if (fa.magnitude > 2f || fb.magnitude > 2f) return false;   // furniture in the way: it would land far off
+        outside = a.position;
+        inside = b.position;
+        return true;
+    }
+
+    // Seconds to crawl to this point (infinity if it can't get there)
+    float PathTime(Vector3 to)
+    {
+        if (!agent.enabled || !agent.isOnNavMesh) return float.PositiveInfinity;
+        if (!NavMesh.SamplePosition(to, out var hit, 1f, Filter)) return float.PositiveInfinity;
+        if (!agent.CalculatePath(hit.position, path) || path.status != NavMeshPathStatus.PathComplete) return float.PositiveInfinity;
+        float length = 0f;
+        var corners = path.corners;
+        for (int i = 1; i < corners.Length; i++) length += Vector3.Distance(corners[i - 1], corners[i]);
+        return length / huntSpeed;
+    }
+
+    float WindowTime(BreakableWindow w) =>
+        (w.Current == BreakableWindow.State.Intact ? windowSmashTime : 0.15f) + windowCrawlTime;
+
+    // From outside: the quickest way in, a window or up the wall to the roof hatch. False = no way in.
+    bool EnterBuilding(Roof b)
+    {
+        BreakableWindow bestWindow = null;
+        float bestWindowTime = float.PositiveInfinity;
+        Vector3 bestOut = Vector3.zero, bestIn = Vector3.zero;
+        foreach (var w in b.windows)
+        {
+            if (!w.Usable || !WindowPoints(w, out var o, out var i)) continue;
+            float t = PathTime(o) + WindowTime(w) + Vector3.Distance(i, pointOfInterest) / huntSpeed;
+            if (t < bestWindowTime) { bestWindowTime = t; bestWindow = w; bestOut = o; bestIn = i; }
+        }
+
+        float climbTime = float.PositiveInfinity;
+        if (b.climbable && PlanClimb(b, transform.position, true))
+        {
+            climbTime = PathTime(plan.foot) + (plan.wallTop.y - plan.foot.y) / climbSpeed + mantleTime;
+            if (b.hatch != null)
+                climbTime += Vector3.Distance(plan.roofPoint, b.hatch.transform.position) / huntSpeed + hatchPeekTime + 1f +
+                             Vector3.Distance(b.hatch.transform.position, pointOfInterest) / huntSpeed;
+            else if (bestWindow != null) climbTime = float.PositiveInfinity;   // no hatch: the roof doesn't get it inside
+        }
+
+        if (bestWindow != null && bestWindowTime <= climbTime)
+        {
+            useWindow = bestWindow;
+            windowIn = true;
+            windowBuilding = b;
+            windowOutside = bestOut;
+            windowInside = bestIn;
+            SetState(ClimberState.ToWindow);
+            return true;
+        }
+        if (climbTime < float.PositiveInfinity) { climbTarget = b; SetState(ClimberState.ToWall); return true; }
+        return false;
+    }
+
+    // From inside (door shut): out by the quickest of the hatch or a window
+    void LeaveBuilding()
+    {
+        Roof b = indoorsRoof;
+        float hatchTime = float.PositiveInfinity;
+        Vector3 floor = Vector3.zero;
+        if (b.hatch != null && HatchFloor(b, out floor))
+            hatchTime = PathTime(floor) + (b.topY - floor.y) / climbSpeed + mantleTime;
+
+        BreakableWindow bestWindow = null;
+        float bestWindowTime = float.PositiveInfinity;
+        Vector3 bestOut = Vector3.zero, bestIn = Vector3.zero;
+        foreach (var w in b.windows)
+        {
+            if (!w.Usable || !WindowPoints(w, out var o, out var i)) continue;
+            float t = PathTime(i) + WindowTime(w) + Vector3.Distance(o, pointOfInterest) / huntSpeed;
+            if (t < bestWindowTime) { bestWindowTime = t; bestWindow = w; bestOut = o; bestIn = i; }
+        }
+
+        if (bestWindow != null && bestWindowTime <= hatchTime)
+        {
+            useWindow = bestWindow;
+            windowIn = false;
+            windowBuilding = b;
+            windowOutside = bestOut;
+            windowInside = bestIn;
+            SetState(ClimberState.ToWindow);
+        }
+        else if (hatchTime < float.PositiveInfinity)
+        {
+            hatchFloor = floor;
+            SetState(ClimberState.ToUnderHatch);
+        }
+        else
+        {
+            indoorsRoof = null;   // no way out it can use: wander in here until a door opens
+            SetState(ClimberState.Investigate);
+        }
+    }
+
+    // Walk up to the window, punch the glass out, then climb through
+    void UpdateToWindow()
+    {
+        // Boarded meanwhile, or it can't get there after all (60 s covers a walk across the whole city)
+        if (useWindow == null || !useWindow.Usable || Time.time - stateStartTime > 60f ||
+            (!agent.pathPending && agent.pathStatus == NavMeshPathStatus.PathInvalid))
+        {
+            SetState(ClimberState.Investigate);
+            return;
+        }
+        if (pauseUntil == 0f)
+        {
+            if (!Arrived()) return;
+            agent.isStopped = true;
+            bool smash = useWindow.Current == BreakableWindow.State.Intact;
+            if (smash)
+            {
+                if (WindowManager.Instance != null) WindowManager.Instance.Break(useWindow, !windowIn);
+                GrabAnimRpc(windowSmashTime);   // the lunge pose doubles as the punch
+            }
+            pauseUntil = Time.time + (smash ? windowSmashTime : 0.15f);
+        }
+        FaceTowards(useWindow.Center);
+        if (Time.time >= pauseUntil) StartClimb(ClimberState.ThroughWindow);
+    }
+
+    // Up onto the sill, through the opening and down the other side
+    void UpdateThroughWindow()
+    {
+        Vector3 to = windowIn ? windowInside : windowOutside;
+        Vector3 dir = to - phaseFrom;
+        dir.y = 0f;
+        if (dir.sqrMagnitude > 0.01f)
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(dir), 540f * Time.deltaTime);
+        Vector3 sill = useWindow.Center;
+        sill.y = useWindow.SillY;
+        switch (climbPhase)
+        {
+            case 0:   // onto the sill
+                if (MantleOverTime(phaseFrom, sill, useWindow.SillY + 0.35f, windowCrawlTime * 0.5f)) NextPhase();
+                break;
+            case 1:   // through and down
+                if (MantleOverTime(phaseFrom, to, useWindow.SillY + 0.2f, windowCrawlTime * 0.5f)) NextPhase();
+                break;
+            case 2:
+                LandOnNavMesh(to);
+                outsideSince = -1f;
+                indoorsRoof = windowIn ? windowBuilding : null;
+                SetState(ClimberState.Search);
+                bool sees = target != null && Time.time - lastSeenTime < loseSightTime;
+                GoAfter(sees ? target.transform.position : pointOfInterest, sees);
+                break;
+        }
     }
 
     void UpdatePatrol()
     {
         if (OnRoof) { GiveUpAndClimbDown(); return; }
-        if (Indoors) { if (state != ClimberState.ToUnderHatch) SetState(ClimberState.ToUnderHatch); return; }
+        if (Indoors) { LeaveBuilding(); return; }
         if (!Arrived()) return;
         if (pauseUntil == 0f) pauseUntil = Time.time + patrolPause;
         if (Time.time < pauseUntil) return;
@@ -546,6 +745,16 @@ public class ClimberAI : NetworkBehaviour
         if (currentRoof.hatch != null && SomeoneInside(currentRoof) && HatchFloor(currentRoof, out hatchFloor))
         {
             SetState(ClimberState.ToHatch);
+            return;
+        }
+
+        // No hatch, but a window it can smash: back down the wall to get in that way
+        if (currentRoof.hatch == null && SomeoneInside(currentRoof) && currentRoof.windows.Exists(w => w.Usable) &&
+            PlanClimb(currentRoof, pointOfInterest, false))
+        {
+            givingUp = false;
+            leaping = false;
+            SetState(ClimberState.ToEdge);
             return;
         }
 

@@ -245,6 +245,9 @@ public static class BuildingDressing
             float down = rng.NextDouble() < 0.5 ? 1f : Range(rng, 0.3f, 0.7f);
             float top = w.localPosition.y + tall / 2f;
             float h = tall * down;
+            if (down >= 1f)   // fully down: the Climber can't get in this way
+                foreach (var bw in details.GetComponentsInChildren<BreakableWindow>())
+                    if ((bw.transform.localPosition - w.localPosition).sqrMagnitude < 0.05f) bw.shuttered = true;
             Part(parent, "Shutter_Box", PrimitiveType.Cube, new Vector3(w.localPosition.x, top + 0.12f, -hd - 0.14f), new Vector3(wide + 0.2f, 0.25f, 0.25f), metal);
             Part(parent, "Shutter", PrimitiveType.Cube, new Vector3(w.localPosition.x, top - h / 2f, -hd - 0.09f), new Vector3(wide, h, 0.03f), metal);
             // Slats: thin dark lines every 12 cm
