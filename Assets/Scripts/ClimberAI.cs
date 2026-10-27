@@ -13,7 +13,8 @@ public enum ClimberState
 
 // The Climber genome's monster: a lanky crawler that hunts on the streets and, when you hide inside, climbs the
 // building's wall to the roof. Host runs all of this; everyone else sees it through NetworkTransform and the
-// synced state (ClimberAnimator). Its NavMesh agent type ("Climber") is too tall for doorways, so it can't walk in.
+// synced state (ClimberAnimator). It walks in through open front doors but can't open a closed one (Door cuts a
+// closed doorway out of its NavMesh), so shutting the door behind you sends it up to the roof hatch.
 [RequireComponent(typeof(NavMeshAgent))]
 public class ClimberAI : NetworkBehaviour
 {
@@ -314,6 +315,8 @@ public class ClimberAI : NetworkBehaviour
             agent.isStopped = false;
         }
 
+        TrackInside();
+
         var seen = Climbing ? null : FindVisiblePlayer();
         if (seen != null)
         {
@@ -460,6 +463,19 @@ public class ClimberAI : NetworkBehaviour
     }
 
     Roof climbTarget;
+
+    // Walked in through a door rather than dropping through the hatch? If that door gets shut behind it, it counts as
+    // indoors (and leaves by the hatch, like after a drop-in). With the door open it just walks out.
+    float nextInsideCheck;
+    void TrackInside()
+    {
+        if (OnRoof || Climbing || state == ClimberState.ToUnderHatch || Time.time < nextInsideCheck) return;
+        nextInsideCheck = Time.time + 0.5f;
+        var inside = BuildingAt(transform.position);
+        if (inside == null || transform.position.y > inside.topY - 1f) { indoorsRoof = null; return; }
+        bool wayOut = inside.hasDoor && IsReachable(inside.door + inside.doorOut * 3f);
+        indoorsRoof = wayOut || inside.hatch == null ? null : inside;
+    }
 
     void UpdatePatrol()
     {

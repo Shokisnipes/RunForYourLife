@@ -50,7 +50,7 @@ public static class BuildingBuilder
         public BuildingKind kind;
         public float width, depth, height, wallThickness;   // X, Z, Y in meters; one storey ~ 3-4 m
         public float doorWidth;    // wide enough for the giant's forearm to reach through
-        public float doorHeight;   // low enough that the Climber can't walk in from the street
+        public float doorHeight;   // tall enough for the Climber (NavMesh height 2.6) when the door is open
         public float doorOffset;   // slides the door left/right along the front wall
         public InteriorLayout layout;   // rooms to hide in
         public float interiorGap;       // width of the doorways between rooms
@@ -63,7 +63,7 @@ public static class BuildingBuilder
         public static Spec Default => new Spec
         {
             kind = BuildingKind.House, width = 8f, depth = 10f, height = 4f, wallThickness = 0.25f,
-            doorWidth = 2.2f, doorHeight = 2.3f, doorOffset = 0f, layout = InteriorLayout.Open, interiorGap = InteriorGap, furniture = true,
+            doorWidth = 2.2f, doorHeight = 2.8f, doorOffset = 0f, layout = InteriorLayout.Open, interiorGap = InteriorGap, furniture = true,
             roofHatch = true, reverb = true, roof = RoofStyle.Flat, decals = true, details = DetailOptions.Default,
         };
     }
@@ -168,6 +168,9 @@ public static class BuildingBuilder
         float lintelH = height - s.doorHeight;
         Box(b, "Wall_Front_Top", new Vector3(s.doorOffset, s.doorHeight + lintelH / 2f, frontZ), new Vector3(s.doorWidth, lintelH, t), wall, tile);
 
+        // The front door (DoorManager opens and closes it)
+        AddDoor(b, s.doorOffset, frontZ, s.doorWidth, s.doorHeight, t);
+
         // Roof and floor. Under a sloped roof the flat slab is just a ceiling (the Climber only uses "Roof").
         bool sloped = s.roof != RoofStyle.Flat;
         Box(b, sloped ? "Ceiling" : "Roof", new Vector3(0, height + t / 2f, 0), new Vector3(s.width, t, s.depth), sloped ? inner : roof, tile);
@@ -208,6 +211,59 @@ public static class BuildingBuilder
             zone.maxDistance = Mathf.Max(s.width, s.depth) * 0.5f;
         }
         return root;
+    }
+
+    // Double doors in the doorway, swinging inward, on the Door layer, plus the NavMeshObstacle that shuts the
+    // doorway for the Climber while they're closed
+    public static Door AddDoor(Transform building, float doorX, float frontZ, float width, float height, float wallT)
+    {
+        var root = new GameObject("Door");
+        root.transform.SetParent(building, false);
+        root.transform.localPosition = new Vector3(doorX, 0f, frontZ);
+        int layer = Door.Layer;
+        var wood = Fallback("Door_Wood", new Color(0.24f, 0.16f, 0.1f), Color.black, 0.25f);
+        var brass = Fallback("Door_Handle", new Color(0.55f, 0.5f, 0.4f), Color.black, 0.7f);
+        float leafW = width / 2f - 0.02f, leafH = height - 0.04f;
+
+        Transform Leaf(string name, float side)   // side -1 = left (hinge on the left edge), +1 = right
+        {
+            var hinge = new GameObject(name).transform;
+            hinge.SetParent(root.transform, false);
+            hinge.localPosition = new Vector3(side * width / 2f, 0f, 0f);
+            var leaf = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            leaf.name = "Leaf";
+            leaf.layer = layer;
+            leaf.transform.SetParent(hinge, false);
+            leaf.transform.localPosition = new Vector3(-side * (leafW / 2f + 0.01f), leafH / 2f + 0.02f, 0f);
+            leaf.transform.localScale = new Vector3(leafW, leafH, 0.06f);
+            leaf.GetComponent<MeshRenderer>().sharedMaterial = wood;
+            foreach (float face in new[] { -1f, 1f })
+            {
+                var knob = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                knob.name = "Handle";
+                Object.DestroyImmediate(knob.GetComponent<Collider>());
+                knob.transform.SetParent(hinge, false);
+                knob.transform.localPosition = new Vector3(-side * (leafW - 0.12f), 1.05f, face * 0.06f);
+                knob.transform.localScale = new Vector3(0.14f, 0.03f, 0.04f);
+                knob.GetComponent<MeshRenderer>().sharedMaterial = brass;
+            }
+            return hinge;
+        }
+
+        var door = root.AddComponent<Door>();
+        door.leftHinge = Leaf("Hinge_L", -1f);
+        door.rightHinge = Leaf("Hinge_R", 1f);
+
+        var block = new GameObject("DoorBlock");
+        block.transform.SetParent(root.transform, false);
+        var obstacle = block.AddComponent<UnityEngine.AI.NavMeshObstacle>();
+        obstacle.shape = UnityEngine.AI.NavMeshObstacleShape.Box;
+        obstacle.center = new Vector3(0f, height / 2f, 0f);
+        obstacle.size = new Vector3(width, height, wallT + 0.6f);
+        obstacle.carving = true;
+        obstacle.carveOnlyStationary = false;
+        door.blocker = obstacle;
+        return door;
     }
 
     public static GameObject AddReachPoint(Transform building, float doorX, float frontZ)

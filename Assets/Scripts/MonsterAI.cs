@@ -486,6 +486,7 @@ public class MonsterAI : NetworkBehaviour
                 if ((handPos - door).sqrMagnitude < 0.04f)
                 {
                     SetReachPhase(ReachPhase.Feel);
+                    if (DoorManager.Instance != null) DoorManager.Instance.Rip(door);   // a closed door: torn open
                     nextProbeTime = 0f;
                 }
                 break;
@@ -568,7 +569,7 @@ public class MonsterAI : NetworkBehaviour
         if (dist < 0.01f) return desired;
         dir /= dist;
 
-        int count = Physics.SphereCastNonAlloc(door, handRadius, dir, handHits, dist, ~0, QueryTriggerInteraction.Ignore);
+        int count = Physics.SphereCastNonAlloc(door, handRadius, dir, handHits, dist, Door.AllButDoors, QueryTriggerInteraction.Ignore);
         float nearest = dist;
         for (int i = 0; i < count; i++)
         {

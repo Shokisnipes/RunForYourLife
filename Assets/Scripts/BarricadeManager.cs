@@ -4,9 +4,13 @@ using UnityEngine.InputSystem;
 
 // Lets players board up doorways during prep. Hold E next to a doorway to nail up a plank.
 // A doorway with enough boards is blocked: the giant can't reach through it (see ReachPoint.Blocked).
+// Switched off for now (boardDoors): E opens and closes doors (DoorManager); boards will go on windows later.
 // Place ONE of these on the same scene object as GameFlow (it needs the NetworkObject).
 public class BarricadeManager : NetworkBehaviour
 {
+    [Tooltip("Off: no boarding doors (E is the door key now). Boards move to windows later.")]
+    public bool boardDoors = false;
+
     [Header("Planks")]
     [Tooltip("Total planks the team has for the whole prep phase.")]
     public int totalPlanks = 12;
@@ -87,7 +91,7 @@ public class BarricadeManager : NetworkBehaviour
 
     void Update()
     {
-        if (!IsSpawned || GameFlow.Instance == null || GameFlow.Instance.RunOver) { holdTime = 0f; return; }
+        if (!boardDoors || !IsSpawned || GameFlow.Instance == null || GameFlow.Instance.RunOver) { holdTime = 0f; return; }
         bool prep = GameFlow.Instance.Phase == GamePhase.Prep;
 
         var me = LocalPlayer();
@@ -151,7 +155,7 @@ public class BarricadeManager : NetworkBehaviour
     // Small hint + progress bar near the bottom of the screen
     void OnGUI()
     {
-        if (!IsSpawned || GameFlow.Instance == null || GameFlow.Instance.RunOver) return;
+        if (!boardDoors || !IsSpawned || GameFlow.Instance == null || GameFlow.Instance.RunOver) return;
         bool prep = GameFlow.Instance.Phase == GamePhase.Prep;
         var me = LocalPlayer();
         if (me == null || me.IsDead || NetworkUI.MenuOpen) return;

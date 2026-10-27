@@ -103,6 +103,7 @@ public class CityManager : NetworkBehaviour
             {
                 surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
                 if (NavMesh.GetSettingsNameFromID(surface.agentTypeID) == "Giant") surface.layerMask &= FenceBuilder.AllButFences;
+                surface.layerMask &= Door.AllButDoors;   // doorways bake open; a closed Door cuts itself out at runtime
                 surface.BuildNavMesh();
             }
             PlaceMonsters();

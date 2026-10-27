@@ -1012,6 +1012,7 @@ GameObject:
   - component: {fileID: 1018997748}
   - component: {fileID: 1018997749}
   - component: {fileID: 1018997750}
+  - component: {fileID: 1018997751}
   m_Layer: 0
   m_Name: GameFlow
   m_TagString: Untagged
@@ -1089,6 +1090,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BarricadeManager
   ShowTopMostFoldoutHeaderGroup: 1
+  boardDoors: 0
   totalPlanks: 12
   boardsPerDoor: 3
   holdSeconds: 1.5
@@ -1113,6 +1115,26 @@ MonoBehaviour:
   patrolCenter: {fileID: 1700436254}
   wanderFraction: 0.8
   lobbyCamera: {fileID: 1769325621}
+--- !u!114 &1018997751
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1018997745}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9bb2cb1e5bbfbde47ad5c202af210886, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DoorManager
+  ShowTopMostFoldoutHeaderGroup: 1
+  startOpenChance: 0.3
+  useRange: 2.6
+  noiseRadius: 8
+  openClip: {fileID: 0}
+  closeClip: {fileID: 0}
+  tornClip: {fileID: 0}
+  soundRange: 35
 --- !u!1 &1118492851
 GameObject:
   m_ObjectHideFlags: 0
