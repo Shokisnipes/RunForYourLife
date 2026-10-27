@@ -9,6 +9,8 @@ public class ClimberAudio : MonoBehaviour
     [Tooltip("Its call: now and then while hunting, and when it starts chasing someone.")]
     public AudioClip[] callClips;
     public AudioClip[] grabClips;
+    [Tooltip("Played at the roof hatch when the climber opens it (a warning for whoever is inside).")]
+    public AudioClip[] hatchClips;
 
     [Header("Steps per animation loop (hands + feet hitting the ground/wall)")]
     public int crawlSteps = 4;
@@ -20,6 +22,9 @@ public class ClimberAudio : MonoBehaviour
     [Range(0f, 1f)] public float climbStepVolume = 0.5f;
     [Range(0f, 1f)] public float callVolume = 1f;
     [Range(0f, 1f)] public float grabVolume = 1f;
+    [Range(0f, 1f)] public float hatchVolume = 1f;
+    [Tooltip("How far the hatch creak carries.")]
+    public float hatchRange = 30f;
     [Tooltip("Landing after dropping through a roof hatch.")]
     [Range(0f, 1f)] public float landVolume = 1f;
     [Tooltip("How far its steps carry.")]
@@ -33,7 +38,8 @@ public class ClimberAudio : MonoBehaviour
     [Tooltip("Never calls more often than this, even when chases keep starting.")]
     public float callCooldown = 6f;
 
-    AudioSource steps, voice;
+    AudioSource steps, voice, hatchSource;
+    bool lastHatchOpen;
     ClimberAI ai;
     ClimberAnimator climberAnim;
     int lastStateHash, lastStep;
@@ -46,13 +52,32 @@ public class ClimberAudio : MonoBehaviour
         climberAnim = GetComponentInChildren<ClimberAnimator>();
         steps = Make3D(stepRange);
         voice = Make3D(callRange);
+
+        // The hatch sound plays where the hatch is, not on the climber, so it gets its own object
+        var hatchGo = new GameObject("Climber Hatch Audio");   // not parented: stays at the hatch
+        hatchSource = hatchGo.AddComponent<AudioSource>();
+        Setup3D(hatchSource, hatchRange);
         nextCall = Time.time + Random.Range(callInterval.x, callInterval.y);
+    }
+
+    void OnDestroy()
+    {
+        if (hatchSource != null) Destroy(hatchSource.gameObject);
     }
 
     void Update()
     {
         if (ai == null) return;
         UpdateSteps();
+
+        // Creak at the hatch the moment its lid starts to open
+        bool hatchOpen = ai.SyncedHatchOpen;
+        if (hatchOpen && !lastHatchOpen)
+        {
+            hatchSource.transform.position = ai.SyncedHatchPos;
+            PlayRandom(hatchSource, hatchClips, hatchVolume, 0.95f, 1.05f);
+        }
+        lastHatchOpen = hatchOpen;
 
         // Shrieks as it starts a chase, and calls out now and then
         var state = ai.SyncedState;
@@ -113,12 +138,17 @@ public class ClimberAudio : MonoBehaviour
     AudioSource Make3D(float range)
     {
         var s = gameObject.AddComponent<AudioSource>();
+        Setup3D(s, range);
+        return s;
+    }
+
+    static void Setup3D(AudioSource s, float range)
+    {
         s.playOnAwake = false;
         s.spatialBlend = 1f;
         s.rolloffMode = AudioRolloffMode.Linear;
         s.minDistance = 2f;
         s.maxDistance = range;
         s.dopplerLevel = 0f;
-        return s;
     }
 }

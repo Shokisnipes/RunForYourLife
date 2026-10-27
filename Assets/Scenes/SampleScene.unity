@@ -89173,6 +89173,8 @@ MonoBehaviour:
   - {fileID: 8300000, guid: c37037357c2ba6c4b92378192013b941, type: 3}
   grabClips:
   - {fileID: 8300000, guid: 7543a8331c6c8f449bdcfefc08c26239, type: 3}
+  hatchClips:
+  - {fileID: 8300000, guid: d6a79b009f904d4438884ba642215b98, type: 3}
   crawlSteps: 4
   runSteps: 2
   climbSteps: 4
@@ -89180,6 +89182,8 @@ MonoBehaviour:
   climbStepVolume: 0.5
   callVolume: 1
   grabVolume: 1
+  hatchVolume: 1
+  hatchRange: 30
   landVolume: 1
   stepRange: 25
   callRange: 70

@@ -27,6 +27,8 @@ public class ClimberAI : NetworkBehaviour
     readonly NetworkVariable<Vector3> netHatchPos = new NetworkVariable<Vector3>();
     public ClimberState SyncedState => netState.Value;
     public bool SyncedRunning => netRunning.Value;
+    public bool SyncedHatchOpen => netHatchOpen.Value;
+    public Vector3 SyncedHatchPos => netHatchPos.Value;
 
     [Header("Movement")]
     [Tooltip("Crawling around while patrolling.")]

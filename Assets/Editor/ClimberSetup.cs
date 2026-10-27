@@ -276,12 +276,14 @@ public class ClimberSetup : EditorWindow
         anim.cullingMode = AnimatorCullingMode.AlwaysAnimate;
         if (model.GetComponent<ClimberAnimator>() == null) model.gameObject.AddComponent<ClimberAnimator>();
 
-        // Sounds, found by name in the audio folder: "Footstep" = steps, "Grab" = catch, anything else = its call
+        // Sounds, found by name in the audio folder: "Footstep" = steps, "Grab" = catch, "Hatch" = roof hatch,
+        // anything else = its call
         var sounds = root.GetComponent<ClimberAudio>();
         if (sounds == null) sounds = root.AddComponent<ClimberAudio>();
         var stepClips = new System.Collections.Generic.List<AudioClip>();
         var grabClips = new System.Collections.Generic.List<AudioClip>();
         var callClips = new System.Collections.Generic.List<AudioClip>();
+        var hatchClips = new System.Collections.Generic.List<AudioClip>();
         foreach (var guid in AssetDatabase.FindAssets("t:AudioClip", new[] { AudioFolder }))
         {
             string path = AssetDatabase.GUIDToAssetPath(guid);
@@ -294,13 +296,15 @@ public class ClimberSetup : EditorWindow
             string n = clip.name.ToLowerInvariant();
             if (n.Contains("footstep") || n.Contains("step")) stepClips.Add(clip);
             else if (n.Contains("grab")) grabClips.Add(clip);
+            else if (n.Contains("hatch")) hatchClips.Add(clip);
             else callClips.Add(clip);
         }
         sounds.footstepClips = stepClips.ToArray();
         sounds.grabClips = grabClips.ToArray();
         sounds.callClips = callClips.ToArray();
+        sounds.hatchClips = hatchClips.ToArray();
         EditorUtility.SetDirty(sounds);
-        Debug.Log($"Climber sounds: {stepClips.Count} steps, {grabClips.Count} grab, {callClips.Count} calls");
+        Debug.Log($"Climber sounds: {stepClips.Count} steps, {grabClips.Count} grab, {callClips.Count} calls, {hatchClips.Count} hatch");
         return root;
     }
 
