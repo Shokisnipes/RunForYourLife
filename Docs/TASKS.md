@@ -50,6 +50,13 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   road paint, crosswalks, cracks, puddles, litter, wrecks on the main road; walls along alleys (narrow gaps) so the
   giant can never get in; NavMesh baked from colliders; night ambience fades in with the dark.
   [ ] needs a dusk ambience clip (calm, sparse birds) from Petar, then crossfade it out as night falls.
+- [ ] **4.8 Player body (L, split).** Head bob toned down. Martha (Mixamo, Assets/Characters/Martha) replaces the
+  capsule; Tools > RunForYourLife > Player Model Setup does imports, the controller and the prefab.
+  - [x] a. Imports, strafe/crouch blend trees with stride matching, own body visible (head hidden), others' heads
+    follow their look. Host-tested (forward + strafe drive the right clips, no errors). Petar to play-test the feel.
+  - [ ] b. Flashlight in the right hand (arm IK toward where you look), turn-in-place (needs Left/Right Turn 90
+    clips), 2-player check of other players' bodies.
+  - Clips still wanted: Left/Right Turn 90, running strafes, crouched walking backwards / crouched sneaking left/right.
 - [ ] **5. Clues (S, Sonnet).** Three clue prefabs spawned at prep start based on the genome: claw marks high on a wall
   (Climber), a carcass with eyes untouched (not Sight), one radio line (random). Simple decals/props are fine.
 - [ ] **6. Scouts (L, Opus).** Needs a scout model first. Split: 6a) small scout AI (wander, flee light or noise

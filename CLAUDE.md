@@ -23,6 +23,10 @@ when it's done and tested.
   standing under a lit `StreetLamp` makes players visible from further.
 - **Audio mix:** every 3D sound uses `AudioMix.Setup3D` (real inverse-distance falloff, silent at max range); the
   target level for each kind of sound is listed at the top of `AudioMix.cs`. 3D clips must be Force To Mono.
+- **Player body:** `PlayerAnimator` on the Player's Model child (Martha, Assets/Characters/Martha), every client:
+  reads movement from position changes, 2D strafe blend trees (stand/crouch) with clips at their natural speeds and
+  playback sped up past them; your own neck/head is shrunk and the body slides back behind the camera (more when
+  looking down); other players' heads follow their synced pitch. Built by Tools > Player Model Setup.
 - **Feel:** `CameraShake` (on the player camera), `Flashlight` (procedural cookie), head bob in FirstPersonController.
 - **Sky:** `SkyCycle` (on the Directional Light, every client, from the synced GameFlow clock) fades a fall evening
   (~8 pm, sun just set) into night over the prep phase: light, ambient probe, fog and the `RunForYourLife/Sky` shader
@@ -45,7 +49,7 @@ when it's done and tested.
 ## Editor tools (Tools > RunForYourLife)
 Building Generator (adds a roof hatch), Upgrade Existing Buildings, Add Roof Hatches To Existing Buildings, Widen Interior Doorways, Add Reach Points To Existing Buildings, Building Texturer (Use Texture
 Set), Street Lamps, Monster Animator Builder, Climber Setup (clips, agent type, controller, scene object, NavMesh bake),
-Make It Look Good, City Preview (generate a city from a seed next to the map), Retro Look Setup. Prefer improving these tools (and
+Make It Look Good, City Preview (generate a city from a seed next to the map), Retro Look Setup, Player Model Setup. Prefer improving these tools (and
 CityGenerator) over hand-editing scenes; the scene has no buildings, the city is generated.
 
 ## Conventions and lessons learned
@@ -54,7 +58,8 @@ CityGenerator) over hand-editing scenes; the scene has no buildings, the city is
 - Giant NavMesh: agent type "Giant" (radius 2.5, height 14). Baked at runtime on the host (no baked data in the scene). NavMesh floats above
   the floor; MonsterAnimator snaps the model to the real floor.
 - Mixamo clips: Rig = Humanoid; Loop Time on looping clips; Root Transform all Bake Into Pose, Position (Y) Based Upon
-  Feet; rename clips from "mixamo.com" before using them.
+  Feet; rename clips from "mixamo.com" before using them. Exception: a clip downloaded without "In Place" (it walks
+  off) must NOT bake XZ into the pose, or the body drifts and snaps back each loop.
 - ProBuilder shapes: change Shape Size, keep Transform scale at 1.
 - Git: always `git pull --no-edit` before `git push`. Binary assets (png/jpg/fbx/wav) go through Git LFS.
 

@@ -7,7 +7,7 @@ using UnityEngine.InputSystem;
 // Networked first-person player. Lives on the Player prefab (spawned by the NetworkManager).
 // Hierarchy:  Player (CharacterController + NetworkObject + OwnerNetworkTransform + this)
 //               -> CameraPivot -> Main Camera, Flashlight
-//               -> Body (capsule mesh, no collider) - what other players see
+//               -> Model (character + PlayerAnimator, no collider) - what other players see
 [RequireComponent(typeof(CharacterController))]
 public class FirstPersonController : NetworkBehaviour
 {
