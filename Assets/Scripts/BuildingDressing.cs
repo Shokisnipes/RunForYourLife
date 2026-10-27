@@ -17,9 +17,15 @@ public static class BuildingDressing
         public Vector3 center, normal, along;
         public float length;
         public List<Rect> taken;   // (along, up) rectangles already used: windows, door, other decals
+        public Rect door;          // the doorway on this face (empty if none): nothing goes over it (the door swings)
     }
 
+    // Lowest a decal hanging down at 'u' (half width 'half') may reach without covering the doorway
+    static float ClearAboveDoor(Face f, float u, float half) =>
+        f.door.width > 0f && u + half > f.door.xMin && u - half < f.door.xMax ? f.door.yMax + 0.1f : 0.1f;
+
     static readonly Dictionary<Texture, Material> decalMats = new Dictionary<Texture, Material>();
+    static readonly Dictionary<(Material, int), Material> tintedMats = new Dictionary<(Material, int), Material>();
     static readonly Dictionary<string, Material> plainMats = new Dictionary<string, Material>();
 
     public static void Dress(Transform building, BuildingBuilder.Spec s, BuildingPalette pal, System.Random rng, Material wall)
@@ -50,7 +56,8 @@ public static class BuildingDressing
         for (int i = 0; i < faces.Length; i++) faces[i].taken = new List<Rect>();
 
         // The door
-        faces[0].taken.Add(new Rect(s.doorOffset - s.doorWidth / 2f - 0.3f, 0f, s.doorWidth + 0.6f, s.doorHeight + 0.4f));
+        faces[0].door = new Rect(s.doorOffset - s.doorWidth / 2f - 0.3f, 0f, s.doorWidth + 0.6f, s.doorHeight + 0.4f);
+        faces[0].taken.Add(faces[0].door);
 
         // Every window frame, on whichever face it's on
         var details = building.Find("Details");
@@ -88,14 +95,31 @@ public static class BuildingDressing
             new Color(1f, 0.86f, 0.84f), new Color(0.8f, 0.78f, 0.74f), Color.white,
         };
         float amount = s.kind == BuildingKind.Apartment ? Range(rng, 0.3f, 0.7f) : Range(rng, 0f, 0.45f);
-        Color tint = Color.Lerp(Color.white, tints[rng.Next(tints.Length)], amount);
-        if (tint == Color.white) return;
+        int pick = rng.Next(tints.Length);
+        // A few strengths only, so all the buildings share a handful of tinted copies of each wall material: a
+        // per-building colour override would stop Unity batching the walls (that cost ~1500 extra draw calls)
+        int level = Mathf.Clamp(Mathf.RoundToInt(amount * 4f), 0, 3);
+        if (level == 0 || tints[pick] == Color.white) return;
+        Color tint = Color.Lerp(Color.white, tints[pick], level / 4f);
 
-        var block = new MaterialPropertyBlock();
-        block.SetColor("_BaseColor", tint);
         foreach (var r in building.GetComponentsInChildren<MeshRenderer>())
-            if (r.name.StartsWith("Wall_") || r.name == "Chimney")
-                r.SetPropertyBlock(block);
+        {
+            if (!r.name.StartsWith("Wall_") && r.name != "Chimney") continue;
+            var mats = r.sharedMaterials;
+            for (int i = 0; i < mats.Length; i++)
+            {
+                if (mats[i] == null) continue;
+                var key = (mats[i], pick * 10 + level);
+                if (!tintedMats.TryGetValue(key, out var m) || m == null)
+                {
+                    m = new Material(mats[i]) { name = mats[i].name + "_Tint" + key.Item2 };
+                    m.SetColor("_BaseColor", mats[i].GetColor("_BaseColor") * tint);
+                    tintedMats[key] = m;
+                }
+                mats[i] = m;
+            }
+            r.sharedMaterials = mats;
+        }
     }
 
     // ---------- Decals ----------
@@ -114,7 +138,10 @@ public static class BuildingDressing
                 float len = Range(rng, 0.8f, 1.8f);
                 float width = w.localScale.x * Range(rng, 0.7f, 1f);
                 Vector3 top = w.localPosition - Vector3.up * (w.localScale.y / 2f);
-                if (top.y - len < 0.1f) len = top.y - 0.1f;
+                float lowest = 0.1f;
+                if (Vector3.Dot(n, faces[0].normal) > 0.9f)
+                    lowest = ClearAboveDoor(faces[0], Vector3.Dot(w.localPosition - faces[0].center, faces[0].along), width / 2f);
+                if (top.y - len < lowest) len = top.y - lowest;
                 if (len < 0.3f) continue;
                 Quad(parent, pal, ProcTextures.Decal.Streak, rng, top - Vector3.up * len / 2f + n * (0.03f + Next(ref depthStep)), n, new Vector2(width, len));
             }
@@ -125,6 +152,8 @@ public static class BuildingDressing
             {
                 float len = Range(rng, 1.2f, Mathf.Min(3f, s.height * 0.6f));
                 float u = Range(rng, -f.length / 2f + 0.6f, f.length / 2f - 0.6f);
+                len = Mathf.Min(len, s.height - ClearAboveDoor(f, u, 0.7f));
+                if (len < 0.4f) continue;
                 Vector3 p = f.center + f.along * u + Vector3.up * (s.height - len / 2f);
                 Quad(parent, pal, ProcTextures.Decal.Streak, rng, p + f.normal * (0.015f + Next(ref depthStep)), f.normal, new Vector2(Range(rng, 0.6f, 1.4f), len));
             }
@@ -138,6 +167,7 @@ public static class BuildingDressing
             for (float u = -f.length / 2f + w / 2f; u < f.length / 2f + w / 2f - 0.5f; u += w * 0.95f)
             {
                 float uu = Mathf.Min(u, f.length / 2f - w / 2f);
+                if (f.door.width > 0f && uu + w / 2f > f.door.xMin && uu - w / 2f < f.door.xMax) continue;   // the doorway
                 Quad(parent, pal, ProcTextures.Decal.Moss, rng, f.center + f.along * uu + Vector3.up * (h / 2f) + f.normal * (0.02f + Next(ref depthStep)), f.normal, new Vector2(w, h));
             }
         }
@@ -183,6 +213,7 @@ public static class BuildingDressing
             float y = Range(rng, yMin, Mathf.Max(yMin, yMax - size.y));
             var r = new Rect(u - size.x / 2f, y, size.x, size.y);
             if (!ignoreTaken && !Free(f, r, margin)) continue;
+            if (f.door.width > 0f && f.door.Overlaps(r)) continue;   // never over the doorway (the door swings)
             if (!ignoreTaken) f.taken.Add(r);
             Vector3 p = f.center + f.along * u + Vector3.up * (y + size.y / 2f);
             Quad(parent, pal, kind, rng, p + f.normal * (0.02f + Next(ref depthStep)), f.normal, size);

@@ -948,8 +948,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GenomeManager
   genomes: []
-  allowClimber: 0
-  alwaysClimber: 0
+  allowClimber: 1
+  alwaysClimber: 1
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0

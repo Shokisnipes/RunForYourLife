@@ -107,10 +107,38 @@ public static class CityGenerator
         PickSpawns(hw, hd);
         city.patrolCenter = root.position;
         city.patrolRadius = Mathf.Max(hw, hd);
+        if (Application.isPlaying) Optimize(root);
 
         var result = city;
         s = null; rng = null; city = null; root = null;
         return result;
+    }
+
+    // ---------- Performance ----------
+
+    // Done once per city on every machine, after it's built (play mode only):
+    //  - tiny or flat details (window bars, handles, road paint, cracks, decals) don't cast shadows
+    //  - everything that never moves is merged into a few big meshes per material (static batching), so the GPU
+    //    draws the city in a few hundred batches instead of thousands. Left out: doors, window glass, hatch lids,
+    //    street lamps and flickering windows (they move, break or change colour).
+    static void Optimize(Transform cityRoot)
+    {
+        var merge = new List<GameObject>();
+        foreach (var r in cityRoot.GetComponentsInChildren<MeshRenderer>())
+        {
+            Vector3 b = r.bounds.size;
+            if (b.y < 0.06f || Mathf.Max(b.x, Mathf.Max(b.y, b.z)) < 0.35f || r.name.StartsWith("Window_") || r.name.StartsWith("Decal_"))
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            if (!r.gameObject.isStatic) continue;
+            if (r.GetComponentInParent<Door>() != null || r.GetComponentInParent<RoofHatch>() != null ||
+                r.GetComponentInParent<StreetLamp>() != null || r.GetComponent<WindowFlicker>() != null ||
+                r.GetComponent<BreakableWindow>() != null) continue;
+            var mf = r.GetComponent<MeshFilter>();
+            if (mf == null || mf.sharedMesh == null) continue;
+            merge.Add(r.gameObject);
+        }
+        StaticBatchingUtility.Combine(merge.ToArray(), cityRoot.gameObject);
     }
 
     // ---------- Layout ----------
