@@ -27,7 +27,7 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
 - [x] **2. Prep and night timers (S, Sonnet).** GameFlow (host-run, synced): Prep phase (Inspector length, default
   6 min, monster disabled) then Night until dawn (default 10 min). Win screen at dawn; lose screen when every player is
   dead. Small top-of-screen timer. Files: NetworkUI.cs, MonsterAI.cs, FirstPersonController.cs.
-- [ ] **3. Barricades (M, Sonnet).** Players hold E at a doorway/window to board it during prep (limited planks,
+- [x] **3. Barricades (M, Sonnet).** Players hold E at a doorway/window to board it during prep (limited planks,
   Inspector value). A boarded doorway disables its ReachPoint so the giant can't reach in. Boards are networked
   objects. Files: ReachPoint.cs, MonsterAI.cs (FindReachPoint).
 - [ ] **4. Climber access (L, Opus).** Needs the climber model first (CLAUDE.md Assets). Split:

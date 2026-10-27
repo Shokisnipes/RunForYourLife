@@ -1155,6 +1155,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &17993669
 GameObject:
   m_ObjectHideFlags: 0
@@ -11642,6 +11643,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &190080482
 GameObject:
   m_ObjectHideFlags: 0
@@ -25861,6 +25863,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &402210467
 GameObject:
   m_ObjectHideFlags: 0
@@ -26102,6 +26105,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &407460962
 GameObject:
   m_ObjectHideFlags: 0
@@ -29527,6 +29531,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &460067210
 GameObject:
   m_ObjectHideFlags: 0
@@ -30512,6 +30517,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &466254102
 GameObject:
   m_ObjectHideFlags: 0
@@ -36860,6 +36866,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &574453325
 GameObject:
   m_ObjectHideFlags: 0
@@ -37699,6 +37706,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &585117686
 GameObject:
   m_ObjectHideFlags: 0
@@ -43945,6 +43953,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &671232254
 GameObject:
   m_ObjectHideFlags: 0
@@ -45262,6 +45271,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &692641256
 GameObject:
   m_ObjectHideFlags: 0
@@ -51877,6 +51887,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &784327471
 GameObject:
   m_ObjectHideFlags: 0
@@ -56300,6 +56311,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &839892571
 GameObject:
   m_ObjectHideFlags: 0
@@ -67723,6 +67735,7 @@ GameObject:
   - component: {fileID: 1018997747}
   - component: {fileID: 1018997746}
   - component: {fileID: 1018997748}
+  - component: {fileID: 1018997749}
   m_Layer: 0
   m_Name: GameFlow
   m_TagString: Untagged
@@ -67785,8 +67798,25 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameFlow
   ShowTopMostFoldoutHeaderGroup: 1
-  prepSeconds: 1
-  nightSeconds: 25
+  prepSeconds: 360
+  nightSeconds: 600
+--- !u!114 &1018997749
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1018997745}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bc4806db2ff0c37439d9e5f81cbdf10e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BarricadeManager
+  ShowTopMostFoldoutHeaderGroup: 1
+  totalPlanks: 12
+  boardsPerDoor: 3
+  holdSeconds: 1.5
+  interactRange: 3.5
 --- !u!1 &1020179409
 GameObject:
   m_ObjectHideFlags: 0
@@ -82407,6 +82437,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1230798892
 GameObject:
   m_ObjectHideFlags: 0
@@ -83968,6 +83999,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1250106843
 GameObject:
   m_ObjectHideFlags: 0
@@ -90026,6 +90058,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1338034897
 GameObject:
   m_ObjectHideFlags: 0
@@ -92629,6 +92662,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1365019550
 GameObject:
   m_ObjectHideFlags: 0
@@ -100682,6 +100716,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1480907774
 GameObject:
   m_ObjectHideFlags: 0
@@ -104330,6 +104365,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1534032575
 GameObject:
   m_ObjectHideFlags: 0
@@ -106986,6 +107022,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1576194913
 GameObject:
   m_ObjectHideFlags: 0
@@ -110411,6 +110448,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1635312993
 GameObject:
   m_ObjectHideFlags: 0
@@ -111876,6 +111914,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1653916375
 GameObject:
   m_ObjectHideFlags: 0
@@ -114033,6 +114072,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1699231871
 GameObject:
   m_ObjectHideFlags: 0
@@ -114542,6 +114582,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1708193192
 GameObject:
   m_ObjectHideFlags: 0
@@ -115034,6 +115075,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1717794944
 GameObject:
   m_ObjectHideFlags: 0
@@ -116470,6 +116512,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1748741564
 GameObject:
   m_ObjectHideFlags: 0
@@ -116516,6 +116559,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1751418175
 GameObject:
   m_ObjectHideFlags: 0
@@ -131826,6 +131870,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &1989912614
 GameObject:
   m_ObjectHideFlags: 0
@@ -132850,6 +132895,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ReachPoint
   doorDistance: 3.5
   doorHeight: 1.2
+  doorWidth: 2
 --- !u!1 &2010249587
 GameObject:
   m_ObjectHideFlags: 0

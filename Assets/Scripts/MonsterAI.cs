@@ -691,6 +691,7 @@ public class MonsterAI : NetworkBehaviour
         {
             float d = Vector3.Distance(position, rp.transform.position);
             if (d > bestDist) continue;
+            if (rp.Blocked) continue;   // boarded up by the players
             if (!IsReachable(rp.transform.position, 4f)) continue;
             best = rp;
             bestDist = d;

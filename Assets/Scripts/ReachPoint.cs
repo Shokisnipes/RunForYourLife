@@ -23,6 +23,37 @@ public class ReachPoint : MonoBehaviour
     // A spot inside the doorway the giant looks at while peeking
     public Vector3 LookInPoint => DoorPoint + transform.forward * 3f;
 
+    [Header("Barricade")]
+    [Tooltip("Width of the door opening, used to size the planks.")]
+    public float doorWidth = 2f;
+
+    int boardCount;
+    int boardsNeeded = 3;
+    readonly List<GameObject> planks = new List<GameObject>();
+
+    // A fully boarded doorway can't be reached through: the giant ignores it (MonsterAI.FindReachPoint)
+    public bool Blocked => boardCount >= boardsNeeded;
+
+    // Called on every machine by BarricadeManager when the board count changes
+    public void SetBoards(int count, int needed)
+    {
+        boardCount = count;
+        boardsNeeded = Mathf.Max(1, needed);
+        foreach (var p in planks) if (p != null) Destroy(p);
+        planks.Clear();
+        for (int i = 0; i < count; i++)
+        {
+            var plank = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            plank.name = "Plank";
+            plank.transform.SetPositionAndRotation(
+                transform.position + transform.forward * doorDistance + Vector3.up * (0.5f + i * 0.7f) + Vector3.up * 0.1f * (i % 2),
+                Quaternion.LookRotation(transform.forward) * Quaternion.Euler(0f, 0f, (i % 2 == 0 ? 3f : -3f)));
+            plank.transform.localScale = new Vector3(doorWidth * 1.1f, 0.25f, 0.08f);
+            plank.GetComponent<Renderer>().material.color = new Color(0.45f, 0.3f, 0.15f);
+            planks.Add(plank);
+        }
+    }
+
     void OnDrawGizmos()
     {
         Gizmos.color = Color.cyan;
