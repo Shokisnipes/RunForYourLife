@@ -475,7 +475,7 @@ public static class BuildingBuilder
     // Plain URP materials for slots the palette leaves empty (made once, shared)
     static readonly Dictionary<string, Material> fallbacks = new Dictionary<string, Material>();
 
-    static Material Fallback(string name, Color color, Color emission, float smoothness)
+    public static Material Fallback(string name, Color color, Color emission, float smoothness)
     {
         if (fallbacks.TryGetValue(name, out var cached) && cached != null) return cached;
         var mat = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = name };

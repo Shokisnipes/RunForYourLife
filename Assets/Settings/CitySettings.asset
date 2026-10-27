@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 28837dfa7ed8d634c9514547fd89f966, type: 3}
+  m_Name: CitySettings
+  m_EditorClassIdentifier: Assembly-CSharp::CitySettings
+  citySize: {x: 150, y: 190}
+  outerMargin: 40
+  boundaryWallHeight: 4
+  mainRoadWidth: 14
+  streetWidth: 10
+  alleyWidth: {x: 2.6, y: 3.6}
+  maxBlockSize: 40
+  minBlockSize: 22
+  alleyChance: 0.45
+  deadEndChance: 0.4
+  sidewalkWidth: 2
+  plaza: 1
+  parks: 2
+  parkingLots: 1
+  emptyBlocks: 1
+  kindWeights: {x: 0.5, y: 0.3, z: 0.2}
+  emptyLotChance: 0.1
+  passageChance: 0.3
+  palette: {fileID: 11400000, guid: f7f6a5d5f2e1c3d4f80c890a83a1c967, type: 2}
+  streetLampPrefab: {fileID: 6745498278079608494, guid: e021d2d04d63e044f8850be301220767, type: 3}
+  lampSpacing: 22
+  lampChance: 0.85
+  brokenLampChance: 0.15
+  flickeringLampChance: 0.12
+  groundMaterial: {fileID: 2100000, guid: cf2fa3d5d47895f42974ec67ac2b7895, type: 2}
+  pavingMaterial: {fileID: 2100000, guid: af8481bc865e01e4cab87327729bb23f, type: 2}
+  grassMaterial: {fileID: 0}
+  dirtMaterial: {fileID: 0}

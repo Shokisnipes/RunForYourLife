@@ -38,7 +38,7 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   [x] a) runtime `BuildingBuilder` (Scripts): the box/door/interior/reach point/hatch/details/texture code moves out of
      the editor tools so the game can build buildings; editor tools call it too. Size + height variants (house, shop,
      warehouse). No behaviour change for existing buildings;
-  [ ] b) `CityGenerator` (Scripts): seed -> irregular blocks, a wide main road, alleys too narrow for the giant
+  [x] b) `CityGenerator` (Scripts): seed -> irregular blocks, a wide main road, alleys too narrow for the giant
      (radius 2.5), plaza, park, parking lot, empty lots; street lamps, PlayerSpawn, PatrolCenter. Tools menu preview;
   [ ] c) in-game: host picks the seed (synced), every client builds the same city (System.Random, not
      UnityEngine.Random), runtime NavMesh bake for Giant + Climber behind a loading fade, MonsterAI/ClimberAI refresh
