@@ -316,6 +316,14 @@ public static class BuildingBuilder
                 float roomW = Range(rng, 3f, 4.2f);
                 bool onRight = rng.NextDouble() < 0.5;
                 float x = onRight ? right - roomW : left + roomW;
+                // Keep the room's wall out of the front doorway: try the other side, else move it just past the door
+                float doorL = s.doorOffset - s.doorWidth / 2f - 0.9f, doorR = s.doorOffset + s.doorWidth / 2f + 0.9f;
+                if (x > doorL && x < doorR)
+                {
+                    float other = onRight ? left + roomW : right - roomW;
+                    if (other <= doorL || other >= doorR) { x = other; onRight = !onRight; }
+                    else x = onRight ? doorR : doorL;
+                }
                 float gz = Range(rng, front + gap / 2f + 0.8f, back - gap / 2f - 0.8f);
                 WallAlong(b, "Interior_SideA", x, front, gz - gap / 2f, t, h, mat, tile);
                 WallAlong(b, "Interior_SideB", x, gz + gap / 2f, back, t, h, mat, tile);

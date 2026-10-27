@@ -1131,9 +1131,9 @@ MonoBehaviour:
   startOpenChance: 0.3
   useRange: 2.6
   noiseRadius: 8
-  openClip: {fileID: 0}
-  closeClip: {fileID: 0}
-  tornClip: {fileID: 0}
+  openClip: {fileID: 8300000, guid: 61962e08e033e824d8bf823cdbedc92a, type: 3}
+  closeClip: {fileID: 8300000, guid: 1fbd7d54c811c6246a6dcf28a8089adc, type: 3}
+  tornClip: {fileID: 8300000, guid: 076ef3bc0d6083d489b5698b92cbeadf, type: 3}
   soundRange: 35
 --- !u!1 &1118492851
 GameObject:
