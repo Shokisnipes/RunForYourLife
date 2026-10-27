@@ -3,65 +3,67 @@ using UnityEngine;
 
 // Tools -> RunForYourLife -> Building Generator
 // Spawns an enterable box building (walls, roof, doorway) made of plain cubes with BoxColliders.
+// The building itself is made by BuildingBuilder (Scripts), which the in-game city generator uses too.
 public class BuildingGenerator : EditorWindow
 {
-    float width = 8f;           // X
-    float depth = 10f;          // Z
-    float height = 4f;          // Y (one storey ~ 3-4 m)
-    float wallThickness = 0.25f;
-    float doorWidth = 2.2f;     // wide enough for the giant's forearm to reach through
-    float doorHeight = 2.3f;
-    float doorOffset = 0f;      // slide the door left/right along the front wall
-    bool addInteriorWall = false;
-    float interiorGap = InteriorGap;   // doorway between the front and back room
-    bool addRoofHatch = true;   // hatch the Climber drops in through
-    bool addReverb = true;
-    Material wallMaterial;
-    BuildingDetails.Options details = BuildingDetails.Options.Default;
+    BuildingBuilder.Spec spec = BuildingBuilder.Spec.Default;
+    Material wallMaterial;   // empty = random wall material from the palette
 
     [MenuItem("Tools/RunForYourLife/Building Generator")]
     static void Open() => GetWindow<BuildingGenerator>("Building Generator");
 
     void OnGUI()
     {
+        GUILayout.Label("Preset", EditorStyles.boldLabel);
+        EditorGUILayout.BeginHorizontal();
+        spec.kind = (BuildingKind)EditorGUILayout.EnumPopup(spec.kind);
+        if (GUILayout.Button("Randomize", GUILayout.Width(90)))
+            spec = BuildingBuilder.RandomSpec(spec.kind, new System.Random());
+        EditorGUILayout.EndHorizontal();
+
+        GUILayout.Space(6);
         GUILayout.Label("Size (meters)", EditorStyles.boldLabel);
-        width = EditorGUILayout.FloatField("Width (X)", width);
-        depth = EditorGUILayout.FloatField("Depth (Z)", depth);
-        height = EditorGUILayout.FloatField("Height (Y)", height);
-        wallThickness = EditorGUILayout.FloatField("Wall Thickness", wallThickness);
+        spec.width = EditorGUILayout.FloatField("Width (X)", spec.width);
+        spec.depth = EditorGUILayout.FloatField("Depth (Z)", spec.depth);
+        spec.height = EditorGUILayout.FloatField("Height (Y)", spec.height);
+        spec.wallThickness = EditorGUILayout.FloatField("Wall Thickness", spec.wallThickness);
 
         GUILayout.Space(6);
         GUILayout.Label("Doorway (front = -Z side)", EditorStyles.boldLabel);
-        doorWidth = EditorGUILayout.FloatField("Door Width", doorWidth);
-        doorHeight = EditorGUILayout.FloatField("Door Height", doorHeight);
-        doorOffset = EditorGUILayout.FloatField("Door Offset", doorOffset);
+        spec.doorWidth = EditorGUILayout.FloatField("Door Width", spec.doorWidth);
+        spec.doorHeight = EditorGUILayout.FloatField("Door Height", spec.doorHeight);
+        spec.doorOffset = EditorGUILayout.FloatField("Door Offset", spec.doorOffset);
 
         GUILayout.Space(6);
-        addInteriorWall = EditorGUILayout.Toggle("Interior Wall", addInteriorWall);
-        if (addInteriorWall)
-            interiorGap = EditorGUILayout.FloatField(new GUIContent("Interior Doorway Width",
-                "Gap between the rooms. 1.6 m or more lets the Climber crawl through."), interiorGap);
-        addReverb = EditorGUILayout.Toggle("Indoor Echo (Reverb)", addReverb);
-        wallMaterial = (Material)EditorGUILayout.ObjectField("Material", wallMaterial, typeof(Material), false);
+        spec.interiorWall = EditorGUILayout.Toggle("Interior Wall", spec.interiorWall);
+        if (spec.interiorWall)
+            spec.interiorGap = EditorGUILayout.FloatField(new GUIContent("Interior Doorway Width",
+                "Gap between the rooms. 1.6 m or more lets the Climber crawl through."), spec.interiorGap);
+        spec.reverb = EditorGUILayout.Toggle("Indoor Echo (Reverb)", spec.reverb);
+        wallMaterial = (Material)EditorGUILayout.ObjectField(new GUIContent("Wall Material",
+            "Empty = a random wall material from Assets/Materials/BuildingPalette"), wallMaterial, typeof(Material), false);
 
         GUILayout.Space(6);
         GUILayout.Label("Details", EditorStyles.boldLabel);
-        details.windows = EditorGUILayout.Toggle("Windows", details.windows);
-        if (details.windows)
+        ref var d = ref spec.details;
+        d.windows = EditorGUILayout.Toggle("Windows", d.windows);
+        if (d.windows)
         {
             EditorGUI.indentLevel++;
-            details.litChance = EditorGUILayout.Slider("Lit Window Chance", details.litChance, 0f, 1f);
-            details.flickerChance = EditorGUILayout.Slider("Flickering Chance", details.flickerChance, 0f, 1f);
+            d.litChance = EditorGUILayout.Slider("Lit Window Chance", d.litChance, 0f, 1f);
+            d.flickerChance = EditorGUILayout.Slider("Flickering Chance", d.flickerChance, 0f, 1f);
+            d.shopfront = EditorGUILayout.Toggle(new GUIContent("Shopfront", "Big windows each side of the door"), d.shopfront);
+            d.highWindows = EditorGUILayout.Toggle(new GUIContent("High Windows", "One row high up (warehouse)"), d.highWindows);
             EditorGUI.indentLevel--;
         }
-        details.parapet = EditorGUILayout.Toggle("Roof Edge (Parapet)", details.parapet);
-        details.roofClutter = EditorGUILayout.Toggle("Rooftop Clutter", details.roofClutter);
-        addRoofHatch = EditorGUILayout.Toggle(new GUIContent("Roof Hatch", "A hatch the Climber can drop in through"), addRoofHatch);
-        details.sidewalk = EditorGUILayout.Toggle("Sidewalk", details.sidewalk);
-        if (details.sidewalk)
+        d.parapet = EditorGUILayout.Toggle("Roof Edge (Parapet)", d.parapet);
+        d.roofClutter = EditorGUILayout.Toggle("Rooftop Clutter", d.roofClutter);
+        spec.roofHatch = EditorGUILayout.Toggle(new GUIContent("Roof Hatch", "A hatch the Climber can drop in through"), spec.roofHatch);
+        d.sidewalk = EditorGUILayout.Toggle("Sidewalk", d.sidewalk);
+        if (d.sidewalk)
         {
             EditorGUI.indentLevel++;
-            details.sidewalkWidth = EditorGUILayout.FloatField("Sidewalk Width", details.sidewalkWidth);
+            d.sidewalkWidth = EditorGUILayout.FloatField("Sidewalk Width", d.sidewalkWidth);
             EditorGUI.indentLevel--;
         }
 
@@ -76,78 +78,14 @@ public class BuildingGenerator : EditorWindow
 
     void Create()
     {
-        // Clamp so the door always fits
-        doorWidth = Mathf.Min(doorWidth, width - wallThickness * 2f - 0.2f);
-        doorHeight = Mathf.Min(doorHeight, height - 0.2f);
-        float maxOffset = (width - doorWidth) / 2f - wallThickness;
-        doorOffset = Mathf.Clamp(doorOffset, -maxOffset, maxOffset);
-
-        var root = new GameObject("Building");
+        var root = BuildingBuilder.Build(spec, SpawnPoint(), Quaternion.identity, null,
+                                         BuildingDetails.Palette(), new System.Random(), wallMaterial);
         Undo.RegisterCreatedObjectUndo(root, "Create Building");
-        root.transform.position = SpawnPoint();
-
-        float t = wallThickness;
-        float halfW = width / 2f, halfD = depth / 2f;
-
-        // Back wall and side walls
-        Box(root, "Wall_Back",  new Vector3(0, height / 2f, halfD - t / 2f), new Vector3(width, height, t));
-        Box(root, "Wall_Left",  new Vector3(-halfW + t / 2f, height / 2f, 0), new Vector3(t, height, depth - t * 2f));
-        Box(root, "Wall_Right", new Vector3(halfW - t / 2f, height / 2f, 0), new Vector3(t, height, depth - t * 2f));
-
-        // Front wall split around the doorway
-        float frontZ = -halfD + t / 2f;
-        float doorLeft = doorOffset - doorWidth / 2f;
-        float doorRight = doorOffset + doorWidth / 2f;
-
-        float leftLen = doorLeft - (-halfW);
-        if (leftLen > 0.01f)
-            Box(root, "Wall_Front_L", new Vector3(-halfW + leftLen / 2f, height / 2f, frontZ), new Vector3(leftLen, height, t));
-
-        float rightLen = halfW - doorRight;
-        if (rightLen > 0.01f)
-            Box(root, "Wall_Front_R", new Vector3(doorRight + rightLen / 2f, height / 2f, frontZ), new Vector3(rightLen, height, t));
-
-        float lintelH = height - doorHeight;
-        Box(root, "Wall_Front_Top", new Vector3(doorOffset, doorHeight + lintelH / 2f, frontZ), new Vector3(doorWidth, lintelH, t));
-
-        // Roof and floor
-        Box(root, "Roof",  new Vector3(0, height + t / 2f, 0), new Vector3(width, t, depth));
-        Box(root, "Floor", new Vector3(0, 0.025f, 0), new Vector3(width - t * 2f, 0.05f, depth - t * 2f));
-
-        // Optional interior wall with a gap, makes a back room to hide in
-        if (addInteriorWall)
-        {
-            float gap = interiorGap;
-            float innerW = width - t * 2f;
-            float segment = (innerW - gap) / 2f;
-            float z = depth * 0.15f;
-            Box(root, "Interior_L", new Vector3(-innerW / 2f + segment / 2f, height / 2f, z), new Vector3(segment, height, t));
-            Box(root, "Interior_R", new Vector3(innerW / 2f - segment / 2f, height / 2f, z), new Vector3(segment, height, t));
-        }
-
-        // Windows, roof edge, rooftop clutter, sidewalk
-        BuildingDetails.Add(root.transform, width, depth, height, t, doorOffset, doorWidth, details);
-
-        // Hatch in the roof: the Climber drops in through it
-        if (addRoofHatch) RoofHatchTool.Add(root.transform);
-
-        // Doorway marker for the giant: it crouches here and reaches in
-        AddReachPoint(root.transform, doorOffset, frontZ);
-
-        // Echo when you're inside
-        if (addReverb)
-        {
-            var zone = root.AddComponent<AudioReverbZone>();
-            zone.reverbPreset = AudioReverbPreset.Room;
-            zone.minDistance = Mathf.Min(width, depth) * 0.4f;
-            zone.maxDistance = Mathf.Max(width, depth) * 0.5f;
-        }
-
         Selection.activeGameObject = root;
     }
 
     // Default doorway between the rooms: wide enough for the Climber (NavMesh radius 0.5) to crawl through
-    const float InteriorGap = 1.8f;
+    const float InteriorGap = BuildingBuilder.InteriorGap;
 
     // Interior doorway lintels (added by hand on some buildings) are raised to this height, so the Climber
     // (NavMesh height 2.6 m) fits under them. The front door stays low, so it still can't walk in from the street.
@@ -207,15 +145,9 @@ public class BuildingGenerator : EditorWindow
         if (widened + raised > 0) ClimberSetup.BakeClimberNavMesh();
     }
 
-    const float GiantStandDistance = 3.5f;   // how far outside the door the giant stands
-
     static void AddReachPoint(Transform building, float doorX, float frontZ)
     {
-        var rp = new GameObject("ReachPoint");
-        rp.transform.SetParent(building, false);
-        rp.transform.localPosition = new Vector3(doorX, 0f, frontZ - GiantStandDistance);
-        rp.transform.localRotation = Quaternion.identity;   // forward (+Z) points into the building
-        rp.AddComponent<ReachPoint>();
+        var rp = BuildingBuilder.AddReachPoint(building, doorX, frontZ);
         Undo.RegisterCreatedObjectUndo(rp, "Add Reach Point");
     }
 
@@ -234,19 +166,6 @@ public class BuildingGenerator : EditorWindow
             added++;
         }
         Debug.Log($"Added {added} reach point(s).");
-    }
-
-    void Box(GameObject parent, string name, Vector3 localPos, Vector3 size)
-    {
-        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        go.name = name;
-        go.transform.SetParent(parent.transform, false);
-        go.transform.localPosition = localPos;
-        go.transform.localScale = size;   // plain cubes are 1x1x1, so scale = size in meters
-        go.isStatic = true;               // lets lighting + NavMesh treat it as level geometry
-        go.AddComponent<BoxUV>();         // textures tile at real-world size
-        if (wallMaterial != null)
-            go.GetComponent<MeshRenderer>().sharedMaterial = wallMaterial;
     }
 
     static Vector3 SpawnPoint()

@@ -1,147 +1,62 @@
 using UnityEditor;
 using UnityEngine;
 
-// Adds the things that make a box look like a building:
-// windows (some lit, a few flickering), a roof parapet, rooftop clutter, and sidewalks.
-// Used by the Building Generator, and by Tools -> RunForYourLife -> Upgrade Existing Buildings.
+// Editor side of building details. The details themselves (windows, roof edge, rooftop clutter, sidewalks) are made
+// by BuildingBuilder (Scripts) so the game can build buildings too. This file makes the materials as assets and keeps
+// Tools -> RunForYourLife -> Upgrade Existing Buildings.
 public static class BuildingDetails
 {
-    public struct Options
-    {
-        public bool windows, parapet, roofClutter, sidewalk;
-        public float litChance, flickerChance, sidewalkWidth;
-
-        public static Options Default => new Options
-        {
-            windows = true, parapet = true, roofClutter = true, sidewalk = true,
-            litChance = 0.2f, flickerChance = 0.08f, sidewalkWidth = 2f,
-        };
-    }
-
-    const float Storey = 3.2f;
-    const float WindowW = 1.0f, WindowH = 1.3f;
-    const float WindowSpacing = 2.6f;
+    const string PalettePath = "Assets/Materials/BuildingPalette.asset";
 
     public static void Add(Transform building, float width, float depth, float height, float wallT,
-                           float doorOffset, float doorWidth, Options o)
+                           float doorOffset, float doorWidth, BuildingBuilder.DetailOptions o)
+        => BuildingBuilder.AddDetails(building, width, depth, height, wallT, doorOffset, doorWidth, o,
+                                      Palette(), new System.Random());
+
+    // The materials buildings get (Assets/Materials/BuildingPalette.asset). Made on first use from the materials the
+    // Building Texturer creates; empty slots are filled in again each time, so it catches up after Use Texture Set.
+    public static BuildingPalette Palette()
     {
-        var details = new GameObject("Details").transform;
-        details.SetParent(building, false);
-
-        float halfW = width / 2f, halfD = depth / 2f;
-
-        if (o.windows)
+        var pal = AssetDatabase.LoadAssetAtPath<BuildingPalette>(PalettePath);
+        bool isNew = pal == null;
+        if (isNew)
         {
-            WindowsOnFace(details, Vector3.back,    new Vector3(0, 0, -halfD), Vector3.right,   width, height, o, true,  doorOffset, doorWidth);
-            WindowsOnFace(details, Vector3.forward, new Vector3(0, 0,  halfD), Vector3.right,   width, height, o, false, 0, 0);
-            WindowsOnFace(details, Vector3.left,    new Vector3(-halfW, 0, 0), Vector3.forward, depth, height, o, false, 0, 0);
-            WindowsOnFace(details, Vector3.right,   new Vector3( halfW, 0, 0), Vector3.forward, depth, height, o, false, 0, 0);
+            if (!AssetDatabase.IsValidFolder("Assets/Materials")) AssetDatabase.CreateFolder("Assets", "Materials");
+            pal = ScriptableObject.CreateInstance<BuildingPalette>();
         }
 
-        float roofTop = height + wallT;
-
-        if (o.parapet)
+        bool changed = isNew;
+        if (pal.wallMaterials == null || pal.wallMaterials.Length == 0)
         {
-            const float ph = 0.6f, pt = 0.2f;
-            float y = roofTop + ph / 2f;
-            Part(details, "Wall_Parapet_F", PrimitiveType.Cube, new Vector3(0, y, -halfD + pt / 2f), new Vector3(width, ph, pt), null, true);
-            Part(details, "Wall_Parapet_B", PrimitiveType.Cube, new Vector3(0, y,  halfD - pt / 2f), new Vector3(width, ph, pt), null, true);
-            Part(details, "Wall_Parapet_L", PrimitiveType.Cube, new Vector3(-halfW + pt / 2f, y, 0), new Vector3(pt, ph, depth - pt * 2f), null, true);
-            Part(details, "Wall_Parapet_R", PrimitiveType.Cube, new Vector3( halfW - pt / 2f, y, 0), new Vector3(pt, ph, depth - pt * 2f), null, true);
+            var walls = new System.Collections.Generic.List<Material>();
+            foreach (var n in new[] { "brick_wall", "plaster_wall", "concrete_wall" })
+                if (Load(n) != null) walls.Add(Load(n));
+            pal.wallMaterials = walls.ToArray();
+            changed |= walls.Count > 0;
         }
+        changed |= Fill(ref pal.roofMaterial, Load("roof_tar"));
+        changed |= Fill(ref pal.floorMaterial, Load("wood_floor"));
+        changed |= Fill(ref pal.interiorWallMaterial, Load("interior_paint"));
+        changed |= Fill(ref pal.sidewalkMaterial, Load("sidewalk") != null ? Load("sidewalk")
+            : Mat("Sidewalk", new Color(0.42f, 0.42f, 0.42f), Color.black, 0.15f));
+        changed |= Fill(ref pal.windowFrame, Mat("Window_Frame", new Color(0.08f, 0.08f, 0.09f), Color.black, 0.3f));
+        changed |= Fill(ref pal.windowDark, Mat("Window_Dark", new Color(0.03f, 0.035f, 0.045f), Color.black, 0.92f));
+        changed |= Fill(ref pal.windowLit, Mat("Window_Lit", new Color(1f, 0.85f, 0.6f), new Color(1f, 0.72f, 0.42f) * 1.6f, 0.6f));
+        changed |= Fill(ref pal.propMetal, Mat("Prop_Metal", new Color(0.35f, 0.36f, 0.37f), Color.black, 0.35f));
 
-        if (o.roofClutter) RoofClutter(details, width, depth, roofTop);
-
-        if (o.sidewalk)
-        {
-            float sw = o.sidewalkWidth, sh = 0.15f;
-            var mat = Mat("Sidewalk", new Color(0.42f, 0.42f, 0.42f), Color.black, 0.15f);
-            Part(details, "Sidewalk_F", PrimitiveType.Cube, new Vector3(0, sh / 2f, -halfD - sw / 2f), new Vector3(width + sw * 2f, sh, sw), mat, true);
-            Part(details, "Sidewalk_B", PrimitiveType.Cube, new Vector3(0, sh / 2f,  halfD + sw / 2f), new Vector3(width + sw * 2f, sh, sw), mat, true);
-            Part(details, "Sidewalk_L", PrimitiveType.Cube, new Vector3(-halfW - sw / 2f, sh / 2f, 0), new Vector3(sw, sh, depth), mat, true);
-            Part(details, "Sidewalk_R", PrimitiveType.Cube, new Vector3( halfW + sw / 2f, sh / 2f, 0), new Vector3(sw, sh, depth), mat, true);
-        }
+        if (isNew) AssetDatabase.CreateAsset(pal, PalettePath);
+        else if (changed) EditorUtility.SetDirty(pal);
+        if (changed) AssetDatabase.SaveAssets();
+        return pal;
     }
 
-    static void WindowsOnFace(Transform parent, Vector3 normal, Vector3 faceCenter, Vector3 along, float length, float height,
-                              Options o, bool isFront, float doorOffset, float doorWidth)
+    static Material Load(string name) => AssetDatabase.LoadAssetAtPath<Material>($"Assets/Materials/{name}.mat");
+
+    static bool Fill(ref Material slot, Material value)
     {
-        int cols = Mathf.FloorToInt((length - 1.2f) / WindowSpacing);
-        if (cols < 1) { if (length > 2.2f) cols = 1; else return; }
-        float spacing = length / cols;
-
-        int rows = Mathf.Max(1, Mathf.FloorToInt((height - 0.6f) / Storey));
-        Quaternion rot = Quaternion.LookRotation(normal);
-
-        var frameMat = Mat("Window_Frame", new Color(0.08f, 0.08f, 0.09f), Color.black, 0.3f);
-        var darkMat = Mat("Window_Dark", new Color(0.03f, 0.035f, 0.045f), Color.black, 0.92f);
-        var litMat = Mat("Window_Lit", new Color(1f, 0.85f, 0.6f), new Color(1f, 0.72f, 0.42f) * 1.6f, 0.6f);
-
-        for (int r = 0; r < rows; r++)
-        {
-            float y = r * Storey + 1.75f;
-            if (y + WindowH / 2f > height - 0.3f) break;
-
-            for (int c = 0; c < cols; c++)
-            {
-                float s = -length / 2f + spacing * (c + 0.5f);
-                if (isFront && r == 0 && Mathf.Abs(s - doorOffset) < doorWidth / 2f + 0.9f) continue;   // keep clear of the door
-
-                Vector3 pos = faceCenter + along * s + Vector3.up * y;
-                bool lit = Random.value < o.litChance;
-
-                var frame = Part(parent, "Window_Frame", PrimitiveType.Cube, pos + normal * 0.025f,
-                                 new Vector3(WindowW + 0.16f, WindowH + 0.16f, 0.05f), frameMat, false);
-                frame.localRotation = rot;
-
-                var glass = Part(parent, lit ? "Window_Lit" : "Window_Dark", PrimitiveType.Cube, pos + normal * 0.045f,
-                                 new Vector3(WindowW, WindowH, 0.03f), lit ? litMat : darkMat, false);
-                glass.localRotation = rot;
-                if (lit && Random.value < o.flickerChance / Mathf.Max(o.litChance, 0.01f))
-                    glass.gameObject.AddComponent<WindowFlicker>();
-            }
-        }
-    }
-
-    static void RoofClutter(Transform parent, float width, float depth, float roofTop)
-    {
-        var metal = Mat("Prop_Metal", new Color(0.35f, 0.36f, 0.37f), Color.black, 0.35f);
-        int count = Random.Range(1, 4) + (width * depth > 120f ? 1 : 0);
-        float mx = Mathf.Max(0.5f, width / 2f - 1.2f), mz = Mathf.Max(0.5f, depth / 2f - 1.2f);
-
-        for (int i = 0; i < count; i++)
-        {
-            Vector3 p = new Vector3(Random.Range(-mx, mx), 0f, Random.Range(-mz, mz));
-            switch (Random.Range(0, 4))
-            {
-                case 0: // AC unit
-                    Part(parent, "Prop_AC", PrimitiveType.Cube, p + Vector3.up * (roofTop + 0.45f), new Vector3(1.4f, 0.9f, 1.0f), metal, false);
-                    break;
-                case 1: // water tank
-                    Part(parent, "Prop_Tank", PrimitiveType.Cylinder, p + Vector3.up * (roofTop + 0.9f), new Vector3(1.6f, 0.9f, 1.6f), metal, false);
-                    break;
-                case 2: // vent
-                    Part(parent, "Prop_Vent", PrimitiveType.Cube, p + Vector3.up * (roofTop + 0.3f), new Vector3(0.5f, 0.6f, 0.5f), metal, false);
-                    break;
-                default: // antenna
-                    Part(parent, "Prop_Antenna", PrimitiveType.Cylinder, p + Vector3.up * (roofTop + 1.4f), new Vector3(0.06f, 1.4f, 0.06f), metal, false);
-                    break;
-            }
-        }
-    }
-
-    static Transform Part(Transform parent, string name, PrimitiveType type, Vector3 localPos, Vector3 scale, Material mat, bool keepCollider)
-    {
-        var go = GameObject.CreatePrimitive(type);
-        go.name = name;
-        go.transform.SetParent(parent, false);
-        go.transform.localPosition = localPos;
-        go.transform.localScale = scale;
-        go.isStatic = true;
-        if (!keepCollider) Object.DestroyImmediate(go.GetComponent<Collider>());
-        if (mat != null) go.GetComponent<MeshRenderer>().sharedMaterial = mat;
-        if (type == PrimitiveType.Cube && !name.StartsWith("Window")) go.AddComponent<BoxUV>();
-        return go.transform;
+        if (slot != null || value == null) return false;
+        slot = value;
+        return true;
     }
 
     public static Material Mat(string name, Color color, Color emission, float smoothness)
@@ -187,7 +102,7 @@ public static class BuildingDetails
             float doorOffset = top.localPosition.x;
             float doorWidth = top.localScale.x;
 
-            Add(b, width, depth, height, t, doorOffset, doorWidth, Options.Default);
+            Add(b, width, depth, height, t, doorOffset, doorWidth, BuildingBuilder.DetailOptions.Default);
             Undo.RegisterCreatedObjectUndo(b.Find("Details").gameObject, "Upgrade Building");
             upgraded++;
         }

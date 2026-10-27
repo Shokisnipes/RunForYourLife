@@ -33,6 +33,17 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
 - [x] **4. Climber access (L, Opus).** Needs the climber model first (CLAUDE.md Assets). Split:
   [x] 4a) climber moves on streets + climbs a building wall to the roof (scripted climb; ClimberAI, Climber Setup tool);
   [x] 4b) roof hatch: drops inside through a hatch the building generator adds. Barricades don't stop it.
+- [ ] **4.5 Bigger random city (L, Opus).** ~3x the current map, regenerated every run, more variety. Buildings stay
+  single-storey (4-7 m tall); real 2-storey waits until after the prototype playtest. Split:
+  [x] a) runtime `BuildingBuilder` (Scripts): the box/door/interior/reach point/hatch/details/texture code moves out of
+     the editor tools so the game can build buildings; editor tools call it too. Size + height variants (house, shop,
+     warehouse). No behaviour change for existing buildings;
+  [ ] b) `CityGenerator` (Scripts): seed -> irregular blocks, a wide main road, alleys too narrow for the giant
+     (radius 2.5), plaza, park, parking lot, empty lots; street lamps, PlayerSpawn, PatrolCenter. Tools menu preview;
+  [ ] c) in-game: host picks the seed (synced), every client builds the same city (System.Random, not
+     UnityEngine.Random), runtime NavMesh bake for Giant + Climber behind a loading fade, MonsterAI/ClimberAI refresh
+     their roof/reach caches, monster spawn points;
+  [ ] d) tuning: prep ~8 min (DESIGN: 6-8), patrol area, light count/performance, playtest.
 - [ ] **5. Clues (S, Sonnet).** Three clue prefabs spawned at prep start based on the genome: claw marks high on a wall
   (Climber), a carcass with eyes untouched (not Sight), one radio line (random). Simple decals/props are fine.
 - [ ] **6. Scouts (L, Opus).** Needs a scout model first. Split: 6a) small scout AI (wander, flee light or noise

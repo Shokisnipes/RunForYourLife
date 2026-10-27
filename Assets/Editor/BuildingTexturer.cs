@@ -175,6 +175,7 @@ public class BuildingTexturer : EditorWindow
         }
 
         AssetDatabase.SaveAssets();
+        BuildingDetails.Palette();   // the materials new (and in-game) buildings get
         so.Update();
         ApplyToBuildings();
         UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());

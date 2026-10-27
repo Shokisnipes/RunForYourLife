@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d209f8c34c3e1d34aae4767a436ae67b, type: 3}
+  m_Name: BuildingPalette
+  m_EditorClassIdentifier: Assembly-CSharp::BuildingPalette
+  wallMaterials:
+  - {fileID: 2100000, guid: dba4a84aabb60444f85aebe19c8bd74d, type: 2}
+  - {fileID: 2100000, guid: 5273642e1dc19344bb36e3b17944c420, type: 2}
+  - {fileID: 2100000, guid: 55a7cad3123a84341b1db34f3480a9eb, type: 2}
+  roofMaterial: {fileID: 2100000, guid: e11225aaf54bfdc4bb2742842f37ca52, type: 2}
+  floorMaterial: {fileID: 2100000, guid: 7090c0afb447f034abcc4f5d494554ad, type: 2}
+  interiorWallMaterial: {fileID: 2100000, guid: e2496450504742345857ef0cbe7cedda, type: 2}
+  sidewalkMaterial: {fileID: 2100000, guid: af8481bc865e01e4cab87327729bb23f, type: 2}
+  windowFrame: {fileID: 2100000, guid: 6c9c29f33d26831488f802362adfd576, type: 2}
+  windowDark: {fileID: 2100000, guid: b062900e5bfd44d428ac7812c230329e, type: 2}
+  windowLit: {fileID: 2100000, guid: 6fa5fa2cb3fcebe43b2803607c40cdee, type: 2}
+  propMetal: {fileID: 2100000, guid: 4b0f081122d28de4abea8cf8694617c7, type: 2}
+  metersPerTile: 2.5

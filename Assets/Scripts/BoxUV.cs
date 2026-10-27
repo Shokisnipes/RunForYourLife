@@ -31,7 +31,8 @@ public class BoxUV : MonoBehaviour
         }
     }
 
-    void Rebuild()
+    // Public so code that resizes a cube at runtime (BuildingBuilder) can refresh it; the editor does it by itself
+    public void Rebuild()
     {
         builtScale = transform.lossyScale;
         builtTile = metersPerTile;
