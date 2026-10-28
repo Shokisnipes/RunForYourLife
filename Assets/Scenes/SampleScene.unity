@@ -500,6 +500,50 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  dawnFraction: 0.25
+  brightening:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.45
+      value: 0.12
+      inSlope: 0.45
+      outSlope: 0.45
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.8
+      value: 0.5
+      inSlope: 1.6
+      outSlope: 1.6
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 3
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  dawnAzimuth: 70
   menuDarkness: 1
   previewDarkness: 0
   twilightLift: 0.5
@@ -968,6 +1012,13 @@ MonoBehaviour:
     canHear: 1
   allowScouts: 1
   scoutCount: {x: 5, y: 6}
+  useEvolution: 1
+  winBoost: 0.5
+  lossPenalty: 0.3
+  minWeight: 0.25
+  maxWeight: 4
+  mutationChance: 0.15
+  saveFileName: evolution.json
 --- !u!114 &765556352
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1341,6 +1392,8 @@ MonoBehaviour:
   grabRange: 1.8
   grabWindup: 0.35
   grabEscapeRange: 2.6
+  lungeWidth: 1.2
+  lungeSpeed: 9
   grabHoldTime: 3.2
   catchCooldown: 4
   climbSpeed: 1.6

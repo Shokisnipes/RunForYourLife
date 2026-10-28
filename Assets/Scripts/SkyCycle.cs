@@ -73,11 +73,18 @@ public class SkyCycle : MonoBehaviour
     [Header("Timing")]
     [Tooltip("How dark it gets over the prep phase (x = prep progress 0..1, y = 0 dusk .. 1 night).")]
     public AnimationCurve darkening = AnimationCurve.EaseInOut(0f, 0f, 0.9f, 1f);
-    [Tooltip("Dawn: how much of the end of the night the sky spends coming back to light (0.15 = the last 15%). " +
+    [Tooltip("Dawn: how much of the end of the night the sky spends coming back to light (0.25 = the last 25%). " +
              "It plays the dusk fade backwards and reaches full dawn as the timer runs out (the win).")]
-    [Range(0f, 0.5f)] public float dawnFraction = 0.15f;
-    [Tooltip("How light it gets over the dawn part of the night (x = dawn progress 0..1, y = 0 night .. 1 dawn).")]
-    public AnimationCurve brightening = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+    [Range(0f, 0.5f)] public float dawnFraction = 0.25f;
+    [Tooltip("How light it gets over the dawn part of the night (x = dawn progress 0..1, y = 0 night .. 1 dawn). " +
+             "Starts very slowly (stars fade, the horizon pales) so players sense the end is near, then the sun comes.")]
+    public AnimationCurve brightening = DefaultBrightening();
+
+    static AnimationCurve DefaultBrightening() => new AnimationCurve(
+        new Keyframe(0f, 0f, 0f, 0f),
+        new Keyframe(0.45f, 0.12f, 0.45f, 0.45f),
+        new Keyframe(0.8f, 0.5f, 1.6f, 1.6f),
+        new Keyframe(1f, 1f, 3f, 0f));
     [Tooltip("Compass direction of the rising sun at dawn (east-ish, across the sky from where it set).")]
     public float dawnAzimuth = 70f;
     [Tooltip("Darkness behind the main menu (0 = dusk, 1 = night).")]
