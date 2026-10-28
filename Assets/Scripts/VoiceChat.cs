@@ -104,10 +104,7 @@ public class VoiceChat : NetworkBehaviour
     OpusDecoder decoder;
     int playRate;
     short[] decoded;
-    readonly object ringLock = new object();
-    float[] ring;
-    int ringRead, ringCount;
-    bool primed;
+    VoicePlayback playback;
 
     void Awake() => player = GetComponent<FirstPersonController>();
 
@@ -216,21 +213,7 @@ public class VoiceChat : NetworkBehaviour
         if (data == null || data.Length == 0 || rate <= 0) return;
         if (decoder == null || rate != playRate) SetUpPlayback(rate);
         int n = decoder.Decode(data, 0, data.Length, decoded, 0, decoded.Length, false);
-        if (n <= 0) return;
-
-        lock (ringLock)
-        {
-            int cap = ring.Length;
-            for (int i = 0; i < n; i++)
-            {
-                if (ringCount == cap) { ringRead = (ringRead + 1) % cap; ringCount--; }   // full: drop the oldest
-                ring[(ringRead + ringCount) % cap] = decoded[i] / 32768f;
-                ringCount++;
-            }
-            // Never let it lag far behind: past 4x the buffer, skip ahead
-            int maxLag = Mathf.Max(1, (int)(playRate * bufferMs / 1000f) * 4);
-            if (ringCount > maxLag) { int drop = ringCount - maxLag / 2; ringRead = (ringRead + drop) % cap; ringCount -= drop; }
-        }
+        if (n > 0) playback.Push(decoded, n);
     }
 
     // ---------- Receiving ----------
@@ -240,43 +223,17 @@ public class VoiceChat : NetworkBehaviour
         playRate = rate;
         decoder = OpusDecoder.Create(rate, 1);
         decoded = new short[rate / 50 * 6];   // room for the longest Opus frame (120 ms)
-        lock (ringLock) { ring = new float[rate]; ringRead = ringCount = 0; primed = false; }
 
         if (voiceSource == null)
         {
             var go = new GameObject("Voice");
             go.transform.SetParent(player != null && player.cameraPivot != null ? player.cameraPivot : transform, false);
             voiceSource = go.AddComponent<AudioSource>();
+            playback = go.AddComponent<VoicePlayback>();   // after the AudioSource: it shapes what the source plays
         }
         AudioMix.Setup3D(voiceSource, fullVolumeDistance, maxDistance);
         voiceSource.volume = volume;
-        voiceSource.loop = true;
-        voiceSource.clip = AudioClip.Create("Voice", rate, 1, rate, true, ReadVoice);
-        voiceSource.Play();
-    }
-
-    // Audio thread: hand over buffered voice, or silence while waiting for enough to play smoothly
-    void ReadVoice(float[] data)
-    {
-        lock (ringLock)
-        {
-            int prime = (int)(playRate * bufferMs / 1000f);
-            if (!primed && ringCount >= prime) primed = true;
-            for (int i = 0; i < data.Length; i++)
-            {
-                if (primed && ringCount > 0)
-                {
-                    data[i] = ring[ringRead];
-                    ringRead = (ringRead + 1) % ring.Length;
-                    ringCount--;
-                }
-                else
-                {
-                    data[i] = 0f;
-                    primed = false;   // ran dry: wait to build up the buffer again
-                }
-            }
-        }
+        playback.Setup(rate, bufferMs);
     }
 
     // Dead: their voice stops on every computer
