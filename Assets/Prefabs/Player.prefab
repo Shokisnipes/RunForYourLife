@@ -251,6 +251,7 @@ GameObject:
   - component: {fileID: 1649352431673675213}
   - component: {fileID: 1272151106869941223}
   - component: {fileID: 7755302011707798197}
+  - component: {fileID: 4228319428982873704}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -493,6 +494,28 @@ MonoBehaviour:
   talkRadius: 7
   shoutRadius: 28
   noiseInterval: 0.5
+--- !u!114 &4228319428982873704
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6986788303379592695}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f42c7035584f12141896d567ed8180b6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerRescue
+  ShowTopMostFoldoutHeaderGroup: 1
+  freeRange: 2.5
+  freeHoldTime: 4
+  freeKey: 19
+  freeNoiseRadius: 12
+  freeNoiseInterval: 1
+  dripSpacing: 2.5
+  dripSize: {x: 0.25, y: 0.55}
+  poolSize: 1.4
+  maxDrips: 80
 --- !u!1 &7100166854369933953
 GameObject:
   m_ObjectHideFlags: 0

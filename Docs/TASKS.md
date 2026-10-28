@@ -99,7 +99,10 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
     only) with a synced timer on everyone's HUD (FirstPersonController.hiddenSurviveSeconds 300), then die. Climber
     leaves you hidden where it caught you. Run is lost when nobody is free (all dead or hidden).
     2-player check passed (Multiplayer Play Mode): the client sees the carry, the stoop and the body where it's put down.
-  - [ ] b. Drag marks + voice clue + hold E to free them.
+  - [x] b. Done 2026-10-28: PlayerRescue on the Player prefab: blood drips under a carried player every 2.5 m (every
+    client) + a pool at the hiding spot; hold E 4 s within 2.5 m of a hidden teammate (noise every second) -> host
+    checks -> FirstPersonController.Free() (timer stops, ragdoll stands up). Voice clue = live proximity voice chat
+    (VoiceChat + VoicePlayback, Opus via Concentus; MIC button in the menus picks the device, M mutes).
   - [ ] c. Struggle key.
 - [ ] **9. Generator night job (M, Sonnet).** Generator powers nearby street lamps/lights; fuel runs out every few
   minutes; fuel cans spawn outside; carrying one is a two-person job (two players hold it, or one player at half speed

@@ -383,6 +383,34 @@ public class FirstPersonController : NetworkBehaviour
         letGoHidden = hidden;
     }
 
+    // Host: a teammate freed this hidden player (PlayerRescue checked they were next to them)
+    public void Free()
+    {
+        if (!IsServer || !IsHidden) return;
+        netHiddenUntil.Value = 0;
+        dieSent = false;
+        FreedRpc();
+    }
+
+    // Owner: get up where you lay and carry on
+    [Rpc(SendTo.Owner)]
+    void FreedRpc()
+    {
+        if (!lyingHidden || netDead.Value) return;
+        if (falling != null) { StopCoroutine(falling); falling = null; }
+        lyingHidden = false;
+        letGoAt = null;
+        pitch = pitchTarget = 0f;
+        pendingYaw = 0f;
+        cameraPivot.localRotation = Quaternion.identity;
+        netPitch.Value = 0f;
+        verticalVelocity = 0f;
+        controller.enabled = true;
+        grabbed = false;
+        netGrabbed.Value = false;   // every computer: the ragdoll stands back up (PlayerRagdoll)
+        Debug.Log("You were freed!");
+    }
+
     // Host: the hiding spot timer ran out
     [Rpc(SendTo.Owner)]
     void DieRpc() => StartCoroutine(DieSequence());
