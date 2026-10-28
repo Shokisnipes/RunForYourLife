@@ -250,6 +250,7 @@ GameObject:
   - component: {fileID: 5035217578270714404}
   - component: {fileID: 1649352431673675213}
   - component: {fileID: 1272151106869941223}
+  - component: {fileID: 7755302011707798197}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -330,7 +331,8 @@ MonoBehaviour:
   bobSway: 0.25
   sprintBobBoost: 1.25
   bobStride: 0.75
-  carriedTime: 3
+  hiddenSurviveSeconds: 300
+  lyingEyeHeight: 0.3
   fadeOutTime: 0.4
   blackTime: 1.5
   fadeInTime: 1
@@ -451,6 +453,7 @@ MonoBehaviour:
   giantFearDistance: 45
   climberFearDistance: 20
   chasedFloor: 0.35
+  hiddenFear: 0.5
   riseSpeed: 1.2
   fallSpeed: 0.2
   vignette: 0.3
@@ -464,6 +467,32 @@ MonoBehaviour:
   pantingStart: 0.2
   pantingPitch: 1.15
   fear: 0
+--- !u!114 &7755302011707798197
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6986788303379592695}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9a7ca3d73b23ce940b4b63bb26d63fd1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::VoiceChat
+  ShowTopMostFoldoutHeaderGroup: 1
+  muteKey: 27
+  gate: 0.008
+  holdOpen: 0.35
+  bitrate: 24000
+  fullVolumeDistance: 2
+  maxDistance: 40
+  volume: 1
+  bufferMs: 80
+  loudLevel: 0.04
+  shoutLevel: 0.25
+  talkRadius: 7
+  shoutRadius: 28
+  noiseInterval: 0.5
 --- !u!1 &7100166854369933953
 GameObject:
   m_ObjectHideFlags: 0
@@ -735,6 +764,7 @@ MonoBehaviour:
   angularDrag: 1.5
   gripSwing: 20
   gripCatchUp: 10
+  releaseMaxSpeed: 2
 --- !u!114 &1702133668590093302
 MonoBehaviour:
   m_ObjectHideFlags: 0

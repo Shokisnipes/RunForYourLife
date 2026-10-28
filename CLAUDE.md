@@ -35,6 +35,9 @@ when it's done and tested.
   really reaches you.
 - **Evolution:** `GenomeManager` (NetworkManager object) picks the genome weighted by trait weights saved in
   `evolution.json` (persistentDataPath); monster win +weight, beaten -weight, host quitting mid-run = monster win.
+- **Voice:** `VoiceChat` on the Player prefab: always-on proximity voice (mute key M). Owner records the default mic,
+  20 ms Opus frames (Concentus, Assets/Plugins) sent by unreliable RPC only while talking; others play it as a 3D
+  sound from the speaker's head (a hidden player calls out from the hiding spot). Loud talking -> NoiseSystem.
 - **Senses:** `NoiseSystem.Emit(pos, radius)`; `FootstepNoise` sends player steps to the host by RPC. Flashlight on or
   standing under a lit `StreetLamp` makes players visible from further.
 - **Audio mix:** every 3D sound uses `AudioMix.Setup3D` (real inverse-distance falloff, silent at max range); the

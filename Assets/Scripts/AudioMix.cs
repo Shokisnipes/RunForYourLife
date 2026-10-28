@@ -23,6 +23,7 @@ using UnityEngine;
 //   giant breathing               -24 dB
 //   scout sniffing                -28 dB
 //   scout skitter loop            -30 dB         (at full crawl speed; quieter when slow)
+//   player voice (live mic)       as spoken      (VoiceChat.volume 1; only the distance fade applies)
 //   player footsteps              -29 dB         (your own steps should sit under everything)
 //   ambience bed (2D)             -37 dB         (night drone; fades in with the dark)
 //   dusk ambience bed (2D)        -35 dB         (sparse birds; the file is gain-staged to -29 at volume 1, played at 0.5)
