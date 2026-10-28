@@ -24,6 +24,9 @@ public class PlayerRagdoll : MonoBehaviour
     public float gripSwing = 20f;
     [Tooltip("How quickly the grip point catches up with the hand when the catch starts (higher = snaps in faster).")]
     public float gripCatchUp = 10f;
+    [Tooltip("When the hand lets go, no body part keeps more speed than this (m/s). Stops a body that was pressed " +
+             "into the ground from being flung away as physics pushes it back out.")]
+    public float releaseMaxSpeed = 2f;
 
     // Every ragdoll collider in the game, so floor checks can skip bodies
     static readonly HashSet<Collider> AllParts = new HashSet<Collider>();
@@ -118,6 +121,17 @@ public class PlayerRagdoll : MonoBehaviour
             p.body.angularVelocity = Vector3.zero;
             p.collider.enabled = true;
         }
+
+        // The body passes through the monsters: the giant's big body capsule would otherwise shove it out of its
+        // hand when it lets go, and bulldoze it across the street as it walks off
+        foreach (var monster in FindObjectsByType<MonsterAI>(FindObjectsSortMode.None)) IgnoreMonster(monster);
+        foreach (var monster in FindObjectsByType<ClimberAI>(FindObjectsSortMode.None)) IgnoreMonster(monster);
+    }
+
+    void IgnoreMonster(Component monster)
+    {
+        foreach (var c in monster.GetComponentsInChildren<Collider>(true))
+            foreach (var p in parts) Physics.IgnoreCollision(p.collider, c);
     }
 
     void StandUp()
@@ -171,8 +185,16 @@ public class PlayerRagdoll : MonoBehaviour
 
     void LetGo()
     {
-        if (gripJoint != null) Destroy(gripJoint);
+        if (gripJoint == null) return;
+        Destroy(gripJoint);
         gripJoint = null;
+        foreach (var p in parts)
+        {
+            if (p.body.isKinematic) continue;
+            p.body.linearVelocity = Vector3.ClampMagnitude(p.body.linearVelocity, releaseMaxSpeed);
+            p.body.angularVelocity = Vector3.ClampMagnitude(p.body.angularVelocity, 5f);
+            p.body.maxDepenetrationVelocity = 1f;   // eases out of the ground instead of shooting out
+        }
     }
 
     // ---------- Building the ragdoll from the humanoid skeleton ----------

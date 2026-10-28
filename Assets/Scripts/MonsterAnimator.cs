@@ -78,8 +78,9 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     public Vector3 walkHoldOffset = new Vector3(0.3f, 0.95f, 0.15f);
     [Tooltip("Seconds to lower you from its face to the walking hold.")]
     public float toWalkHoldTime = 1.2f;
-    [Tooltip("Putting you down: the hand stops this far (m) above the hiding spot and lets go.")]
-    public float putDownHeight = 1.3f;
+    [Tooltip("Putting you down: the hand stops this far (m) above the hiding spot and lets go. You hang from the " +
+             "chest, so below ~1.6 the legs get pushed into the ground.")]
+    public float putDownHeight = 1.7f;
     [Tooltip("Running grab: how much of the wind-up it takes the arm to swing out at you (0.8 = arm fully out just " +
              "before the hand closes).")]
     [Range(0.2f, 1f)] public float swipeArmTime = 0.8f;

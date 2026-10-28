@@ -740,6 +740,9 @@ MonoBehaviour:
   liftTime: 1.2
   carryDuration: 3
   holdOffset: {x: 0.05, y: -0.05, z: 0.3}
+  walkHoldOffset: {x: 0.3, y: 0.95, z: 0.15}
+  toWalkHoldTime: 1.2
+  putDownHeight: 1.7
   swipeArmTime: 0.8
   swipeAimHeight: 1
   stoopStartDistance: 22
@@ -1001,7 +1004,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GenomeManager
   genomes: []
-  allowClimber: 1
+  allowClimber: 0
   alwaysClimber: 0
   startingSenses:
   - access: 0
@@ -1034,9 +1037,10 @@ MonoBehaviour:
   scoutPrefab: {fileID: 4722039454084912105, guid: b87c2622a6541fd4bad52527dc77a3ce, type: 3}
   minSpawnDistance: 35
   thinkInterval: 5
-  calmToSend: 40
+  calmToSend: 90
+  maxSearching: 1
   searchRadiusWide: 35
-  searchRadiusNarrow: 10
+  searchRadiusNarrow: 18
   narrowAfter: 120
   fallbackDelay: 60
   fallbackOffset: 25
@@ -1879,6 +1883,12 @@ MonoBehaviour:
   peekDuration: 6
   doorSearchRadius: 15
   peekStandBack: 2
+  carrySpeed: 4
+  minCarryDistance: 35
+  maxCarryDistance: 110
+  putDownReach: 5
+  putDownTime: 2.5
+  carryGiveUpTime: 60
   searchDuration: 12
   searchArea: 15
 --- !u!195 &1857967605

@@ -25,10 +25,12 @@ public class ScoutDirector : MonoBehaviour
     [Tooltip("How often (s) the Director thinks.")]
     public float thinkInterval = 5f;
     [Tooltip("After this many calm seconds it's sure to send a scout each think (it's less likely before).")]
-    public float calmToSend = 40f;
+    public float calmToSend = 90f;
+    [Tooltip("At most this many scouts out looking for players at once (the rest keep wandering).")]
+    public int maxSearching = 1;
     [Tooltip("How far from the player it aims a scout: wide right after a relay, narrowing as the calm goes on.")]
     public float searchRadiusWide = 35f;
-    public float searchRadiusNarrow = 10f;
+    public float searchRadiusNarrow = 18f;
     [Tooltip("Calm seconds to go from the wide to the narrow search radius.")]
     public float narrowAfter = 120f;
 
@@ -96,8 +98,10 @@ public class ScoutDirector : MonoBehaviour
         {
             if (Random.value > Mathf.Clamp01(calm / calmToSend)) return;
             var idle = new List<ScoutAI>();
-            foreach (var s in ScoutAI.All) if (s.IsSpawned && s.Idle) idle.Add(s);
-            if (idle.Count == 0) return;
+            int busy = 0;
+            foreach (var s in ScoutAI.All)
+                if (s.IsSpawned && !s.IsDead) { if (s.Idle) idle.Add(s); else busy++; }
+            if (idle.Count == 0 || busy >= maxSearching) return;
             float radius = Mathf.Lerp(searchRadiusWide, searchRadiusNarrow, calm / narrowAfter);
             Vector2 r = Random.insideUnitCircle * radius;
             var scout = idle[Random.Range(0, idle.Count)];
@@ -140,7 +144,7 @@ public class ScoutDirector : MonoBehaviour
     static FirstPersonController RandomLivePlayer()
     {
         var live = new List<FirstPersonController>();
-        foreach (var p in FirstPersonController.All) if (p.IsSpawned && !p.IsDead) live.Add(p);
+        foreach (var p in FirstPersonController.All) if (p.IsSpawned && !p.IsDead && !p.IsGrabbed) live.Add(p);   // not the captured
         return live.Count > 0 ? live[Random.Range(0, live.Count)] : null;
     }
 
