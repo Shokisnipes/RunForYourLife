@@ -52,6 +52,10 @@ public class GenomeManager : MonoBehaviour
     [Range(0f, 1f)] public float mutationChance = 0.15f;
     [Tooltip("Save file name in Application.persistentDataPath.")]
     public string saveFileName = "evolution.json";
+    [Tooltip("Editor only: also save results from play mode. Off = editor test runs (usually stopped mid-night, " +
+             "which would count as monster wins) don't change the evolution; the editor still picks by the saved " +
+             "weights. Tick it to test evolution itself. Builds always save.")]
+    public bool recordInEditor = false;
 
     public static MonsterGenome Current { get; private set; }
 
@@ -126,6 +130,7 @@ public class GenomeManager : MonoBehaviour
     {
         resultRecorded = true;
         if (!useEvolution) return;
+        if (Application.isEditor && !recordInEditor) { Debug.Log("GenomeManager: editor run, result not saved (Record In Editor is off)"); return; }
         LoadSave();   // fresh from disk, in case another instance wrote it since the pick
         float delta = monsterWon ? winBoost : -lossPenalty;
         foreach (var key in new[] { SenseKey(Current.sense), AccessKey(Current.access) })
