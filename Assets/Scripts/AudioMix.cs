@@ -15,6 +15,7 @@ using UnityEngine;
 //   hatch landing thump           -18 dB
 //   door torn open by the giant   -14 dB
 //   window smashed by the Climber -14 dB
+//   clue radio static             -30 dB         (louder while a broadcast comes through)
 //   door closing / opening        -27 / -28 dB   (your own sneaky actions: just above your footsteps)
 //   climber crawl steps           -24 dB         (climbing steps -27)
 //   giant breathing               -24 dB

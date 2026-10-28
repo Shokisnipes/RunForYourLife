@@ -6,10 +6,11 @@ using UnityEngine;
 // picture) and shared by every building that uses it.
 public static class ProcTextures
 {
-    public enum Decal { Streak, Stain, Moss, Poster, Graffiti }
+    public enum Decal { Streak, Stain, Moss, Poster, Graffiti, Claws, Handprint, Blood }
 
     // How many different pictures of each decal there are
-    public static int Variants(Decal kind) => kind == Decal.Poster || kind == Decal.Graffiti ? 6 : 3;
+    public static int Variants(Decal kind) => kind == Decal.Poster || kind == Decal.Graffiti ? 6
+        : kind == Decal.Claws || kind == Decal.Handprint || kind == Decal.Blood ? 1 : 3;
 
     // Width / height of each decal picture (the quad on the wall uses the same shape)
     public static Vector2 Aspect(Decal kind) => kind switch
@@ -18,6 +19,7 @@ public static class ProcTextures
         Decal.Moss => new Vector2(4f, 1f),
         Decal.Poster => new Vector2(0.7f, 1f),
         Decal.Graffiti => new Vector2(2f, 1f),
+        Decal.Claws => new Vector2(0.8f, 1f),
         _ => Vector2.one,
     };
 
@@ -34,6 +36,9 @@ public static class ProcTextures
             Decal.Stain => Stain(rng),
             Decal.Moss => Moss(rng),
             Decal.Poster => Poster(rng, variant),
+            Decal.Claws => Claws(rng),
+            Decal.Handprint => Handprint(rng),
+            Decal.Blood => Stain(rng, new Color(0.18f, 0.02f, 0.02f), 0.85f),
             _ => Graffiti(rng, variant),
         };
         tex.name = "Decal_" + key;
@@ -132,13 +137,13 @@ public static class ProcTextures
         return Make(w, h, px, TextureWrapMode.Clamp);
     }
 
-    // A blotchy damp patch with a darker rim
-    static Texture2D Stain(System.Random rng)
+    // A blotchy damp patch with a darker rim (or a pool of blood: colour and strength given)
+    static Texture2D Stain(System.Random rng, Color? colour = null, float strength = 0.55f)
     {
         const int size = 128;
         var px = new Color[size * size];
         float seed = (float)rng.NextDouble() * 100f;
-        Color col = rng.NextDouble() < 0.5 ? new Color(0.12f, 0.11f, 0.08f) : new Color(0.2f, 0.17f, 0.1f);
+        Color col = colour ?? (rng.NextDouble() < 0.5 ? new Color(0.12f, 0.11f, 0.08f) : new Color(0.2f, 0.17f, 0.1f));
         for (int y = 0; y < size; y++)
             for (int x = 0; x < size; x++)
             {
@@ -146,7 +151,7 @@ public static class ProcTextures
                 float r = Mathf.Sqrt(dx * dx + dy * dy) * 2f;
                 float n = Fbm(seed, x / (float)size * 3f, y / (float)size * 3f);
                 float shape = Mathf.Clamp01((1f - r) * 1.6f + (n - 0.5f) * 1.4f);
-                float a = Mathf.SmoothStep(0f, 1f, shape) * 0.55f;
+                float a = Mathf.SmoothStep(0f, 1f, shape) * strength;
                 a += Mathf.Clamp01(1f - Mathf.Abs(shape - 0.25f) * 10f) * 0.2f;   // tide mark
                 px[y * size + x] = new Color(col.r, col.g, col.b, Mathf.Clamp01(a));
             }
@@ -172,6 +177,65 @@ public static class ProcTextures
             }
         }
         return Make(w, h, px, TextureWrapMode.Clamp);
+    }
+
+    // Four deep gouges raked down a wall: dark grooves with pale torn edges, deepest in the middle of each stroke
+    static Texture2D Claws(System.Random rng)
+    {
+        const int w = 128, h = 160;
+        var px = new Color[w * h];
+        float seed = (float)rng.NextDouble() * 100f;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                float v = y / (float)h, u = x / (float)w;
+                float a = 0f; Color c = Color.black;
+                for (int k = 0; k < 4; k++)
+                {
+                    // Each stroke slants and curves a little, starting and ending at slightly different heights
+                    float start = 0.08f + k * 0.03f, end = 0.92f - (3 - k) * 0.04f;
+                    if (v < start || v > end) continue;
+                    float t = (v - start) / (end - start);
+                    float centre = 0.18f + k * 0.2f + (t - 0.5f) * 0.18f + Mathf.Sin(t * 3f + k) * 0.02f;
+                    float width = 0.035f * Mathf.Sin(t * Mathf.PI) + 0.006f;
+                    float d = Mathf.Abs(u - centre);
+                    if (d < width) { a = Mathf.Max(a, 0.95f); c = new Color(0.05f, 0.04f, 0.035f); }
+                    else if (d < width + 0.02f && a < 0.5f) { a = 0.45f; c = new Color(0.72f, 0.68f, 0.6f); }   // torn edge
+                }
+                a *= 0.75f + Mathf.PerlinNoise(seed + u * 20f, v * 20f) * 0.25f;
+                px[y * w + x] = new Color(c.r, c.g, c.b, a);
+            }
+        return Make(w, h, px, TextureWrapMode.Clamp);
+    }
+
+    // A huge grimy hand smeared on a wall: a palm, four long fingers and a thumb, dragged downward
+    static Texture2D Handprint(System.Random rng)
+    {
+        const int size = 192;
+        var px = new Color[size * size];
+        float seed = (float)rng.NextDouble() * 100f;
+        Vector2 palm = new Vector2(0.5f, 0.38f);
+        Vector2[] tips = { new Vector2(0.22f, 0.88f), new Vector2(0.4f, 0.95f), new Vector2(0.58f, 0.94f), new Vector2(0.75f, 0.85f), new Vector2(0.88f, 0.45f) };
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                Vector2 p = new Vector2(x, y) / size;
+                Vector2 q = new Vector2((p.x - palm.x) / 0.24f, (p.y - palm.y) / 0.22f);
+                float shape = 1f - q.magnitude;                                   // palm
+                foreach (var tip in tips)                                        // fingers: capsules from the palm
+                {
+                    Vector2 a = Vector2.Lerp(palm, tip, 0.35f), ab = tip - a;
+                    float t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / ab.sqrMagnitude);
+                    float d = Vector2.Distance(p, a + ab * t);
+                    shape = Mathf.Max(shape, 1f - d / 0.06f);
+                }
+                // Smeared downward: below the palm, streaks fade out
+                float smear = p.y < palm.y ? Mathf.PerlinNoise(seed + p.x * 25f, 0f) * Mathf.Clamp01(1f - (palm.y - p.y) * 3f) : 0f;
+                float a2 = Mathf.Clamp01(Mathf.Max(shape * 3f, smear * 0.8f * (Mathf.Abs(p.x - 0.5f) < 0.22f ? 1f : 0f)));
+                a2 *= 0.55f + Mathf.PerlinNoise(seed + p.x * 12f, p.y * 12f) * 0.4f;
+                px[y * size + x] = new Color(0.07f, 0.06f, 0.05f, a2 * 0.85f);
+            }
+        return Make(size, size, px, TextureWrapMode.Clamp);
     }
 
     // A faded paper poster: a coloured picture block, a title bar, lines of "text", torn corners, peeling

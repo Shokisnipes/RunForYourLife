@@ -238,7 +238,7 @@ public static class BuildingDressing
         q.isStatic = true;
     }
 
-    static Material DecalMaterial(BuildingPalette pal, Texture tex)
+    public static Material DecalMaterial(BuildingPalette pal, Texture tex)
     {
         if (decalMats.TryGetValue(tex, out var m) && m != null) return m;
         m = new Material(pal.decalMaterial) { name = tex.name };

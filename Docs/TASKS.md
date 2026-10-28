@@ -62,8 +62,11 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
     Done and host-tested: FlashlightHand (simple-shapes flashlight in the fist, arm up when on, beam from the lens)
     and turn-in-place in PlayerAnimator (body holds until 60 deg, then steps round with the turn clips).
     Left: Petar's 2-player check.
-- [ ] **5. Clues (S, Sonnet).** Three clue prefabs spawned at prep start based on the genome: claw marks high on a wall
+- [x] **5. Clues (S, Sonnet).** Three clue prefabs spawned at prep start based on the genome: claw marks high on a wall
   (Climber), a carcass with eyes untouched (not Sight), one radio line (random). Simple decals/props are fine.
+  Done: ClueManager (GameFlow object). Wall: claw gouges (Climber) or a torn-off door + giant handprint (giant);
+  dog carcass, eyes gone = Sight; radio with generated static + garbled subtitles about the sense or the access.
+  Placed 18-70 m from spawn from the city seed; each clue has an Inspector chance to lie. Host-tested both monsters.
 - [ ] **6. Scouts (L, Opus).** Needs a scout model first. Split: 6a) small scout AI (wander, flee light or noise
   depending on genome, attack weakly); 6b) spawn 3-5 at dusk, sharing the genome's sense.
 - [ ] **7. Evolution save (S, Sonnet).** Host saves trait weights to JSON in Application.persistentDataPath after each

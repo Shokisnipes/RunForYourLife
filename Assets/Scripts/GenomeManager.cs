@@ -21,7 +21,7 @@ public class GenomeManager : MonoBehaviour
         var nm = NetworkManager.Singleton;
         bool hosting = nm != null && nm.IsServer && nm.IsListening;
         if (hosting && !applied) { applied = true; PickAndApply(); }
-        else if (!hosting) applied = false;   // new genome next time we host
+        else if (!hosting) { applied = false; Current = null; }   // new genome next time we host; never a stale one
     }
 
     void PickAndApply()
