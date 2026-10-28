@@ -73,6 +73,13 @@ public class SkyCycle : MonoBehaviour
     [Header("Timing")]
     [Tooltip("How dark it gets over the prep phase (x = prep progress 0..1, y = 0 dusk .. 1 night).")]
     public AnimationCurve darkening = AnimationCurve.EaseInOut(0f, 0f, 0.9f, 1f);
+    [Tooltip("Dawn: how much of the end of the night the sky spends coming back to light (0.15 = the last 15%). " +
+             "It plays the dusk fade backwards and reaches full dawn as the timer runs out (the win).")]
+    [Range(0f, 0.5f)] public float dawnFraction = 0.15f;
+    [Tooltip("How light it gets over the dawn part of the night (x = dawn progress 0..1, y = 0 night .. 1 dawn).")]
+    public AnimationCurve brightening = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+    [Tooltip("Compass direction of the rising sun at dawn (east-ish, across the sky from where it set).")]
+    public float dawnAzimuth = 70f;
     [Tooltip("Darkness behind the main menu (0 = dusk, 1 = night).")]
     [Range(0f, 1f)] public float menuDarkness = 1f;
     [Tooltip("Testing (Play mode): above 0 forces this darkness, so you can scrub between dusk and night.")]
@@ -91,6 +98,7 @@ public class SkyCycle : MonoBehaviour
 
     Light lightSource;
     Material sky;
+    bool rising;   // dawn: the sun comes up on the dawn side instead of setting on the dusk side
 
     static readonly int Zenith = Shader.PropertyToID("_ZenithColor"), Horizon = Shader.PropertyToID("_HorizonColor"),
         Ground = Shader.PropertyToID("_GroundColor"), SunDir = Shader.PropertyToID("_SunDir"), SunGlow = Shader.PropertyToID("_SunGlow"),
@@ -123,21 +131,37 @@ public class SkyCycle : MonoBehaviour
         Apply(Darkness01);
     }
 
-    // 0 = dusk, 1 = night
+    // 0 = dusk (or dawn), 1 = night
     float Darkness()
     {
+        rising = false;
         if (previewDarkness > 0f) return previewDarkness;
         var flow = GameFlow.Instance;
         if (flow == null || !flow.IsSpawned) return menuDarkness;
-        if (flow.Phase != GamePhase.Prep) return 1f;
-        float progress = flow.prepSeconds > 0f ? 1f - flow.SecondsLeft / flow.prepSeconds : 1f;
-        return Mathf.Clamp01(darkening.Evaluate(Mathf.Clamp01(progress)));
+        switch (flow.Phase)
+        {
+            case GamePhase.Prep:
+                float progress = flow.prepSeconds > 0f ? 1f - flow.SecondsLeft / flow.prepSeconds : 1f;
+                return Mathf.Clamp01(darkening.Evaluate(Mathf.Clamp01(progress)));
+            case GamePhase.Night:
+                // The last stretch of the night is dusk in reverse: the sky lightens toward dawn
+                float dawnSeconds = flow.nightSeconds * dawnFraction;
+                if (dawnSeconds <= 0f || flow.SecondsLeft >= dawnSeconds) return 1f;
+                rising = true;
+                return 1f - Mathf.Clamp01(brightening.Evaluate(1f - flow.SecondsLeft / dawnSeconds));
+            case GamePhase.Won:
+                rising = true;   // survived: the sun is up
+                return 0f;
+            default:
+                return 1f;       // everyone died: it stays night
+        }
     }
 
     void Apply(float t)
     {
         Look a = dusk, b = night;
-        Vector3 sunDir = Direction(sunAzimuth, Mathf.Lerp(sunElevationStart, sunElevationEnd, t));
+        float sunAz = rising ? dawnAzimuth : sunAzimuth;
+        Vector3 sunDir = Direction(sunAz, Mathf.Lerp(sunElevationStart, sunElevationEnd, t));
         Vector3 moonDir = Direction(moonAzimuth, moonElevation);
 
         // The light: sun fading out over the first half, moon fading in over the second
@@ -147,7 +171,7 @@ public class SkyCycle : MonoBehaviour
         lightSource.color = l.lightColor;
         lightSource.intensity = l.lightIntensity * Mathf.SmoothStep(0f, 1f, k);
         lightSource.enabled = lightSource.intensity > 0.002f;
-        Vector3 from = moonPhase ? moonDir : Direction(sunAzimuth, Mathf.Max(sunElevationStart, 6f));   // a set sun still lights from just above the rooftops
+        Vector3 from = moonPhase ? moonDir : Direction(sunAz, Mathf.Max(sunElevationStart, 6f));   // a set sun still lights from just above the rooftops
         transform.rotation = Quaternion.LookRotation(-from);
 
         Color fog = Color.Lerp(a.fog, b.fog, t);
