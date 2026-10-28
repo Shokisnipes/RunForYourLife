@@ -33,6 +33,8 @@ when it's done and tested.
   (ClimbUp/ClimbDown, scripted like the window hop). ScoutAnimator.ShowSense adds the genome's eyes/ears to the head.
   Giant running grab: MonsterAnimator stoop (hips drop in the IK pass, bow + arm re-solve in LateUpdate) so the hand
   really reaches you.
+- **Evolution:** `GenomeManager` (NetworkManager object) picks the genome weighted by trait weights saved in
+  `evolution.json` (persistentDataPath); monster win +weight, beaten -weight, host quitting mid-run = monster win.
 - **Senses:** `NoiseSystem.Emit(pos, radius)`; `FootstepNoise` sends player steps to the host by RPC. Flashlight on or
   standing under a lit `StreetLamp` makes players visible from further.
 - **Audio mix:** every 3D sound uses `AudioMix.Setup3D` (real inverse-distance falloff, silent at max range); the
@@ -49,6 +51,7 @@ when it's done and tested.
   (~8 pm, sun just set) into night over the prep phase: light, ambient probe, fog and the `RunForYourLife/Sky` shader
   (Assets/Shaders; gradient into fog, sunset glow, stars, drifting clouds, moon shaded as a sphere lit by the sun).
   One light plays sun then moon (fades out at mid-twilight while it swings). Cameras clear to Skybox.
+  Dawn: the last `dawnFraction` of the night plays it backwards (slow `brightening` curve), sun rising at `dawnAzimuth`.
 - **Retro look (optional, per player):** `RetroLook` ("Retro Look" scene object; LOOK button in the main/pause menu,
   saved in PlayerPrefs): low render scale + nearest-neighbour upscaling (chunky pixels, HUD stays sharp), the
   `RunForYourLife/RetroPost` full-screen pass on the URP renderers (colour steps + Bayer dither), and a priority-10

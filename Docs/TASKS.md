@@ -49,16 +49,16 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
 - [x] **4.7 Deserted city dressing.** Interior layouts (open / back room / side room / two back rooms) + furniture;
   road paint, crosswalks, cracks, puddles, litter, wrecks on the main road; walls along alleys (narrow gaps) so the
   giant can never get in; NavMesh baked from colliders; night ambience fades in with the dark.
-  [ ] needs a dusk ambience clip (calm, sparse birds) from Petar, then crossfade it out as night falls.
+  [x] dusk ambience clip (Calm_Day_Sound, AmbientAudio.duskLoop) crossfades out as night falls.
 - [ ] **4.8 Player body (L, split).** Head bob toned down. Martha (Mixamo, Assets/Characters/Martha) replaces the
   capsule; Tools > RunForYourLife > Player Model Setup does imports, the controller and the prefab.
   - [x] a. Imports, strafe/crouch blend trees with stride matching, own body visible (head hidden), others' heads
     follow their look. Host-tested (forward + strafe drive the right clips, no errors). Petar to play-test the feel.
-  - [x] c. Cover: crouch next to a wall = back to the wall + cover sneak (PlayerCover); view eases off the wall
+  - [x] c. (REMOVED 2026-10-27, it fought the view behind short walls) Cover: crouch next to a wall = back to the wall + cover sneak (PlayerCover); view eases off the wall
     (mouse free); at a wall's end you stop and lean out to peek. Synced. Running strafes, crouch strafes and
     crouch-back clips added. Small mouse smoothing (lookSmoothing 0.02 s). Host-tested with simulated keys.
   - [ ] b. Flashlight in the right hand (arm IK toward where you look), turn-in-place (TurnLeft/Right and
-    CrouchTurnLeft/Right are imported, not wired), 2-player check of other players' bodies and peeking.
+    CrouchTurnLeft/Right are imported, not wired), 2-player check of other players' bodies (peeking was removed with cover on 2026-10-27).
     Done and host-tested: FlashlightHand (simple-shapes flashlight in the fist, arm up when on, beam from the lens)
     and turn-in-place in PlayerAnimator (body holds until 60 deg, then steps round with the turn clips).
     Left: Petar's 2-player check.
@@ -74,13 +74,13 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   look around) and climb back down at the edge nearest where they're going. 6c done: Sight scouts have big
   glinting eyes, Hearing scouts big ears + blind eyes (synced, kept on the body). 2-player join test passed
   (client got all scouts, same city, no errors). Petar to play-test the feel. See DESIGN "Scouts first" and "The Director".
-  - [ ] a. Director (host): tracks players, tension meter, picks areas to send scouts, fallback vague hints to the
+  - [x] a. Director (host): tracks players, tension meter, picks areas to send scouts, fallback vague hints to the
     monster when no scouts are alive. Partly broken windows: new BreakableWindow state (small hole, scout-only),
     some buildings start with them; scouts also use fully broken windows. No assets needed.
-  - [ ] b. Scout movement: tiny model (~0.6 m), NavMesh agent type "Scout", crawls streets, scripted wall climbs +
+  - [x] b. Scout movement: tiny model (~0.6 m), NavMesh agent type "Scout", crawls streets, scripted wall climbs +
     raycast surface sticking, enters through broken/holed windows. 3-5 spawn at dusk, share the genome.
     Needs the scout model + clips (CLAUDE.md Assets).
-  - [ ] c. Relay, flee, kill: spot a player -> run + screech wind-up -> MonsterAI gets the stale position (new
+  - [x] c. Relay, flee, kill: spot a player -> run + screech wind-up -> MonsterAI gets the stale position (new
     Investigate source). Flee when seen/lit/chased (Sight: flashlight, Hearing: noise). Players can kill it
     by flashlight + stomp: the beam freezes it briefly, then stomp it; dead ones show eyes/ears.
   Body + sounds DONE (Tools > Scout Setup -> Assets/Prefabs/Scout.prefab, ScoutAnimator, ScoutAudio, levels in AudioMix).
