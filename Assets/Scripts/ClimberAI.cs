@@ -74,9 +74,15 @@ public class ClimberAI : NetworkBehaviour
     public float loseSightTime = 3f;
     [Tooltip("Lunges at you from this close.")]
     public float grabRange = 1.8f;
-    [Tooltip("Short pause before the grab lands. Get this far away in time and it misses.")]
+    [Tooltip("How long the lunge lasts before the grab lands. It doesn't stop: it springs at you in a straight line, so " +
+             "backing or running straight away gets you caught; a sideways sprint out of its line can dodge it.")]
     public float grabWindup = 0.35f;
+    [Tooltip("At the end of the lunge it catches you if you're no further ahead of it than this...")]
     public float grabEscapeRange = 2.6f;
+    [Tooltip("...and within this distance of its line of lunge (sprint sideways further than this to dodge).")]
+    public float lungeWidth = 1.2f;
+    [Tooltip("Speed of the lunge (m/s). Faster than a sprinting player.")]
+    public float lungeSpeed = 9f;
     [Tooltip("Stays still holding you this long after a catch (match the player's Carried Time).")]
     public float grabHoldTime = 3.2f;
     public float catchCooldown = 4f;
@@ -143,6 +149,7 @@ public class ClimberAI : NetworkBehaviour
     Vector3 pointOfInterest, lastSeenPosition, homePosition;
     float lastSeenTime = -999f, heardTime = -999f, stateStartTime, pauseUntil, ignorePlayersUntil, nextRepath;
     float grabStart = -1f, holdUntil;
+    Vector3 lungeDir;
     bool holding, inPlay;
 
     // Climbing
@@ -381,7 +388,7 @@ public class ClimberAI : NetworkBehaviour
 
         bool running = canRun && state == ClimberState.Chase && target != null &&
                        Vector3.Distance(transform.position, target.transform.position) > runWhenFartherThan;
-        if (agent.enabled && state == ClimberState.Chase) agent.speed = running ? runSpeed : chaseSpeed;
+        if (agent.enabled && state == ClimberState.Chase) agent.speed = grabStart >= 0f ? lungeSpeed : running ? runSpeed : chaseSpeed;
         if (netRunning.Value != running) netRunning.Value = running;
     }
 
@@ -698,20 +705,24 @@ public class ClimberAI : NetworkBehaviour
         if (target == null || !target.IsSpawned || target.IsGrabbed) { target = null; SetState(ClimberState.Search); return; }
         Vector3 playerPos = target.transform.position;
 
-        // Mid-lunge: stopped, facing you
+        // Mid-lunge: springing at you along the line it picked (no steering), then the grab lands
         if (grabStart >= 0f)
         {
-            FaceTowards(playerPos);
+            agent.velocity = lungeDir * lungeSpeed;
             if (Time.time - grabStart < grabWindup) return;
             grabStart = -1f;
-            if (CanGrab(target, grabEscapeRange)) { CatchPlayer(); return; }
-            agent.isStopped = false;   // missed
+            if (InLungePath(target)) { CatchPlayer(); return; }
+            nextRepath = 0f;   // missed: straight back after you
         }
         else if (CanGrab(target, grabRange))
         {
             grabStart = Time.time;
-            agent.velocity = Vector3.zero;
-            agent.isStopped = true;
+            lungeDir = playerPos - transform.position;
+            lungeDir.y = 0f;
+            lungeDir = lungeDir.sqrMagnitude > 0.01f ? lungeDir.normalized : transform.forward;
+            agent.isStopped = false;
+            agent.SetDestination(transform.position + lungeDir * (grabRange + lungeSpeed * grabWindup + 1f));
+            agent.velocity = lungeDir * lungeSpeed;
             GrabAnimRpc(grabWindup + 0.15f);   // lunge pose; fades out again if it misses
             return;
         }
@@ -1232,6 +1243,16 @@ public class ClimberAI : NetworkBehaviour
             if (dist < bestDist) { best = player; bestDist = dist; }
         }
         return best;
+    }
+
+    // End of a lunge: still in its path (close ahead of it and near its line)?
+    bool InLungePath(FirstPersonController player)
+    {
+        Vector3 local = player.transform.position - transform.position;
+        float ahead = Vector3.Dot(local, lungeDir);
+        float side = Mathf.Abs(Vector3.Dot(local, Vector3.Cross(Vector3.up, lungeDir)));
+        if (ahead < -1f || ahead > grabEscapeRange || side > lungeWidth) return false;
+        return LineClear(transform.position + Vector3.up * eyeHeight, player);
     }
 
     bool CanGrab(FirstPersonController player, float range)
