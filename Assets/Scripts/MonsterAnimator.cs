@@ -104,6 +104,9 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     public float stoopSpeed = 1.6f;
     [Tooltip("How fast the bow changes (degrees per second).")]
     public float stoopBowSpeed = 140f;
+    [Tooltip("Bowing between these angles (degrees), the free arm eases into hanging straight down instead of " +
+             "keeping its animated swing (which points up behind the back when bent over).")]
+    public Vector2 freeArmHangBow = new Vector2(40f, 80f);
 
     [Tooltip("How fast the hand closes around you on a catch and opens when it lets go (full close per second).")]
     public float gripCloseSpeed = 4f;
@@ -526,6 +529,17 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
             float side = Mathf.Sign(Vector3.Dot(shoulder.position - spine.position, right));
             Vector3 pole = shoulder.position + (right * side * 0.6f - n * 0.3f + Vector3.up * 0.2f) * modelScale;
             TwoBoneIK(shoulder, elbow, hand, goal, pole, armW);
+        }
+
+        // The other arm hangs down: bowed deep, its animated pose would otherwise swing up behind the back
+        float hangW = Mathf.InverseLerp(freeArmHangBow.x, freeArmHangBow.y, stoopBow);
+        if (hangW > 0f && freeShoulder != null && freeElbow != null && freeHand != null)
+        {
+            float side = Mathf.Sign(Vector3.Dot(freeShoulder.position - spine.position, right));
+            float len = Vector3.Distance(freeShoulder.position, freeElbow.position) + Vector3.Distance(freeElbow.position, freeHand.position);
+            Vector3 hang = (Vector3.down * 0.9f + n * 0.3f + right * side * 0.1f).normalized * len * 0.92f;
+            Vector3 pole = freeShoulder.position + (right * side * 0.4f - n * 0.3f) * modelScale;
+            TwoBoneIK(freeShoulder, freeElbow, freeHand, freeShoulder.position + hang, pole, Mathf.SmoothStep(0f, 1f, hangW));
         }
     }
 

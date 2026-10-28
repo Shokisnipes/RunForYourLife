@@ -109,6 +109,12 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
 - [ ] **11. Chase feel (M, Sonnet).** Open-ground sprint (no building within ~8 m -> openGroundSpeed 16), near-miss
   ground slam, tunnel vision + muffled audio as it closes in, look-back key (Q), silence on the stare.
   Files: MonsterAI.cs, MonsterAudio.cs, CameraShake.cs, FirstPersonController.cs.
+- [ ] **12. Giant reaches into alleys (L, Opus).** Today it sees you in an alley it can't fit into and just runs
+  around. Instead: it stands at the alley mouth (or beside the alley over the buildings), bends over to suit what's
+  around it (lower over low walls, round corners) and reaches in with one arm. If a wall, house or big object is in the
+  way, it braces its other hand on it (hand planted on the roof edge / wall top) while it leans in. Builds on the
+  doorway Reach (ReachPoint, arm IK, hand feeling around) and the put-down stoop/bow in MonsterAnimator.
+  Petar's idea, 2026-10-28; do after task 8.
 
 ## After the prototype
 Playtest with friends before building more. Then pick from Docs/DESIGN.md: Mimic, bestiary, mutations, AI director,
