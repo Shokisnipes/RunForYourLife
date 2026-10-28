@@ -98,6 +98,7 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
     MonsterAI Carry state walks you 35+ m away from free players, stoops and puts you down; you lie there (look
     only) with a synced timer on everyone's HUD (FirstPersonController.hiddenSurviveSeconds 300), then die. Climber
     leaves you hidden where it caught you. Run is lost when nobody is free (all dead or hidden).
+    2-player check passed (Multiplayer Play Mode): the client sees the carry, the stoop and the body where it's put down.
   - [ ] b. Drag marks + voice clue + hold E to free them.
   - [ ] c. Struggle key.
 - [ ] **9. Generator night job (M, Sonnet).** Generator powers nearby street lamps/lights; fuel runs out every few
