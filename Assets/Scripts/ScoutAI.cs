@@ -31,10 +31,11 @@ public class ScoutAI : NetworkBehaviour
     public float fleeSpeed = 4.5f;
 
     [Header("Senses")]
-    [Tooltip("How far it sees a player (before the genome multiplier).")]
-    public float sightRange = 16f;
+    [Tooltip("How far it sees a player (before the genome multiplier). Short on purpose: like the Climber, it has to " +
+             "get close to sense you, so a player can reach it before its screech ends.")]
+    public float sightRange = 7f;
     [Tooltip("...a player with their flashlight on.")]
-    public float flashlightSightRange = 26f;
+    public float flashlightSightRange = 11f;
     [Tooltip("Full cone width it sees in (degrees). Low to the ground, it sees wide.")]
     public float viewAngle = 160f;
     public float eyeHeight = 0.3f;
@@ -46,12 +47,12 @@ public class ScoutAI : NetworkBehaviour
     public float hearingHearingGenome = 1.5f;
     public float hearingSightGenome = 0.6f;
     [Tooltip("Sight range multiplier for a Sight genome (and for a Hearing genome).")]
-    public float sightSightGenome = 1.3f;
-    public float sightHearingGenome = 0.7f;
+    public float sightSightGenome = 1.15f;
+    public float sightHearingGenome = 0.8f;
 
     [Header("Relay")]
     [Tooltip("After spotting someone it scuttles off this long before it screeches.")]
-    public float spottedRunTime = 1.2f;
+    public float spottedRunTime = 0.6f;
     [Tooltip("The screech wind-up: kill or dazzle it before this ends and nothing gets passed on.")]
     public float screechTime = 2.8f;
     [Tooltip("After a relay it won't relay again for this long.")]
@@ -61,7 +62,7 @@ public class ScoutAI : NetworkBehaviour
     [Tooltip("A seen player closer than this makes it run (outside a relay).")]
     public float fleeTriggerDistance = 6f;
     [Tooltip("A Sight scout runs from a flashlight-carrying player this close.")]
-    public float flashlightFleeDistance = 14f;
+    public float flashlightFleeDistance = 10f;
     public float fleeDistance = 18f;
     public float fleeTime = 5f;
 
