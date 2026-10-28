@@ -73,6 +73,13 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     public float carryDuration = 3f;        // how long it holds you up
     [Tooltip("Where it holds you, in front of its face (normal human meters, scaled automatically).")]
     public Vector3 holdOffset = new Vector3(0.05f, -0.05f, 0.3f);
+    [Tooltip("Carrying you off to a hiding spot: where the hand holds you while it walks, from its feet " +
+             "(normal human meters, scaled automatically; x = out to the side of the holding hand).")]
+    public Vector3 walkHoldOffset = new Vector3(0.3f, 0.95f, 0.15f);
+    [Tooltip("Seconds to lower you from its face to the walking hold.")]
+    public float toWalkHoldTime = 1.2f;
+    [Tooltip("Putting you down: the hand stops this far (m) above the hiding spot and lets go.")]
+    public float putDownHeight = 1.3f;
     [Tooltip("Running grab: how much of the wind-up it takes the arm to swing out at you (0.8 = arm fully out just " +
              "before the hand closes).")]
     [Range(0.2f, 1f)] public float swipeArmTime = 0.8f;
@@ -234,6 +241,8 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     float carryWeight;
     bool carryThroughDoor;
     Vector3 carryDoor;
+    float putDownStart = -1f, putDownDuration;
+    Vector3 putDownSpot, putDownFrom;
     Transform head, leftHandBone, rightHandBone;
     Transform shoulder, elbow;
     float armLength;
@@ -452,6 +461,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         if (swipeTarget != null && Time.time < swipeUntil) target = 1f;
         if (carrying && !carryThroughDoor)
             target = Mathf.Max(target, 1f - Mathf.SmoothStep(0f, 1f, (Time.time - carryStart) / Mathf.Max(0.1f, liftTime)));
+        if (PuttingDown) target = 1f;
         if (postureWeight > 0f || !animator.isHuman) target = 0f;
         stoop = Mathf.MoveTowards(stoop, target, dt * stoopSpeed);
     }
@@ -489,7 +499,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         float w = Mathf.SmoothStep(0f, 1f, stoop);
 
         bool swiping = swipeWeight > 0f && !carrying;
-        bool lifting = carrying && !carryThroughDoor && carryWeight > 0f;
+        bool lifting = carrying && (!carryThroughDoor || PuttingDown) && carryWeight > 0f;
         Vector3 goal = lifting ? carryTarget : swipeGoal;
         float want = stoopChaseBow * w;
         if (swiping || lifting)
@@ -558,6 +568,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     {
         carrying = true;
         carryStart = Time.time;
+        putDownStart = -1f;
         carryThroughDoor = throughDoor;
         carryDoor = doorPoint;
 
@@ -569,10 +580,23 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         if (handWasIn) carryWeight = armOut;
     }
 
+    // Called on every computer when it reaches the hiding spot: stoop and lower the hand to the ground there
+    public void StartPutDown(Vector3 spot, float duration)
+    {
+        putDownStart = Time.time;
+        putDownDuration = Mathf.Max(0.5f, duration);
+        putDownSpot = spot;
+        putDownFrom = carryTarget;
+    }
+
+    bool PuttingDown => carrying && putDownStart >= 0f;
+
     void UpdateCarry(float dt)
     {
         float extra = carryThroughDoor ? DoorPullExtraTime : 0f;
-        if (carrying && Time.time - carryStart > carryDuration + extra) carrying = false;
+        // Holds on for as long as the AI says it's carrying you off (or the short hold, before that's synced)
+        bool carryingOff = ai != null && ai.SyncedCarrying;
+        if (carrying && !carryingOff && Time.time - carryStart > carryDuration + extra) { carrying = false; putDownStart = -1f; }
 
         carryWeight = Mathf.MoveTowards(carryWeight, carrying ? 1f : 0f, dt * 3f);
         if (!carrying && carryWeight <= 0f) return;
@@ -617,8 +641,26 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
             carryTarget = Vector3.Lerp(carryFrom, hold, t);
         }
 
-        // It watches what it's holding
-        if (carrying)
+        // Carrying you off: after a good look, the hand comes down to its side for the walk
+        float lookedAt = carryDuration + extra;
+        bool walking = carryingOff && e > lookedAt;
+        if (walking)
+        {
+            float side = reachHand == AvatarIKGoal.LeftHand ? -1f : 1f;
+            Vector3 walkHold = root.position + (root.right * walkHoldOffset.x * side + Vector3.up * walkHoldOffset.y
+                                                + root.forward * walkHoldOffset.z) * modelScale;
+            carryTarget = Vector3.Lerp(carryTarget, walkHold, Mathf.SmoothStep(0f, 1f, (e - lookedAt) / Mathf.Max(0.1f, toWalkHoldTime)));
+        }
+
+        // At the spot: down to the ground (the stoop bows it over far enough to get there)
+        if (PuttingDown)
+        {
+            float t = Mathf.SmoothStep(0f, 1f, (Time.time - putDownStart) / (putDownDuration * 0.8f));
+            carryTarget = Vector3.Lerp(putDownFrom, putDownSpot + Vector3.up * putDownHeight, t);
+        }
+
+        // It watches what it's holding (not while walking: then it looks where it's going)
+        if (carrying && (!walking || PuttingDown))
         {
             lookPos = Vector3.Lerp(lookPos, carryTarget, 1f - Mathf.Exp(-6f * dt));
             currentLookWeight = Mathf.MoveTowards(currentLookWeight, lookWeight, dt * 3f);

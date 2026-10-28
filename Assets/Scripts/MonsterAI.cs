@@ -2,7 +2,7 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
 
-public enum MonsterState { Patrol, Investigate, Notice, Chase, Reach, Search }
+public enum MonsterState { Patrol, Investigate, Notice, Chase, Reach, Search, Carry }
 
 // The giant. Put on the Monster root together with a NavMeshAgent (Giant agent type),
 // NetworkObject and NetworkTransform. The brain only runs on the host; everyone else just sees it move.
@@ -11,6 +11,7 @@ public enum MonsterState { Patrol, Investigate, Notice, Chase, Reach, Search }
 // sees you -> Notice (freezes and stares) -> Chase (lunges, then pursues)
 // you're somewhere it can't walk (inside a building) -> Reach (crouches at the opening, peeks in, grabs)
 // loses you -> Search -> Patrol
+// catches you -> Carry (walks off with you to a hiding spot, stoops and puts you down) -> Patrol
 [RequireComponent(typeof(NavMeshAgent))]
 public class MonsterAI : NetworkBehaviour
 {
@@ -37,6 +38,9 @@ public class MonsterAI : NetworkBehaviour
     // False when this run's genome isn't a Reacher: the giant stays hidden all game
     readonly NetworkVariable<bool> netInPlay = new NetworkVariable<bool>(true);
     bool inPlay = true;
+    // Holding a caught player until it puts them down at a hiding spot (MonsterAnimator keeps the hand closed)
+    readonly NetworkVariable<bool> netCarrying = new NetworkVariable<bool>();
+    public bool SyncedCarrying => netCarrying.Value;
 
     [Header("Movement")]
     public float walkSpeed = 2.5f;        // slow, lumbering patrol
@@ -103,6 +107,20 @@ public class MonsterAI : NetworkBehaviour
     [Tooltip("Extra distance it stands back from doorways. Raise it for a lying-down peek pose.")]
     public float peekStandBack = 0f;
 
+    [Header("Carry off (after a catch)")]
+    [Tooltip("Walking speed while it carries you off.")]
+    public float carrySpeed = 4f;
+    [Tooltip("It hides you at least this far (m) from where it caught you...")]
+    public float minCarryDistance = 35f;
+    [Tooltip("...and at most this far, if it can (m).")]
+    public float maxCarryDistance = 110f;
+    [Tooltip("A hiding spot counts only if it can stand this close (m) to it: its hand has to reach the ground there.")]
+    public float putDownReach = 5f;
+    [Tooltip("Seconds to stoop, lower you to the ground and let go.")]
+    public float putDownTime = 2.5f;
+    [Tooltip("Gives up walking after this long (s) and puts you down wherever it is.")]
+    public float carryGiveUpTime = 60f;
+
     [Header("Search")]
     public float searchDuration = 15f;
     public float searchArea = 15f;
@@ -135,6 +153,10 @@ public class MonsterAI : NetworkBehaviour
     readonly RaycastHit[] handHits = new RaycastHit[8];
     float holdUntil;
     bool holding;
+    // Carry off
+    FirstPersonController carryVictim;
+    Vector3 carrySpot;
+    float putDownStart = -1f;
 
     // Read by animation/IK later
     public bool IsPeeking => state == MonsterState.Reach && arrivedTime >= 0f;
@@ -182,6 +204,8 @@ public class MonsterAI : NetworkBehaviour
         }
         agent.enabled = true;       // may have been turned off by an earlier session as a client
         holding = false;
+        carryVictim = null;
+        netCarrying.Value = false;
         agent.angularSpeed = 70f;   // slow, heavy turns
         SetState(MonsterState.Patrol);
     }
@@ -220,15 +244,26 @@ public class MonsterAI : NetworkBehaviour
         var flow = GameFlow.Instance;
         bool active = (flow == null || flow.MonsterActive) && netInPlay.Value;
         if (IsSpawned) UpdateAsleep(active);
+        // Run over (dawn) or put to sleep while holding someone: let them go where they are
+        if (IsServer && IsSpawned && !active && carryVictim != null) PutDownVictim(carryVictim.transform.position);
         if (!IsServer || !IsSpawned || !active) return;
 
-        // Standing still holding its victim after a catch
+        // Standing still holding its victim after a catch, then off it goes with them
         if (holding)
         {
             if (Time.time < holdUntil) { UpdateSyncedAnimationState(); return; }
             holding = false;
             agent.isStopped = false;
             agent.updateRotation = true;
+            if (carryVictim != null) SetState(MonsterState.Carry);
+        }
+
+        // Busy carrying: it doesn't look for anyone else
+        if (state == MonsterState.Carry)
+        {
+            UpdateCarry();
+            UpdateSyncedAnimationState();
+            return;
         }
 
         var seen = FindVisiblePlayer();
@@ -341,6 +376,19 @@ public class MonsterAI : NetworkBehaviour
                 agent.speed = huntSpeed;
                 agent.acceleration = 6f;
                 agent.SetDestination(pointOfInterest);
+                break;
+            case MonsterState.Carry:
+                agent.speed = carrySpeed;
+                agent.acceleration = 4f;
+                putDownStart = -1f;
+                if (PickHidingSpot(transform.position, out carrySpot, out Vector3 stand))
+                    agent.SetDestination(stand);
+                else
+                {
+                    // Nowhere to take them: put them down right here
+                    carrySpot = carryVictim != null ? carryVictim.transform.position : transform.position;
+                    agent.ResetPath();
+                }
                 break;
         }
     }
@@ -821,6 +869,92 @@ public class MonsterAI : NetworkBehaviour
             transform.rotation, Quaternion.LookRotation(dir), turnSpeed * Time.deltaTime);
     }
 
+    // ---------- Carrying a caught player off ----------
+
+    void UpdateCarry()
+    {
+        // They left the game: drop the carry pose and get back to work
+        if (carryVictim == null || !carryVictim.IsSpawned)
+        {
+            carryVictim = null;
+            netCarrying.Value = false;
+            SetState(MonsterState.Patrol);
+            return;
+        }
+
+        if (putDownStart < 0f)
+        {
+            bool there = !agent.pathPending && (!agent.hasPath || Arrived());
+            if (!there && Time.time - stateStartTime < carryGiveUpTime) return;
+            // Couldn't get there in time: the ground just ahead of it will do
+            if (!there) carrySpot = transform.position + transform.forward * putDownReach * 0.8f;
+            agent.ResetPath();
+            agent.velocity = Vector3.zero;
+            agent.isStopped = true;
+            agent.updateRotation = false;
+            putDownStart = Time.time;
+            PutDownRpc(carrySpot, putDownTime);
+            return;
+        }
+
+        // Stooping to put them down
+        FaceTowards(carrySpot);
+        if (Time.time - putDownStart >= putDownTime) PutDownVictim(carrySpot);
+    }
+
+    void PutDownVictim(Vector3 spot)
+    {
+        Debug.Log($"Giant hid player {carryVictim.OwnerClientId} at {spot}");
+        carryVictim.Hide(spot);
+        carryVictim = null;
+        netCarrying.Value = false;
+        ignorePlayersUntil = Time.time + catchCooldown;
+        if (state == MonsterState.Carry) SetState(MonsterState.Patrol);
+    }
+
+    // A hiding spot from the city's list it can walk up to, out of the way: far enough from the catch and as far as
+    // possible from everyone still free. Gives the spot and where to stand to reach it.
+    bool PickHidingSpot(Vector3 from, out Vector3 spot, out Vector3 stand)
+    {
+        spot = stand = from;
+        var city = CityManager.Current;
+        if (city == null || city.hidingSpots.Count == 0) return false;
+
+        var filter = new NavMeshQueryFilter { agentTypeID = agent.agentTypeID, areaMask = NavMesh.AllAreas };
+        float bestScore = float.MinValue;
+        bool found = false;
+        foreach (var p in city.hidingSpots)
+        {
+            float d = Vector3.Distance(Flat(p), Flat(from));
+            if (d < minCarryDistance) continue;
+            if (!NavMesh.SamplePosition(p, out NavMeshHit hit, putDownReach, filter)) continue;
+            if (!NavMesh.CalculatePath(agent.nextPosition, hit.position, filter, path) || path.status != NavMeshPathStatus.PathComplete) continue;
+
+            // Away from the players still free, a bit of luck, and not too long a walk
+            float nearestFree = 200f;
+            foreach (var pl in FirstPersonController.All)
+                if (pl.IsSpawned && pl != carryVictim && !pl.IsGrabbed && !pl.IsDead)
+                    nearestFree = Mathf.Min(nearestFree, Vector3.Distance(Flat(pl.transform.position), Flat(p)));
+            float score = nearestFree + Random.Range(0f, 25f) - (d > maxCarryDistance ? (d - maxCarryDistance) * 2f : 0f);
+            if (score <= bestScore) continue;
+            bestScore = score;
+            spot = p;
+            stand = hit.position;
+            found = true;
+        }
+        return found;
+    }
+
+    static Vector3 Flat(Vector3 v) => new Vector3(v.x, 0f, v.z);
+
+    // Everyone: stoop and lower the hand to the ground at the spot
+    [Rpc(SendTo.Everyone)]
+    void PutDownRpc(Vector3 spot, float duration)
+    {
+        var anim = GetComponentInChildren<MonsterAnimator>();
+        if (anim != null) anim.StartPutDown(spot, duration);
+    }
+
     // ---------- Catching ----------
 
     void CatchPlayer()
@@ -833,12 +967,14 @@ public class MonsterAI : NetworkBehaviour
         float extra = throughDoor && anim != null ? anim.DoorPullExtraTime : 0f;
 
         CaughtFxRpc(target.transform.position, target.OwnerClientId, throughDoor, door);   // sounds + carry for everyone
-        target.Caught(NetworkObject, extra);     // that player gets dragged out / picked up, dies, then respawns
+        target.Caught(NetworkObject);     // that player gets dragged out / picked up, then carried off and hidden
+        carryVictim = target;
+        netCarrying.Value = true;
         target = null;
         ignorePlayersUntil = Time.time + catchCooldown;
         SetState(MonsterState.Patrol);
 
-        // Stand still while the grab plays out, then go back to patrolling
+        // Stand still while the grab plays out, then carry them off (Carry)
         holding = true;
         holdUntil = Time.time + grabHoldTime + extra;
         agent.isStopped = true;   // skids to a halt from a run (acceleration 30) instead of freezing

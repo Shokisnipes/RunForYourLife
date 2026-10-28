@@ -83,7 +83,7 @@ public class ClimberAI : NetworkBehaviour
     public float lungeWidth = 1.2f;
     [Tooltip("Speed of the lunge (m/s). Faster than a sprinting player.")]
     public float lungeSpeed = 9f;
-    [Tooltip("Stays still holding you this long after a catch (match the player's Carried Time).")]
+    [Tooltip("Stays still holding you this long after a catch, then leaves you there, hidden (death timer starts).")]
     public float grabHoldTime = 3.2f;
     public float catchCooldown = 4f;
 
@@ -151,6 +151,7 @@ public class ClimberAI : NetworkBehaviour
     float grabStart = -1f, holdUntil;
     Vector3 lungeDir;
     bool holding, inPlay;
+    FirstPersonController heldVictim;   // let go of (hidden) when the hold ends
 
     // Climbing
     class Roof
@@ -346,6 +347,9 @@ public class ClimberAI : NetworkBehaviour
             if (Time.time < holdUntil) return;
             holding = false;
             agent.isStopped = false;
+            // It leaves you where it caught you (hidden with the same death timer; it doesn't carry you off yet)
+            if (heldVictim != null && heldVictim.IsSpawned) heldVictim.Hide(heldVictim.transform.position);
+            heldVictim = null;
         }
 
         TrackInside();
@@ -1318,6 +1322,7 @@ public class ClimberAI : NetworkBehaviour
         Debug.Log($"Climber caught player {target.OwnerClientId}");
         target.Caught(NetworkObject);
         CaughtFxRpc(grabHoldTime);   // holds the pose while it has you, grab sound
+        heldVictim = target;
         target = null;
         ignorePlayersUntil = Time.time + catchCooldown;
         SetState(ClimberState.Patrol);

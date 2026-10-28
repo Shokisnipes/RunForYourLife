@@ -3,7 +3,8 @@ using UnityEngine;
 
 public enum GamePhase { Prep, Night, Won, Lost }
 
-// Host-run, synced run timer. Prep (monster asleep) -> Night -> dawn (win) or everyone dead (lose).
+// Host-run, synced run timer. Prep (monster asleep) -> Night -> dawn (win) or nobody left free (lose: everyone
+// is dead or lying hidden, so there's no one to come and free them).
 // Place ONE of these on a scene object that also has a NetworkObject.
 public class GameFlow : NetworkBehaviour
 {
@@ -58,22 +59,23 @@ public class GameFlow : NetworkBehaviour
                 phase.Value = GamePhase.Won;
                 Debug.Log("GameFlow: dawn - players win");
             }
-            else if (AllPlayersDead())
+            else if (NobodyFree())
             {
                 phase.Value = GamePhase.Lost;
-                Debug.Log("GameFlow: every player is dead - players lose");
+                Debug.Log("GameFlow: every player is dead or hidden - players lose");
             }
         }
     }
 
-    static bool AllPlayersDead()
+    // Someone still in a monster's hand isn't counted out yet: the carry to the hiding spot plays out first
+    static bool NobodyFree()
     {
         int count = 0;
         foreach (var p in FirstPersonController.All)
         {
             if (!p.IsSpawned) continue;
             count++;
-            if (!p.IsDead) return false;
+            if (!p.IsDead && !p.IsHidden) return false;
         }
         return count > 0;
     }

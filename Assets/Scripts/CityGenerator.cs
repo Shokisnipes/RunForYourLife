@@ -22,6 +22,9 @@ public static class CityGenerator
         public readonly List<Vector3> monsterSpawns = new List<Vector3>();   // on streets, far from the players
         public Vector3 patrolCenter;
         public float patrolRadius;
+        // Out-of-the-way places the monster can hide a caught player (empty lots, among park trees, between parked
+        // cars). The host keeps the ones the giant can actually get to (MonsterAI.PickHidingSpot).
+        public readonly List<Vector3> hidingSpots = new List<Vector3>();
     }
 
     enum Use { Buildings, Plaza, Park, Parking, Empty }
@@ -435,6 +438,9 @@ public static class CityGenerator
         Lamp(c + new Vector3(1.8f, Curb, b.D / 4f), Vector3.left);
         Lamp(c + new Vector3(-1.8f, Curb, -b.D / 4f), Vector3.right);
 
+        foreach (var q in new[] { new Vector3(1, 0, 1), new Vector3(-1, 0, 1), new Vector3(1, 0, -1), new Vector3(-1, 0, -1) })
+            HidingSpot(c + Vector3.Scale(q, new Vector3(b.W / 4f, 0f, b.D / 4f)) + Vector3.up * Curb);
+
         // Iron railings round it, opening where each path comes in
         if (s.parkFences) FenceRound(b, Curb, 0.4f, new[] { 3.4f, 3.4f, 3.4f, 3.4f }, FenceStyle.Railing, 1.3f);
     }
@@ -469,6 +475,10 @@ public static class CityGenerator
         }
         LampsAlong(b, alongX ? 2 : 0);
         LampsAlong(b, alongX ? 3 : 1);
+        // Down the far ends of the aisles, between the parked cars
+        for (int bay = 0; bay < bays; bay++)
+            foreach (int end in new[] { -1, 1 })
+                HidingSpot(b.Center + along * end * (length / 2f - 4f) + across * (-width / 2f + 2f + bayW * (bay + 0.5f)) + Vector3.up * 0.06f);
 
         // Wire fencing round the lot, with a wide way in on each long side
         if (s.parkingFences)
@@ -486,6 +496,8 @@ public static class CityGenerator
             else if (Rand() < 0.4f) Car(p, Quaternion.Euler(0, Range(0f, 360f), 0) * Vector3.forward, true);
             else Rubble(p);
         }
+        foreach (var q in new[] { new Vector3(1, 0, 1), new Vector3(-1, 0, -1) })
+            HidingSpot(b.Center + Vector3.Scale(q, new Vector3(b.W / 4f, 0f, b.D / 4f)) + Vector3.up * 0.08f);
     }
 
     // An empty lot in a row of buildings
@@ -498,6 +510,16 @@ public static class CityGenerator
         if (Rand() < 0.6f) Dumpster(c + along * Range(-width / 4f, width / 4f), Range(0f, 360f));
         for (int i = 0, n = 1 + (int)(Rand() * 3); i < n; i++)
             Rubble(c + along * Range(-width / 2f + 1f, width / 2f - 1f) + Quaternion.Euler(0, 90, 0) * along * Range(-depth / 3f, depth / 3f));
+        HidingSpot(c + Vector3.up * 0.02f);
+    }
+
+    // An empty marker (visible in the Scene view) plus the spot in the city's list, in world space
+    static void HidingSpot(Vector3 localPos)
+    {
+        var go = new GameObject("HidingSpot");
+        go.transform.SetParent(root, false);
+        go.transform.localPosition = localPos;
+        city.hidingSpots.Add(go.transform.position);
     }
 
     // ---------- Roads: paint, cracks, litter, wrecks ----------

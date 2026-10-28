@@ -20,6 +20,8 @@ public class ChaseStress : MonoBehaviour
     public float climberFearDistance = 20f;
     [Tooltip("Fear from just being chased at all, however far it still is (inside the distance above).")]
     [Range(0f, 1f)] public float chasedFloor = 0.35f;
+    [Tooltip("Fear while you lie at a hiding spot after the monster has put you down (held in its hand = 1).")]
+    [Range(0f, 1f)] public float hiddenFear = 0.5f;
     [Tooltip("How fast fear rises (per second).")]
     public float riseSpeed = 1.2f;
     [Tooltip("How fast it drains once the chase is over (per second). Slow, so it lingers.")]
@@ -83,7 +85,7 @@ public class ChaseStress : MonoBehaviour
         if (volume == null) Build();
 
         // Caught: maximum terror. Dead: it all drains away behind the black screen.
-        float target = player.IsDead ? 0f : player.IsGrabbed ? 1f : Threat();
+        float target = player.IsDead ? 0f : player.IsHidden ? hiddenFear : player.IsGrabbed ? 1f : Threat();
         float speed = target > fear ? riseSpeed : (player.IsDead ? 2f : fallSpeed);
         fear = Mathf.MoveTowards(fear, target, speed * Time.deltaTime);
 

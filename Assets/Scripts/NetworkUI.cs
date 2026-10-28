@@ -122,10 +122,21 @@ public class NetworkUI : MonoBehaviour
             case GamePhase.Night: timerText.text = $"NIGHT  {clock}"; break;
             default:              timerText.text = ""; break;
         }
+        // Everyone sees how long each hidden player has left
+        bool anyTaken = false;
+        if (!flow.RunOver)
+            foreach (var p in FirstPersonController.All)
+            {
+                if (!p.IsSpawned || !p.IsHidden) continue;
+                float h = p.HiddenSecondsLeft;
+                string who = p.IsOwner ? "YOU WERE TAKEN" : $"PLAYER {p.OwnerClientId + 1} WAS TAKEN";
+                timerText.text += $"\n<size=24>{who}  {(int)h / 60}:{(int)h % 60:00}</size>";
+            }
+        foreach (var p in FirstPersonController.All) anyTaken |= p.IsSpawned && p.IsHidden;
         if (flow.RunOver)
         {
             bool won = flow.Phase == GamePhase.Won;
-            endMessage = won ? "YOU SURVIVED THE NIGHT" : "EVERYONE IS DEAD";
+            endMessage = won ? "YOU SURVIVED THE NIGHT" : anyTaken ? "NOBODY LEFT TO SAVE THEM" : "EVERYONE IS DEAD";
             endColor = won ? textColor : accentColor;
         }
         else

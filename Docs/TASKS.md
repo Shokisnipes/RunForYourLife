@@ -94,6 +94,12 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   spot (empty markers placed in the scene), 5-min death timer synced to everyone (Inspector value; after it runs out they are dead until the next run); 8b) drag-mark decals from catch to
   spot + the captured player's voice is their clue; teammates hold E to free them (revive); 8c) struggle key slows the
   timer but emits noise. Replaces the current fade-to-black respawn.
+  - [x] a. Done + host-tested 2026-10-28: CityGenerator lays HidingSpot markers (park, parking aisles, empty lots);
+    MonsterAI Carry state walks you 35+ m away from free players, stoops and puts you down; you lie there (look
+    only) with a synced timer on everyone's HUD (FirstPersonController.hiddenSurviveSeconds 300), then die. Climber
+    leaves you hidden where it caught you. Run is lost when nobody is free (all dead or hidden).
+  - [ ] b. Drag marks + voice clue + hold E to free them.
+  - [ ] c. Struggle key.
 - [ ] **9. Generator night job (M, Sonnet).** Generator powers nearby street lamps/lights; fuel runs out every few
   minutes; fuel cans spawn outside; carrying one is a two-person job (two players hold it, or one player at half speed
   making noise). Needs a generator model + sounds first.

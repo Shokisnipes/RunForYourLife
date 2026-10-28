@@ -39,8 +39,14 @@ public class FirstPersonController : NetworkBehaviour
     public float sprintBobBoost = 1.25f;
     public float bobStride = 0.75f;       // meters per step (matches the footstep sounds)
 
+    [Header("Captured")]
+    [Tooltip("Once the monster has hidden you, you die this many seconds later unless a teammate frees you. " +
+             "Shown to everyone. Dead stays dead until the next run.")]
+    public float hiddenSurviveSeconds = 300f;
+    [Tooltip("Eye height (m) while you lie at the hiding spot.")]
+    public float lyingEyeHeight = 0.3f;
+
     [Header("Death")]
-    public float carriedTime = 3f;       // dangling in its hand before you die
     public float fadeOutTime = 0.4f;
     public float blackTime = 1.5f;
     public float fadeInTime = 1f;
@@ -69,6 +75,11 @@ public class FirstPersonController : NetworkBehaviour
     const ulong NoCarrier = ulong.MaxValue;
     readonly NetworkVariable<ulong> netCarrierId = new NetworkVariable<ulong>(
         NoCarrier, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+
+    // Hidden by the monster: the network time you die at (0 = not hidden). Written by the host, shown to everyone.
+    readonly NetworkVariable<double> netHiddenUntil = new NetworkVariable<double>(0);
+    bool dieSent;          // host: the death for this capture has been sent
+    bool lyingHidden;      // owner: lying at the hiding spot, can only look around
 
     CharacterController controller;
     float pitch;
@@ -99,6 +110,8 @@ public class FirstPersonController : NetworkBehaviour
     public float FovOffset { get; set; }         // added to the view's field of view (ChaseStress narrows it)
     public bool IsInMonsterHand => netCarrierId.Value != NoCarrier;
     public bool IsDropped => IsGrabbed && !IsInMonsterHand;   // the monster let go: the body lies on the floor
+    public bool IsHidden => netHiddenUntil.Value > 0 && !IsDead;   // lying at a hiding spot, still alive
+    public float HiddenSecondsLeft => IsHidden && IsSpawned ? Mathf.Max(0f, (float)(netHiddenUntil.Value - NetworkManager.ServerTime.Time)) : 0f;
 
     void Awake()
     {
@@ -159,6 +172,14 @@ public class FirstPersonController : NetworkBehaviour
     {
         if (!IsSpawned) return;
 
+        // Host: a hidden player's time ran out
+        if (IsServer && IsHidden && !dieSent && NetworkManager.ServerTime.Time >= netHiddenUntil.Value)
+        {
+            dieSent = true;
+            Debug.Log($"Player {OwnerClientId} died at the hiding spot");
+            DieRpc();
+        }
+
         if (!IsOwner)
         {
             // Show other players' head angle and crouch
@@ -167,10 +188,18 @@ public class FirstPersonController : NetworkBehaviour
             return;
         }
 
-        if (grabbed || netDead.Value) return;   // no control while it's holding you, or once you're dead
-
         var kb = Keyboard.current;
         var mouse = Mouse.current;
+
+        // Lying at the hiding spot: you can only look around
+        if (lyingHidden && !netDead.Value && mouse != null)
+        {
+            cameraPivot.localPosition = new Vector3(0f, lyingEyeHeight, 0f);
+            Look(mouse);
+            return;
+        }
+
+        if (grabbed || netDead.Value) return;   // no control while it's holding you, or once you're dead
         if (kb == null || mouse == null) return;
 
         Look(mouse);
@@ -316,19 +345,57 @@ public class FirstPersonController : NetworkBehaviour
         verticalVelocity = 0f;
     }
 
-    // Called by the monster on the host
-    public void Caught(NetworkObject monster, float extraTime = 0f) => CaughtRpc(monster, extraTime);
+    // Called by the monster on the host. You hang from its hand until it calls Hide.
+    public void Caught(NetworkObject monster) => CaughtRpc(monster);
 
     [Rpc(SendTo.Owner)]
-    void CaughtRpc(NetworkObjectReference monsterRef, float extraTime)
+    void CaughtRpc(NetworkObjectReference monsterRef)
     {
         if (grabbed) return;
         IMonsterGrabber monster = null;   // the giant's MonsterAnimator or the climber's ClimberAnimator
         if (monsterRef.TryGet(out NetworkObject obj)) monster = obj.GetComponentInChildren<IMonsterGrabber>();
-        StartCoroutine(GrabbedSequence(monster, monster != null ? obj.NetworkObjectId : NoCarrier, carriedTime + extraTime));
+        letGoAt = null;
+        StartCoroutine(GrabbedSequence(monster, monster != null ? obj.NetworkObjectId : NoCarrier));
     }
 
-    IEnumerator GrabbedSequence(IMonsterGrabber monster, ulong monsterId, float holdTime)
+    // Called by the monster on the host when it lets go of you at a hiding spot. At night the death timer starts
+    // (everyone sees it); outside the night (lobby, testing) you just respawn as before.
+    public void Hide(Vector3 spot)
+    {
+        if (!IsServer) return;
+        var flow = GameFlow.Instance;
+        bool night = flow == null || !flow.IsSpawned || flow.Phase == GamePhase.Night;
+        if (night)
+        {
+            netHiddenUntil.Value = NetworkManager.ServerTime.Time + hiddenSurviveSeconds;
+            dieSent = false;
+        }
+        LetGoRpc(spot, night);
+    }
+
+    Vector3? letGoAt;      // owner: where the monster let go of us
+    bool letGoHidden;
+
+    [Rpc(SendTo.Owner)]
+    void LetGoRpc(Vector3 spot, bool hidden)
+    {
+        letGoAt = spot;
+        letGoHidden = hidden;
+    }
+
+    // Host: the hiding spot timer ran out
+    [Rpc(SendTo.Owner)]
+    void DieRpc() => StartCoroutine(DieSequence());
+
+    IEnumerator DieSequence()
+    {
+        yield return Fade(fadeAlpha, 1f, fadeOutTime);
+        yield return new WaitForSeconds(blackTime);
+        netDead.Value = true;   // the screen stays black; the run ends when nobody is left
+        lyingHidden = false;
+    }
+
+    IEnumerator GrabbedSequence(IMonsterGrabber monster, ulong monsterId)
     {
         Debug.Log("You were caught!");
         grabbed = true;
@@ -339,9 +406,8 @@ public class FirstPersonController : NetworkBehaviour
         if (netCrouching.Value) netCrouching.Value = false;
         controller.enabled = false;              // we move ourselves with the hand now
 
-        // Dangling in its hand, forced to look at its face
-        float start = Time.time;
-        while (Time.time - start < holdTime)
+        // Dangling in its hand, forced to look at its face, until it lets go
+        while (letGoAt == null)
         {
             if (monster != null)
             {
@@ -360,21 +426,22 @@ public class FirstPersonController : NetworkBehaviour
             yield return null;
         }
 
-        // It lets go: the body drops to the floor (and lies there, see PlayerAnimator) while the screen goes black
+        // It lets go: the body drops to the floor (the ragdoll lies there, see PlayerRagdoll)
         netCarrierId.Value = NoCarrier;
+        Vector3 spot = letGoAt.Value;
+        transform.position = new Vector3(spot.x, Mathf.Max(spot.y, transform.position.y), spot.z);
         falling = StartCoroutine(FallToFloor());
 
-        // Death
-        yield return Fade(0f, 1f, fadeOutTime);
-        yield return new WaitForSeconds(blackTime);
-
-        // During the night you stay dead (screen stays black); the run ends when everyone is
-        var flow = GameFlow.Instance;
-        if (flow != null && flow.IsSpawned && flow.Phase == GamePhase.Night)
+        // Hidden: lie there alive, looking around, until a teammate frees you or the timer runs out (DieRpc)
+        if (letGoHidden)
         {
-            netDead.Value = true;
+            lyingHidden = true;
             yield break;
         }
+
+        // Not during a night: black out and respawn
+        yield return Fade(0f, 1f, fadeOutTime);
+        yield return new WaitForSeconds(blackTime);
 
         pitch = pitchTarget = 0f;
         pendingYaw = 0f;
