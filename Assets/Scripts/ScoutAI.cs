@@ -151,6 +151,7 @@ public class ScoutAI : NetworkBehaviour
         sightGenome = genome == null || genome.sense == GenomeSense.Sight;
         hearing = sightGenome ? hearingSightGenome : hearingHearingGenome;
         sightMul = sightGenome ? sightSightGenome : sightHearingGenome;
+        if (genome != null && genome.blind) sightMul = 1f;   // a blind monster's scouts are its eyes: they see fine
         freezeTime = sightGenome ? freezeTimeSight : freezeTimeHearing;
         netSight.Value = sightGenome;
     }

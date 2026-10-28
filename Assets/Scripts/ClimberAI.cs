@@ -1221,6 +1221,7 @@ public class ClimberAI : NetworkBehaviour
             float range = (light != null && light.IsOn) ? flashlightSightRange : sightRange;
             if (StreetLamp.IsUnderLight(player.transform.position)) range = Mathf.Max(range, litSightRange);
             if (player.IsCrouching) range *= crouchVisibility;
+            range = Mathf.Max(range, feelRange);   // blind or not, it notices you right next to it
             if (dist > range) continue;
 
             Vector3 flat = new Vector3(toPlayer.x, 0f, toPlayer.z);

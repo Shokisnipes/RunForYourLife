@@ -959,6 +959,13 @@ MonoBehaviour:
   genomes: []
   allowClimber: 1
   alwaysClimber: 0
+  startingSenses:
+  - access: 0
+    canSee: 1
+    canHear: 1
+  - access: 1
+    canSee: 0
+    canHear: 1
   allowScouts: 1
   scoutCount: {x: 5, y: 6}
 --- !u!114 &765556352

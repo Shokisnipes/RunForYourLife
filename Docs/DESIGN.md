@@ -27,6 +27,11 @@ fade) -> next run. Win = survive until dawn (the only win). Lose = every player 
 | Category | Options | Effect |
 | --- | --- | --- |
 | Sense | sight, hearing, smell, vibration, body heat | what gives you away |
+
+Each monster type is born with a set of senses (GenomeManager.startingSenses): the giant sees and hears (the genome
+makes one strong), the Climber is blind and hunts by sound (it only feels you right next to it; its scouts are its
+eyes). A sense a type lacks is never picked for it. Later, evolution can grant a lineage a missing sense as a visible
+mutation (a Climber line that keeps winning grows eyes, and its scouts show it).
 | Access | giant reacher, climber (roof), burrower (floor), swarm (cracks), phaser (through boards) | which defenses matter |
 | Behavior | stalker, ambusher, hunter, mimic | how it hunts; hunter guards hidden players, ambusher baits, stalker watches |
 | Weakness | light, loud noise, water, fire, a frequency | repels it for a while |
