@@ -329,6 +329,8 @@ public class MonsterAI : NetworkBehaviour
 
     void SetState(MonsterState newState)
     {
+        // Victim in hand: only carrying them off (or the short hold, in Patrol) until it puts them down
+        if (carryVictim != null && newState != MonsterState.Carry && newState != MonsterState.Patrol) return;
         state = newState;
         netState.Value = newState;
         stateStartTime = Time.time;
@@ -687,7 +689,7 @@ public class MonsterAI : NetworkBehaviour
     void HearNoise(Vector3 position, float radius)
     {
         if (!IsServer || !IsSpawned || !shownActive) return;
-        if (holding) return;   // busy holding its victim; don't wander off mid-grab
+        if (Busy) return;   // holding or carrying off its victim; don't wander off with them in hand
         if (state == MonsterState.Chase || state == MonsterState.Notice) return;
 
         float dist = Vector3.Distance(transform.position, position);
@@ -698,6 +700,9 @@ public class MonsterAI : NetworkBehaviour
         SetState(MonsterState.Investigate);
     }
 
+    // Holding a victim after a catch or carrying them off: noises and scout relays can't pull it away
+    bool Busy => holding || carryVictim != null;
+
     /// <summary>Host: true while this monster is the one hunting tonight (its genome matches) and awake.</summary>
     public bool Hunting => IsServer && IsSpawned && inPlay && shownActive;
 
@@ -705,7 +710,7 @@ public class MonsterAI : NetworkBehaviour
     // it goes to look, unless it's already busy chasing or holding someone.
     public void Relay(Vector3 position)
     {
-        if (!Hunting || holding) return;
+        if (!Hunting || Busy) return;
         if (state == MonsterState.Chase || state == MonsterState.Notice) return;
         pointOfInterest = position;
         if (state == MonsterState.Reach) { heardTime = Time.time; return; }
