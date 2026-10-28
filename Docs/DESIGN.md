@@ -69,6 +69,43 @@ window (reacher), garbled radio broadcasts, scout behavior. Bestiary + lineage t
 Barricades (vs reacher; useless vs burrower/phaser) · lure traps (vs hearing) · light towers (vs light-weak; attract
 light hunters) · panic room · decoy room (heat/noise) · reinforced floor (vs burrower).
 
+## Bunker hub (after the prototype)
+**Scope:** nothing here until the prototype is finished and playtested (task 8, generator, playtest first).
+- **First version (small):** one bunker room, a radio that names tonight's town and job, 3-4 upgrades that visibly
+  change the room, a corkboard bestiary. Salvage brought back at dawn is the only currency. Night jobs come with it.
+- **Later:** more rooms, the previous group's notes/tapes, bunker damage on a loss, the map table, the van as a
+  physical place (load gear at dusk, reach it at dawn).
+
+The group lives in a worn-down bunker between nights, R.E.P.O.-style: the bunker is like its Service Station
+(spend what you earned), and the van is like its truck (it takes you to the level and is where you extract).
+- **Loop:** bunker (spend, plan, read the radio) -> the van drives you to tonight's town and leaves -> prep +
+  night in a building you fortify (the core loop is unchanged; you never spend the night in the bunker) -> dawn: the
+  van comes back to a pickup point; whoever reaches it brings back what they carry.
+- **Why a new layout every run:** it's a different town each night. The region is evacuated and the towns near the
+  bunker are picked clean, so every supply run goes further out, to somewhere new.
+- **Why you're there at night:** the drive takes most of the day, so you arrive at dusk (the prep phase). The van
+  can't drive back in the dark (headlights draw it, roads are blocked) and hides until dawn, so you're stuck there
+  for the night. Dawn = the van returns = the win.
+- **Night jobs:** optional goals that pay salvage and make you leave your fortified building (also the fix for
+  camping): bring back N scout bodies, record the monster's call near its patrol, recover a supply crate, refuel a
+  generator, rescue a teammate. Surviving until dawn is still the only win; jobs only decide how much you earn.
+- **Losing:** salvage you carry is lost if you don't reach the van at dawn. A lost night can also break something in
+  the bunker (a light goes dark, a room floods) so losses feel real without wiping progress.
+- **Upgrades are options, not power** (they must not fight the monster's evolution, and every one gets a counter):
+  workshop (better/faster barricades, lure traps), radio room (clearer broadcasts, clues lie less), infirmary
+  (a captured player lasts longer), map table (see part of tonight's layout, pick the drop-off area), locker
+  (second flashlight, flares). Bought gear is loaded into the van at dusk.
+- **Make it feel good:** every upgrade shows: rooms light up one by one, the generator starts humming, collapsed
+  doorways get cleared into new rooms. Trophies: scout skulls on a shelf, claw marks traced on a wall chart, the
+  lineage tree and bestiary pinned to a corkboard that fills in over runs.
+
+## Story (draft)
+The bunker was a civil-defence outpost, and the group that lived there before you lost. As you repair rooms you
+find their notes, tapes and radio logs: they fought the same monster lineage and describe how it learned *them*.
+The radio room picks up broadcasts from whoever is still out there (the "garbled radio" clue). Questions to answer
+over many runs: where the monsters come from, what happened to the region, and why this lineage keeps adapting to
+your group. Possible late twist: the Mimic plays back the previous group's voices.
+
 ## Chases and catches
 Stare (silence, ~1 s) -> scream and sprint, far faster than players in the open -> escape is geometry (it turns wide,
 can't fit alleys, slows at doorways) -> near miss slams the ground -> catch: hand fills the screen, sound drops out.
