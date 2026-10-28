@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -36,17 +37,122 @@ public class GenomeManager : MonoBehaviour
     [Tooltip("How many scouts spawn each run (random in this range, inclusive).")]
     public Vector2Int scoutCount = new Vector2Int(5, 6);
 
+    [Header("Evolution (host save file)")]
+    [Tooltip("Off = every genome is equally likely and nothing is saved.")]
+    public bool useEvolution = true;
+    [Tooltip("Weight added to each trait of a monster that won (killed everyone, or the host quit mid-run).")]
+    public float winBoost = 0.5f;
+    [Tooltip("Weight taken from each trait of a monster the players beat (survived to dawn).")]
+    public float lossPenalty = 0.3f;
+    [Tooltip("A trait's weight never drops below this, so a beaten trait can still come back.")]
+    public float minWeight = 0.25f;
+    [Tooltip("A trait's weight never goes above this, so one lineage can't take over completely.")]
+    public float maxWeight = 4f;
+    [Tooltip("Mutation floor: chance each run to ignore the weights and pick any genome evenly (keeps surprises).")]
+    [Range(0f, 1f)] public float mutationChance = 0.15f;
+    [Tooltip("Save file name in Application.persistentDataPath.")]
+    public string saveFileName = "evolution.json";
+
     public static MonsterGenome Current { get; private set; }
 
     bool applied;
+    bool resultRecorded;   // this run's win/loss is already saved
+
+    // One saved trait weight, e.g. "Sense.Hearing" = 1.5. Traits not in the file start at 1.
+    [System.Serializable] class TraitWeight { public string trait; public float weight = 1f; }
+    [System.Serializable] class EvolutionSave { public int runs; public List<TraitWeight> traits = new List<TraitWeight>(); }
+    EvolutionSave save;
+
+    string SavePath => System.IO.Path.Combine(Application.persistentDataPath, saveFileName);
+    static string SenseKey(GenomeSense s) => "Sense." + s;
+    static string AccessKey(GenomeAccess a) => "Access." + a;
 
     // Polls instead of using an event, so it can't miss the moment the host starts.
     void Update()
     {
         var nm = NetworkManager.Singleton;
         bool hosting = nm != null && nm.IsServer && nm.IsListening;
-        if (hosting && !applied) { applied = true; PickAndApply(); }
-        else if (!hosting) { applied = false; Current = null; }   // new genome next time we host; never a stale one
+        if (hosting && !applied) { applied = true; resultRecorded = false; PickAndApply(); }
+        else if (hosting && !resultRecorded && Current != null && GameFlow.Instance != null && GameFlow.Instance.RunOver)
+            RecordResult(GameFlow.Instance.Phase == GamePhase.Lost);   // Lost = everyone died = monster won
+        else if (!hosting)
+        {
+            // The host left before dawn or a wipe: quitting/disconnecting counts as a monster win
+            if (applied && !resultRecorded && Current != null) RecordResult(true);
+            applied = false; Current = null;   // new genome next time we host; never a stale one
+        }
+    }
+
+    void OnApplicationQuit()
+    {
+        if (applied && !resultRecorded && Current != null) RecordResult(true);
+    }
+
+    // ---- Evolution save ----
+
+    void LoadSave()
+    {
+        save = null;
+        try
+        {
+            if (System.IO.File.Exists(SavePath))
+                save = JsonUtility.FromJson<EvolutionSave>(System.IO.File.ReadAllText(SavePath));
+        }
+        catch (System.Exception e) { Debug.LogWarning($"GenomeManager: couldn't read {SavePath}: {e.Message}"); }
+        if (save == null) save = new EvolutionSave();
+        if (save.traits == null) save.traits = new List<TraitWeight>();
+    }
+
+    void WriteSave()
+    {
+        try { System.IO.File.WriteAllText(SavePath, JsonUtility.ToJson(save, true)); }
+        catch (System.Exception e) { Debug.LogWarning($"GenomeManager: couldn't write {SavePath}: {e.Message}"); }
+    }
+
+    TraitWeight Trait(string key)
+    {
+        foreach (var t in save.traits) if (t.trait == key) return t;
+        var n = new TraitWeight { trait = key, weight = 1f };
+        save.traits.Add(n);
+        return n;
+    }
+
+    float Weight(MonsterGenome g) =>
+        Mathf.Clamp(Trait(SenseKey(g.sense)).weight, minWeight, maxWeight) *
+        Mathf.Clamp(Trait(AccessKey(g.access)).weight, minWeight, maxWeight);
+
+    // Winning traits gain weight, beaten ones lose it (clamped between the floor and the cap)
+    void RecordResult(bool monsterWon)
+    {
+        resultRecorded = true;
+        if (!useEvolution) return;
+        LoadSave();   // fresh from disk, in case another instance wrote it since the pick
+        float delta = monsterWon ? winBoost : -lossPenalty;
+        foreach (var key in new[] { SenseKey(Current.sense), AccessKey(Current.access) })
+        {
+            var t = Trait(key);
+            t.weight = Mathf.Clamp(t.weight + delta, minWeight, maxWeight);
+        }
+        save.runs++;
+        WriteSave();
+        Debug.Log($"Evolution: {Current.name} {(monsterWon ? "won" : "was beaten")} -> " +
+                  string.Join(", ", save.traits.ConvertAll(t => $"{t.trait} {t.weight:0.##}")) + $" (saved to {SavePath})");
+    }
+
+    // Weighted by the lineage's trait weights, except on a mutation roll (or with evolution off): any genome evenly
+    MonsterGenome PickWeighted(List<MonsterGenome> pool)
+    {
+        if (!useEvolution || Random.value < mutationChance) return pool[Random.Range(0, pool.Count)];
+        LoadSave();
+        float total = 0f;
+        foreach (var g in pool) total += Weight(g);
+        float roll = Random.value * total;
+        foreach (var g in pool)
+        {
+            roll -= Weight(g);
+            if (roll <= 0f) return g;
+        }
+        return pool[pool.Count - 1];
     }
 
     StartingSenses SensesOf(GenomeAccess access)
@@ -81,7 +187,7 @@ public class GenomeManager : MonoBehaviour
                 (!alwaysClimber || g.access == GenomeAccess.Climber)) pool.Add(g);
         if (pool.Count == 0) { Debug.LogWarning("GenomeManager: no usable genomes."); return; }
 
-        Current = pool[Random.Range(0, pool.Count)];
+        Current = PickWeighted(pool);
         if (!SensesOf(Current.access).canSee && !Current.blind)
         {
             // A hand-made genome for a monster type that can't see: make a blind copy (never edit the asset)

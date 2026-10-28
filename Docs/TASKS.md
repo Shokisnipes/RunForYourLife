@@ -84,9 +84,12 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
     Investigate source). Flee when seen/lit/chased (Sight: flashlight, Hearing: noise). Players can kill it
     by flashlight + stomp: the beam freezes it briefly, then stomp it; dead ones show eyes/ears.
   Body + sounds DONE (Tools > Scout Setup -> Assets/Prefabs/Scout.prefab, ScoutAnimator, ScoutAudio, levels in AudioMix).
-- [ ] **7. Evolution save (S, Sonnet).** Host saves trait weights to JSON in Application.persistentDataPath after each
+- [x] **7. Evolution save (S, Sonnet).** Host saves trait weights to JSON in Application.persistentDataPath after each
   run; winning monster's traits +weight, beaten -weight, min floor and max cap (Inspector). Quitting/disconnecting
   counts as a monster win. GenomeManager uses the weights.
+  Done: GenomeManager "Evolution" settings (winBoost 0.5, lossPenalty 0.3, min 0.25, max 4, mutationChance 0.15),
+  evolution.json (Sense.X / Access.X weights; genome weight = sense x access). Host leaving or quitting before dawn
+  or a wipe = monster win. Host-tested: dawn -> beaten, quit mid-run -> won, file written.
 - [ ] **8. Captured, hidden, rescued (L, Opus).** Split: 8a) on catch, the giant carries the player to a random hiding
   spot (empty markers placed in the scene), 5-min death timer synced to everyone (Inspector value; after it runs out they are dead until the next run); 8b) drag-mark decals from catch to
   spot + the captured player's voice is their clue; teammates hold E to free them (revive); 8c) struggle key slows the
