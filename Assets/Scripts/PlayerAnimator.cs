@@ -6,7 +6,6 @@ using UnityEngine;
 // Your own player: the head is shrunk away (you look out from where it would be) and the body sits a bit
 // behind the camera, so looking down shows your arms, chest and feet instead of the inside of your neck.
 // Other players: the head and upper body turn to where they're looking (synced pitch).
-// In cover (PlayerCover) the body turns its back to the wall and plays the cover sneak.
 // Standing still, the body doesn't spin with the mouse: it keeps facing its way until you look far enough to the
 // side, then steps round with the turn clips (which don't turn the body themselves; this script does, at their pace).
 // The Animator Controller and the natural clip speeds come from Tools > RunForYourLife > Player Model Setup.
@@ -26,12 +25,6 @@ public class PlayerAnimator : MonoBehaviour
     public float crouchBackSpeed = 1.6f;
     [Tooltip("Crouched: fastest sideways clip.")]
     public float crouchSideSpeed = 1.2f;
-    [Tooltip("In cover: how fast the cover sneak moves along the wall.")]
-    public float coverSideSpeed = 0.7f;
-
-    [Header("Cover")]
-    [Tooltip("How quickly the body turns its back to the wall (and back again).")]
-    public float coverTurnSpeed = 8f;
 
     [Header("Turning on the spot")]
     [Tooltip("Standing still, the body keeps facing its way until you look this far (degrees) to the side, then steps round.")]
@@ -74,13 +67,11 @@ public class PlayerAnimator : MonoBehaviour
     static readonly int MoveXId = Animator.StringToHash("MoveX");
     static readonly int MoveZId = Animator.StringToHash("MoveZ");
     static readonly int CrouchId = Animator.StringToHash("Crouch");
-    static readonly int CoverId = Animator.StringToHash("Cover");
     static readonly int TurnId = Animator.StringToHash("Turn");
     static readonly int TurningId = Animator.StringToHash("Turning");
 
     Animator animator;
     FirstPersonController player;
-    PlayerCover cover;
     Transform head;
     Vector3 lastPos;
     Vector3 smoothVelocity;
@@ -95,7 +86,6 @@ public class PlayerAnimator : MonoBehaviour
         animator = GetComponent<Animator>();
         animator.applyRootMotion = false;
         player = GetComponentInParent<FirstPersonController>();
-        cover = GetComponentInParent<PlayerCover>();
         ragdoll = GetComponent<PlayerRagdoll>();
         flashlight = player != null ? player.GetComponentInChildren<Flashlight>(true) : null;
         // Shrinking from the neck (not the head) folds the collar away too, so looking down shows no stump
@@ -131,9 +121,8 @@ public class PlayerAnimator : MonoBehaviour
         if (player.IsGrabbed || player.IsDead || v.sqrMagnitude > 15f * 15f) v = Vector3.zero;   // carried or teleported
         smoothVelocity = Vector3.Lerp(smoothVelocity, v, 1f - Mathf.Exp(-12f * dt));
 
-        bool inCover = cover != null && cover.InCover;
         bool crouched = player.IsCrouching;
-        float turnPlayback = Turn(inCover, crouched, dt);
+        float turnPlayback = Turn(crouched, dt);
 
         // Velocity in the body's own frame (the blend trees are laid out that way)
         Vector3 local = transform.InverseTransformDirection(smoothVelocity);
@@ -143,8 +132,7 @@ public class PlayerAnimator : MonoBehaviour
         // The blend trees have clips placed at the velocities they really move at. Up to the fastest clip in this
         // direction we blend; beyond it we play that clip faster, so the feet keep up with the ground.
         Vector2 dir = speed > moveThreshold ? flat / speed : Vector2.zero;
-        float edge = inCover ? coverSideSpeed
-                   : crouched ? EdgeSpeed(dir, crouchForwardSpeed, crouchBackSpeed, crouchSideSpeed)
+        float edge = crouched ? EdgeSpeed(dir, crouchForwardSpeed, crouchBackSpeed, crouchSideSpeed)
                    : EdgeSpeed(dir, standForwardSpeed, standBackSpeed, standSideSpeed);
         float blendSpeed = speed > moveThreshold ? Mathf.Min(speed, edge) : 0f;
         float playback = speed > edge && edge > 0.01f ? Mathf.Min(speed / edge, maxPlayback) : 1f;
@@ -152,32 +140,30 @@ public class PlayerAnimator : MonoBehaviour
         animator.SetFloat(MoveXId, dir.x * blendSpeed, moveDamping, dt);
         animator.SetFloat(MoveZId, dir.y * blendSpeed, moveDamping, dt);
         animator.SetBool(CrouchId, crouched);
-        animator.SetBool(CoverId, inCover);
         animator.SetBool(TurningId, turning);
-        animator.SetFloat(TurnId, turning ? Mathf.Sign(Mathf.DeltaAngle(bodyYaw, FacingYaw(inCover))) : 0f, 0.1f, dt);
+        animator.SetFloat(TurnId, turning ? Mathf.Sign(Mathf.DeltaAngle(bodyYaw, FacingYaw())) : 0f, 0.1f, dt);
         animator.speed = Mathf.Lerp(animator.speed, turning ? turnPlayback : playback, 1f - Mathf.Exp(-8f * dt));
 
         crouchBlend = Mathf.MoveTowards(crouchBlend, crouched ? 1f : 0f, dt * 4f);
     }
 
-    // Where the body should face: out of the wall in cover, otherwise where the player faces
-    float FacingYaw(bool inCover) =>
-        inCover ? Quaternion.LookRotation(cover.WallNormal).eulerAngles.y : player.transform.eulerAngles.y;
+    // Where the body should face: where the player faces
+    float FacingYaw() => player.transform.eulerAngles.y;
 
     // Turns the body (world yaw) and returns the turn clip's playback speed
-    float Turn(bool inCover, bool crouched, float dt)
+    float Turn(bool crouched, float dt)
     {
-        float target = FacingYaw(inCover);
+        float target = FacingYaw();
         if (!yawStarted) { bodyYaw = target; yawStarted = true; }
         float delta = Mathf.DeltaAngle(bodyYaw, target);
         bool moving = smoothVelocity.magnitude > moveThreshold;
         float playback = 1f;
 
-        if (inCover || moving || player.IsGrabbed || player.IsDead)
+        if (moving || player.IsGrabbed || player.IsDead)
         {
-            // Back to the wall in cover; moving, the legs carry the body round
+            // Moving, the legs carry the body round
             turning = false;
-            float rate = inCover ? coverTurnSpeed : moveTurnSpeed;
+            float rate = moveTurnSpeed;
             bodyYaw = Mathf.LerpAngle(bodyYaw, target, 1f - Mathf.Exp(-rate * dt));
         }
         else

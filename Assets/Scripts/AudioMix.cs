@@ -10,6 +10,8 @@ using UnityEngine;
 // pick the volume that hits its target:
 //   giant scream / climber call  -11 to -12 dB   (meant to carry across the map)
 //   giant footstep / grab sounds  -14 dB
+//   scout relay screech           -15 dB         (a warning everyone hears; cut short if it's killed)
+//   scout death squeal            -20 dB
 //   death stinger (2D)            -14 dB
 //   hatch creak                   -14 dB         (a warning: the room below is 4-5 m away)
 //   hatch landing thump           -18 dB
@@ -19,6 +21,8 @@ using UnityEngine;
 //   door closing / opening        -27 / -28 dB   (your own sneaky actions: just above your footsteps)
 //   climber crawl steps           -24 dB         (climbing steps -27)
 //   giant breathing               -24 dB
+//   scout sniffing                -28 dB
+//   scout skitter loop            -30 dB         (at full crawl speed; quieter when slow)
 //   player footsteps              -29 dB         (your own steps should sit under everything)
 //   ambience bed (2D)             -37 dB         (night drone; fades in with the dark)
 //   dusk ambience bed (2D)        -35 dB         (sparse birds; the file is gain-staged to -29 at volume 1, played at 0.5)

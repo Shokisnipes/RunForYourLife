@@ -11,6 +11,12 @@ public class GenomeManager : MonoBehaviour
     [Tooltip("Testing: always pick a Climber genome.")]
     public bool alwaysClimber = false;
 
+    [Header("Scouts")]
+    [Tooltip("On = tiny scouts spawn at dusk, share the monster's genome and relay where players are (task 6).")]
+    public bool allowScouts = false;
+    [Tooltip("How many scouts spawn each run (random in this range, inclusive).")]
+    public Vector2Int scoutCount = new Vector2Int(5, 6);
+
     public static MonsterGenome Current { get; private set; }
 
     bool applied;

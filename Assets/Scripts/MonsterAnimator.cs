@@ -78,6 +78,25 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     [Range(0.2f, 1f)] public float swipeArmTime = 0.8f;
     [Tooltip("Running grab: where the hand aims on you, above your feet (normal human meters, not scaled).")]
     public float swipeAimHeight = 1f;
+    [Header("Running grab: stooping down to you")]
+    [Tooltip("Chasing: it starts bending down when it's this close to you (m)...")]
+    public float stoopStartDistance = 22f;
+    [Tooltip("...and is fully bent this close (m).")]
+    public float stoopFullDistance = 8f;
+    [Tooltip("Fully stooped, the hips drop this much: the knees bend (normal human meters, scaled automatically). " +
+             "Kept small: it bends over from the waist, it doesn't squat mid-run.")]
+    public float stoopHipDrop = 0.05f;
+    [Tooltip("...and shift back this much (negative = back), to balance the bowed upper body.")]
+    public float stoopHipForward = -0.04f;
+    [Tooltip("How far it bows while closing in, before the swipe (degrees).")]
+    public float stoopChaseBow = 30f;
+    [Tooltip("The most it bows to get its hand down to you in the swipe (degrees).")]
+    public float stoopMaxBow = 110f;
+    [Tooltip("How fast it goes down and comes back up (full stoop per second).")]
+    public float stoopSpeed = 1.6f;
+    [Tooltip("How fast the bow changes (degrees per second).")]
+    public float stoopBowSpeed = 140f;
+
     [Tooltip("How fast the hand closes around you on a catch and opens when it lets go (full close per second).")]
     public float gripCloseSpeed = 4f;
     [Tooltip("How far each finger joint bends toward the palm when gripping (degrees: knuckle, middle, tip). " +
@@ -228,6 +247,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     float upperArmLength, foreArmLength;
     float postureWeight, armWeight;
     float bow, bowTarget, leanIn, leanInTarget;
+    float stoop, stoopBow;   // running grab: how far down it is (0-1) and how far the upper body bows (degrees)
     Vector3 openingFor = new Vector3(float.NaN, 0f, 0f);
     Vector3 openingCenter;
     float openingHalfWidth, openingTop, openingBottom, roofTop, roomCeiling;
@@ -413,6 +433,89 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
 
         UpdateSwipe(dt);
         UpdateCarry(dt);
+        UpdateStoopWeight(dt);
+    }
+
+    // ---------- Running grab: stoop ----------
+
+    // Closing in on you in a chase it starts bending down (more the closer it gets), fully down for the swipe, and
+    // straightens up again as it lifts you. The doorway posture has its own crouch, so this stays out of its way.
+    void UpdateStoopWeight(float dt)
+    {
+        float target = 0f;
+        if (ai != null && ai.SyncedState == MonsterState.Chase && ai.SyncedHasLookTarget)
+        {
+            Vector3 d = ai.SyncedLookTarget - root.position;
+            d.y = 0f;
+            target = Mathf.InverseLerp(stoopStartDistance, stoopFullDistance, d.magnitude);
+        }
+        if (swipeTarget != null && Time.time < swipeUntil) target = 1f;
+        if (carrying && !carryThroughDoor)
+            target = Mathf.Max(target, 1f - Mathf.SmoothStep(0f, 1f, (Time.time - carryStart) / Mathf.Max(0.1f, liftTime)));
+        if (postureWeight > 0f || !animator.isHuman) target = 0f;
+        stoop = Mathf.MoveTowards(stoop, target, dt * stoopSpeed);
+    }
+
+    // Where the reaching shoulder ends up for a given bow (split between lower and upper back, as applied)
+    Vector3 BowedShoulder(float b, Vector3 right)
+    {
+        Vector3 s0 = shoulder.position;
+        if (chest == null) return spine.position + Quaternion.AngleAxis(b, right) * (s0 - spine.position);
+        Quaternion lower = Quaternion.AngleAxis(b * 0.5f, right);
+        Vector3 c = spine.position + lower * (chest.position - spine.position);
+        Vector3 sh = spine.position + lower * (s0 - spine.position);
+        return c + Quaternion.AngleAxis(b * 0.5f, right) * (sh - c);
+    }
+
+    // IK pass: a slight dip of the hips (the feet are pinned to the ground, so the knees give a little).
+    void StoopHips()
+    {
+        if (stoop <= 0f) return;
+        float w = Mathf.SmoothStep(0f, 1f, stoop);
+        animator.bodyPosition += (Vector3.down * stoopHipDrop + Flat(root.forward) * stoopHipForward) * modelScale * w;
+    }
+
+    // After the animation: bow the upper body forward, as far as the hand needs to reach you (searching from
+    // upright), then put the arm on its target again (the IK pass aimed it before the bow moved the shoulder).
+    void StoopUpperBody()
+    {
+        float dt = Time.deltaTime;
+        if (stoop <= 0f || spine == null || shoulder == null || elbow == null || postureWeight > 0f)
+        {
+            stoopBow = Mathf.MoveTowards(stoopBow, 0f, dt * stoopBowSpeed);
+            if (stoopBow <= 0f || spine == null) return;
+        }
+        Vector3 n = Flat(root.forward), right = Vector3.Cross(Vector3.up, n);
+        float w = Mathf.SmoothStep(0f, 1f, stoop);
+
+        bool swiping = swipeWeight > 0f && !carrying;
+        bool lifting = carrying && !carryThroughDoor && carryWeight > 0f;
+        Vector3 goal = lifting ? carryTarget : swipeGoal;
+        float want = stoopChaseBow * w;
+        if (swiping || lifting)
+        {
+            // Least bow that brings the shoulder within the arm's reach of the goal
+            float reach = armLength * 0.95f;
+            float need = stoopMaxBow;
+            for (float b = 0f; b <= stoopMaxBow; b += 4f)
+                if (Vector3.Distance(BowedShoulder(b, right), goal) <= reach) { need = b; break; }
+            want = Mathf.Max(want, need * w);
+        }
+        stoopBow = Mathf.MoveTowards(stoopBow, want, dt * stoopBowSpeed);
+        // The back curves: half of the bow in the lower back, half in the upper back
+        float lower = chest != null ? stoopBow * 0.5f : stoopBow;
+        spine.rotation = Quaternion.AngleAxis(lower, right) * spine.rotation;
+        if (chest != null) chest.rotation = Quaternion.AngleAxis(stoopBow - lower, right) * chest.rotation;
+
+        // The arm again, from the bowed shoulder (elbow out to the side and back, like scooping)
+        float armW = lifting ? carryWeight : swiping ? swipeWeight : 0f;
+        var hand = HandBone;
+        if (armW > 0f && hand != null)
+        {
+            float side = Mathf.Sign(Vector3.Dot(shoulder.position - spine.position, right));
+            Vector3 pole = shoulder.position + (right * side * 0.6f - n * 0.3f + Vector3.up * 0.2f) * modelScale;
+            TwoBoneIK(shoulder, elbow, hand, goal, pole, armW);
+        }
     }
 
     // ---------- Pick-up ----------
@@ -601,6 +704,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         MeasureStride();
 
         UpdateDoorwayPosture();
+        StoopUpperBody();
         CloseHand();
     }
 
@@ -1167,6 +1271,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     {
         if (postureWeight > 0f && animator.isHuman) { ReleaseFootLocks(); Kneel(); }
         else if (groundFeet && animator.isHuman) GroundFeet();
+        if (postureWeight <= 0f) StoopHips();
         lastBodyPosition = animator.bodyPosition;   // only readable in here; KneelFeet uses it after the pose is applied
 
         // While reaching, only the head follows the hand; the body stays still

@@ -249,7 +249,6 @@ GameObject:
   - component: {fileID: 7030426364813843457}
   - component: {fileID: 5035217578270714404}
   - component: {fileID: 1649352431673675213}
-  - component: {fileID: 8687374790113809673}
   - component: {fileID: 1272151106869941223}
   m_Layer: 0
   m_Name: Player
@@ -437,30 +436,6 @@ MonoBehaviour:
   SwitchTransformSpaceWhenParented: 0
   Interpolate: 1
   SlerpPosition: 0
---- !u!114 &8687374790113809673
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6986788303379592695}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7f85ef7a2a6d93c4bbfb7c2ab4e0bcc8, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PlayerCover
-  ShowTopMostFoldoutHeaderGroup: 1
-  enterDistance: 0.75
-  exitDistance: 1
-  probeHeight: 0.5
-  coverSpeedScale: 0.6
-  maxLookAngle: 100
-  lookEaseSpeed: 6
-  edgeProbe: 0.35
-  peekDistance: 0.45
-  peekRoll: 8
-  peekSpeed: 3
-  peekLookAngle: 175
 --- !u!114 &1272151106869941223
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -778,8 +753,6 @@ MonoBehaviour:
   crouchForwardSpeed: 1.457139
   crouchBackSpeed: 1.457139
   crouchSideSpeed: 1.8865349
-  coverSideSpeed: 0.89051735
-  coverTurnSpeed: 8
   turnStartAngle: 60
   turnStopAngle: 5
   standTurnSpeed: 86.84945

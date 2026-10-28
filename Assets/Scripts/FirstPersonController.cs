@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 // Networked first-person player. Lives on the Player prefab (spawned by the NetworkManager).
-// Hierarchy:  Player (CharacterController + NetworkObject + OwnerNetworkTransform + this + PlayerCover)
+// Hierarchy:  Player (CharacterController + NetworkObject + OwnerNetworkTransform + this)
 //               -> CameraPivot -> Main Camera, Flashlight
 //               -> Model (character + PlayerAnimator, no collider) - what other players see
 [RequireComponent(typeof(CharacterController))]
@@ -71,7 +71,6 @@ public class FirstPersonController : NetworkBehaviour
         NoCarrier, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
     CharacterController controller;
-    PlayerCover cover;
     float pitch;
     float pitchTarget;     // where the mouse wants the head; pitch eases toward it
     float pendingYaw;      // mouse turn not applied to the body yet
@@ -104,7 +103,6 @@ public class FirstPersonController : NetworkBehaviour
     void Awake()
     {
         controller = GetComponent<CharacterController>();
-        cover = GetComponent<PlayerCover>();
         controller.height = standHeight;
         controller.center = new Vector3(0f, standHeight / 2f, 0f);
     }
@@ -246,7 +244,6 @@ public class FirstPersonController : NetworkBehaviour
 
         Vector3 move = transform.right * input.x + transform.forward * input.y;
         if (move.sqrMagnitude > 1f) move.Normalize();
-        if (cover != null) move = cover.FilterMove(move);   // in cover: stop at the wall's end (you peek instead)
 
         float speed = walkSpeed;
         if (isCrouching) speed = crouchSpeed;

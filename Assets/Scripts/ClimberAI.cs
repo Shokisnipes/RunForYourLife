@@ -542,7 +542,7 @@ public class ClimberAI : NetworkBehaviour
     }
 
     float WindowTime(BreakableWindow w) =>
-        (w.Current == BreakableWindow.State.Intact ? windowSmashTime : 0.15f) + windowCrawlTime;
+        (w.Current == BreakableWindow.State.Intact || w.Current == BreakableWindow.State.Holed ? windowSmashTime : 0.15f) + windowCrawlTime;
 
     // From outside: the quickest way in, a window or up the wall to the roof hatch. False = no way in.
     bool EnterBuilding(Roof b)
@@ -635,7 +635,7 @@ public class ClimberAI : NetworkBehaviour
         {
             if (!Arrived()) return;
             agent.isStopped = true;
-            bool smash = useWindow.Current == BreakableWindow.State.Intact;
+            bool smash = useWindow.Current == BreakableWindow.State.Intact || useWindow.Current == BreakableWindow.State.Holed;
             if (smash)
             {
                 if (WindowManager.Instance != null) WindowManager.Instance.Break(useWindow, !windowIn);
@@ -1188,6 +1188,17 @@ public class ClimberAI : NetworkBehaviour
         if (!IsServer || !IsSpawned || !shownActive || holding) return;
         if (state == ClimberState.Chase) return;
         if (Vector3.Distance(transform.position, position) > radius * hearingMultiplier) return;
+        heardTime = Time.time;
+        GoAfter(position, false);
+    }
+
+    /// <summary>Host: true while this monster is the one hunting tonight (its genome matches) and awake.</summary>
+    public bool Hunting => IsServer && IsSpawned && inPlay && shownActive;
+
+    // Host: a scout (or the Director's fallback hint) says a player was here: go after it like a heard noise
+    public void Relay(Vector3 position)
+    {
+        if (!Hunting || holding || state == ClimberState.Chase) return;
         heardTime = Time.time;
         GoAfter(position, false);
     }

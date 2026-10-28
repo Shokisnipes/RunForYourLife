@@ -7,6 +7,10 @@ using UnityEngine;
 // Place ONE of these on the same scene object as GameFlow (it needs the NetworkObject).
 public class WindowManager : NetworkBehaviour
 {
+    [Header("Holed windows")]
+    [Tooltip("Share of ground-floor windows that start with a scout-sized hole in the glass.")]
+    [Range(0f, 1f)] public float holedChance = 0.15f;
+
     [Header("Smashing")]
     [Tooltip("Breaking glass is heard this far away (metres).")]
     public float noiseRadius = 30f;
@@ -38,7 +42,9 @@ public class WindowManager : NetworkBehaviour
         if (IsServer)
         {
             states.Clear();
-            for (int i = 0; i < windows.Length; i++) states.Add((byte)BreakableWindow.State.Intact);
+            for (int i = 0; i < windows.Length; i++)
+                states.Add((byte)(!windows[i].shuttered && Random.value < holedChance
+                    ? BreakableWindow.State.Holed : BreakableWindow.State.Intact));
         }
         states.OnListChanged += OnStatesChanged;
         CityManager.Built += OnCityBuilt;
@@ -99,7 +105,8 @@ public class WindowManager : NetworkBehaviour
     {
         if (!IsServer) return;
         int i = System.Array.IndexOf(windows, w);
-        if (i < 0 || i >= states.Count || (BreakableWindow.State)states[i] != BreakableWindow.State.Intact) return;
+        var now = i >= 0 && i < states.Count ? (BreakableWindow.State)states[i] : BreakableWindow.State.Broken;
+        if (now != BreakableWindow.State.Intact && now != BreakableWindow.State.Holed) return;
         states[i] = (byte)(fromInside ? BreakableWindow.State.BrokenOutward : BreakableWindow.State.Broken);
         NoiseSystem.Emit(w.Center, noiseRadius);
     }

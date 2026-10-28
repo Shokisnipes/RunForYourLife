@@ -698,6 +698,14 @@ MonoBehaviour:
   holdOffset: {x: 0.05, y: -0.05, z: 0.3}
   swipeArmTime: 0.8
   swipeAimHeight: 1
+  stoopStartDistance: 22
+  stoopFullDistance: 8
+  stoopHipDrop: 0.05
+  stoopHipForward: -0.04
+  stoopChaseBow: 30
+  stoopMaxBow: 110
+  stoopSpeed: 1.6
+  stoopBowSpeed: 140
   gripCloseSpeed: 4
   gripFingerCurl: {x: 55, y: 65, z: 45}
   gripThumbCurl: {x: 20, y: 30, z: 25}
@@ -820,6 +828,7 @@ GameObject:
   - component: {fileID: 765556348}
   - component: {fileID: 765556347}
   - component: {fileID: 765556351}
+  - component: {fileID: 765556352}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -949,7 +958,31 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GenomeManager
   genomes: []
   allowClimber: 1
-  alwaysClimber: 1
+  alwaysClimber: 0
+  allowScouts: 1
+  scoutCount: {x: 5, y: 6}
+--- !u!114 &765556352
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 765556346}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ead994cc40a904f4e9c4086101778ca5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScoutDirector
+  scoutPrefab: {fileID: 4722039454084912105, guid: b87c2622a6541fd4bad52527dc77a3ce, type: 3}
+  minSpawnDistance: 35
+  thinkInterval: 5
+  calmToSend: 40
+  searchRadiusWide: 35
+  searchRadiusNarrow: 10
+  narrowAfter: 120
+  fallbackDelay: 60
+  fallbackOffset: 25
+  fallbackInterval: 45
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -1133,11 +1166,11 @@ MonoBehaviour:
   startOpenChance: 0.3
   useRange: 2.6
   noiseRadius: 8
-  openClip: {fileID: 8300000, guid: 61962e08e033e824d8bf823cdbedc92a, type: 3}
+  openClip: {fileID: 8300000, guid: adda7292a11ee0b43a7cd1b68ff3415d, type: 3}
   closeClip: {fileID: 8300000, guid: 1fbd7d54c811c6246a6dcf28a8089adc, type: 3}
   tornClip: {fileID: 8300000, guid: 076ef3bc0d6083d489b5698b92cbeadf, type: 3}
   soundRange: 35
-  openVolume: 0.19
+  openVolume: 0.20056748
   closeVolume: 0.55
   tornVolume: 1
 --- !u!114 &1018997752
@@ -1153,6 +1186,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WindowManager
   ShowTopMostFoldoutHeaderGroup: 1
+  holedChance: 0.15
   noiseRadius: 30
   smashClip: {fileID: 8300000, guid: ef4ad8c7b77a76e45977778574a9d7de, type: 3}
   smashVolume: 0.81

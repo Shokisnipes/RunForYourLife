@@ -650,6 +650,20 @@ public class MonsterAI : NetworkBehaviour
         SetState(MonsterState.Investigate);
     }
 
+    /// <summary>Host: true while this monster is the one hunting tonight (its genome matches) and awake.</summary>
+    public bool Hunting => IsServer && IsSpawned && inPlay && shownActive;
+
+    // Host: a scout (or the Director's fallback hint) says a player was here. Like a noise it heard from anywhere:
+    // it goes to look, unless it's already busy chasing or holding someone.
+    public void Relay(Vector3 position)
+    {
+        if (!Hunting || holding) return;
+        if (state == MonsterState.Chase || state == MonsterState.Notice) return;
+        pointOfInterest = position;
+        if (state == MonsterState.Reach) { heardTime = Time.time; return; }
+        SetState(MonsterState.Investigate);
+    }
+
     FirstPersonController FindVisiblePlayer()
     {
         if (Time.time < ignorePlayersUntil) return null;

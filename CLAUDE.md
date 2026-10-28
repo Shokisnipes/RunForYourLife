@@ -19,6 +19,20 @@ when it's done and tested.
 - **Climber** (Climber genome; the giant hides): `ClimberAI` (host only; crawls the streets on NavMesh agent type
   "Climber", too tall for doorways; scripted climb up/down walls to the roof, drops in and climbs out through `RoofHatch`; door camping: doorstep counts as inside, perches above the door and pounces, leaps off roofs when it sees you) + `ClimberAnimator` on its Model child + `ClimberAudio` (steps timed to the anim loop, call, grab, hatch creak).
   Each monster only shows up when the genome's Access matches it (synced `netInPlay`).
+- **Scouts** (task 6, in progress): tiny (0.6 m) crawlers that relay player positions to the monster. Body =
+  `Assets/Prefabs/Scout.prefab` from Tools > Scout Setup (Ch25 model scaled 0.32, Crawling + Prone Death clips, the
+  Climber's wall climbs reused). `ScoutAnimator` (crawl playback from speed, lift so the body sits on the floor,
+  screech head IK, death arm IK: hands flat by the shoulders instead of the clip's rifle pose). `ScoutAudio`
+  (skitter loop, sniff, screech, death). `ScoutAI` (host brain, NetworkObject, Climber NavMesh: Wander,
+  Investigate, Spotted, Screech, Flee, Frozen, Dead; flashlight beam freezes it, stomp RPC kills it).
+  `ScoutDirector` on the NetworkManager object (registers the prefab, spawns GenomeManager.scoutCount when
+  allowScouts, sends idle scouts toward players as calm builds, Relay() -> MonsterAI/ClimberAI.Relay, vague
+  fallback hints with no scouts left, left-click stomp input + hint). Windows: BreakableWindow.State.Holed (procedural
+  pane with a hole; never share vertices between the two faces or normals go NaN and bloom whites out the screen);
+  scouts hop through holed/broken windows when a closed door blocks the path; climb walls onto flat roofs
+  (ClimbUp/ClimbDown, scripted like the window hop). ScoutAnimator.ShowSense adds the genome's eyes/ears to the head.
+  Giant running grab: MonsterAnimator stoop (hips drop in the IK pass, bow + arm re-solve in LateUpdate) so the hand
+  really reaches you.
 - **Senses:** `NoiseSystem.Emit(pos, radius)`; `FootstepNoise` sends player steps to the host by RPC. Flashlight on or
   standing under a lit `StreetLamp` makes players visible from further.
 - **Audio mix:** every 3D sound uses `AudioMix.Setup3D` (real inverse-distance falloff, silent at max range); the
@@ -28,8 +42,8 @@ when it's done and tested.
   playback sped up past them; your own neck/head is shrunk and the body slides back behind the camera (more when
   looking down); other players' heads follow their synced pitch. Built by Tools > Player Model Setup, which also
   turns each Mixamo loop so it travels the way its name says (table in PlayerModelSetup.cs) and places it in the
-  blend tree at its measured speed. `PlayerCover` (Player root, runs after the controller): crouch by a wall =
-  cover (back to wall, cover sneak, view eased off the wall), lean out at the wall's end; synced to others.
+  blend tree at its measured speed. (The wall cover/peek system was removed on 2026-10-27:
+  it fought the view behind short walls. The cover clips are still in the controller, unused.)
 - **Feel:** `CameraShake` (on the player camera), `Flashlight` (procedural cookie), head bob in FirstPersonController.
 - **Sky:** `SkyCycle` (on the Directional Light, every client, from the synced GameFlow clock) fades a fall evening
   (~8 pm, sun just set) into night over the prep phase: light, ambient probe, fog and the `RunForYourLife/Sky` shader
@@ -51,7 +65,7 @@ when it's done and tested.
 
 ## Editor tools (Tools > RunForYourLife)
 Building Generator (adds a roof hatch), Upgrade Existing Buildings, Add Roof Hatches To Existing Buildings, Widen Interior Doorways, Add Reach Points To Existing Buildings, Building Texturer (Use Texture
-Set), Street Lamps, Monster Animator Builder, Climber Setup (clips, agent type, controller, scene object, NavMesh bake),
+Set), Street Lamps, Monster Animator Builder, Climber Setup (clips, agent type, controller, scene object, NavMesh bake), Scout Setup (imports, controller, Scout prefab),
 Make It Look Good, City Preview (generate a city from a seed next to the map), Retro Look Setup, Player Model Setup. Prefer improving these tools (and
 CityGenerator) over hand-editing scenes; the scene has no buildings, the city is generated.
 
@@ -75,7 +89,7 @@ where from, and the import settings, before writing code that depends on it.**
 | For | Needed | Where / what to pick | Notes |
 | --- | --- | --- | --- |
 | Climber (prototype step 4) | Lanky humanoid + climb, crawl, drop-down, idle | Mixamo: a thin character; anims "Climbing", "Crawl", "Jumping Down", "Zombie Idle" | Humanoid rig, ~3-4 m tall (scale ~2). Same import settings as the giant. |
-| Scouts (prototype step 6) | Small creature + run, sniff/idle, attack, death | Mixamo crawling humanoid ("Crawl", "Zombie Crawl") scaled ~0.6, or a free animated creature from Quaternius (CC0) | Must visibly show the genome: eyes/ears variants via swapped materials or child meshes. |
+| Scouts (task 6b/6c) | Tiny humanoid (goblin/imp) + crawl, idle/sniff, climb, screech, death; screech + death + skitter sounds | Mixamo or Quaternius (CC0) model; Mixamo "Crawl"/"Running Crawl", "Crawl Idle", "Climbing", "Zombie Scream", "Zombie Dying" (In Place); sounds from freesound.org (CC0) | Humanoid rig, scaled to ~0.6 m, same import settings as the giant. Eyes/ears as separate meshes or materials if possible. Assets/Monsters/Scout/. |
 | Giant low peek | Prone / crawl pose | Mixamo "prone" or "crawl", frozen to 1-2 frames (Start/End in the clip settings) | Goes in the Peek state. |
 | Near miss / captured | Ground slam, struggle, scream sounds | freesound.org (CC0 filter) | Force To Mono for 3D sounds. |
 | Night job | Generator loop, refuel sounds; a generator model | freesound.org; Kenney or Quaternius props (CC0) | |

@@ -39,6 +39,18 @@ trait weights are capped; a random mutation floor keeps surprises.
 ## Scouts first
 Small creatures at dusk share the monster's genome; how they behave (and what a dead one has: eyes, ears) reveals traits.
 Where they gather marks where the monster will try first.
+Scouts are tiny (~0.5-0.7 m), crawl the streets and climb walls, and get indoors only through broken or partly
+broken windows (some buildings start with a small hole in the glass: a scout fits, a person doesn't). They are the
+monster's eyes: a scout that spots a player runs off and screeches (2-3 s wind-up, audible); if it finishes, the
+monster learns where that player WAS (stale info). Kill it before the screech ends and nothing is passed on. Seen,
+lit or chased scouts flee. Killing one = flashlight + stomp: holding the beam on a scout freezes it for a moment
+(it's dazzled), and a player who reaches it stomps it. Two players work best (one lights, one stomps). Sight scouts flee flashlights, Hearing scouts home in on noise.
+
+## The Director (Alien Isolation style, but with a leash you can cut)
+Host-only. Always knows where every player is and keeps a tension meter. It never tells the monster directly: it
+sends scouts toward the players' general area, more often the longer things stay calm. Info reaches the monster only
+through scouts, noise and its own senses. With no scouts left, the Director falls back to vague, slow hints (the
+monster drifts toward your part of the city) so players are never fully invisible.
 
 ## The Mimic (rare evolved behavior)
 Stage 1 copies footsteps and flashlight clicks; stage 2 copies movement; stage 3 plays back recorded voice snippets.

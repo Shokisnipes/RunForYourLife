@@ -67,8 +67,23 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   Done: ClueManager (GameFlow object). Wall: claw gouges (Climber) or a torn-off door + giant handprint (giant);
   dog carcass, eyes gone = Sight; radio with generated static + garbled subtitles about the sense or the access.
   Placed 18-70 m from spawn from the city seed; each clue has an Inspector chance to lie. Host-tested both monsters.
-- [ ] **6. Scouts (L, Opus).** Needs a scout model first. Split: 6a) small scout AI (wander, flee light or noise
-  depending on genome, attack weakly); 6b) spawn 3-5 at dusk, sharing the genome's sense.
+- [x] **6. Scouts + Director (L, Opus, split).** Host-tested 2026-10-28: spawn, Director sends scouts, spot ->
+  screech -> relay (giant goes to Investigate the spot), flee away from players, beam freeze, stomp kill.
+  6a done: ~15% of windows start Holed (scout-sized hole, people blocked); scouts route through holed/broken windows
+  when a door is shut (scripted hop). 6b done: scouts climb walls onto flat roofs (to escape players or for a
+  look around) and climb back down at the edge nearest where they're going. 6c done: Sight scouts have big
+  glinting eyes, Hearing scouts big ears + blind eyes (synced, kept on the body). 2-player join test passed
+  (client got all scouts, same city, no errors). Petar to play-test the feel. See DESIGN "Scouts first" and "The Director".
+  - [ ] a. Director (host): tracks players, tension meter, picks areas to send scouts, fallback vague hints to the
+    monster when no scouts are alive. Partly broken windows: new BreakableWindow state (small hole, scout-only),
+    some buildings start with them; scouts also use fully broken windows. No assets needed.
+  - [ ] b. Scout movement: tiny model (~0.6 m), NavMesh agent type "Scout", crawls streets, scripted wall climbs +
+    raycast surface sticking, enters through broken/holed windows. 3-5 spawn at dusk, share the genome.
+    Needs the scout model + clips (CLAUDE.md Assets).
+  - [ ] c. Relay, flee, kill: spot a player -> run + screech wind-up -> MonsterAI gets the stale position (new
+    Investigate source). Flee when seen/lit/chased (Sight: flashlight, Hearing: noise). Players can kill it
+    by flashlight + stomp: the beam freezes it briefly, then stomp it; dead ones show eyes/ears.
+  Body + sounds DONE (Tools > Scout Setup -> Assets/Prefabs/Scout.prefab, ScoutAnimator, ScoutAudio, levels in AudioMix).
 - [ ] **7. Evolution save (S, Sonnet).** Host saves trait weights to JSON in Application.persistentDataPath after each
   run; winning monster's traits +weight, beaten -weight, min floor and max cap (Inspector). Quitting/disconnecting
   counts as a monster win. GenomeManager uses the weights.

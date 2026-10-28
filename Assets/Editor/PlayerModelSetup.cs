@@ -482,7 +482,6 @@ public static class PlayerModelSetup
             pa.crouchForwardSpeed = rims.crouch.forward;
             pa.crouchBackSpeed = rims.crouch.back;
             pa.crouchSideSpeed = rims.crouch.side;
-            pa.coverSideSpeed = rims.cover.side;
             pa.standTurnSpeed = rims.standTurn;
             pa.crouchTurnSpeed = rims.crouchTurn;
 
@@ -491,7 +490,6 @@ public static class PlayerModelSetup
 
             var fpc = root.GetComponent<FirstPersonController>();
             if (fpc != null) fpc.body = null;   // the capsule is gone; PlayerAnimator handles the model
-            if (root.GetComponent<PlayerCover>() == null) root.AddComponent<PlayerCover>();
 
             PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefab);
         }
