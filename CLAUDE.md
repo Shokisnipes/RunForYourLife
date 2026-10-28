@@ -35,6 +35,13 @@ when it's done and tested.
   really reaches you.
 - **Evolution:** `GenomeManager` (NetworkManager object) picks the genome weighted by trait weights saved in
   `evolution.json` (persistentDataPath); monster win +weight, beaten -weight, host quitting mid-run = monster win.
+- **Captured (task 8):** MonsterAI state Carry: after a catch the giant walks you to a `CityGenerator` HidingSpot
+  (City.hidingSpots: parks, parking aisles, empty lots), stoops (MonsterAnimator.StartPutDown) and puts you down;
+  ClimberAI leaves you where it caught you. FirstPersonController: Hide(spot) starts the host-synced death timer
+  (netHiddenUntil, hiddenSurviveSeconds), Struggle() slows it, Free() releases you, DieRpc when it runs out.
+  `PlayerRescue` (Player prefab): blood drips along the carry, hold E to free a teammate, Space to struggle
+  (PlayerRagdoll.Wiggle). The ragdoll ignores monster colliders (the giant's body capsule used to fling it).
+  GameFlow loses when nobody is free (all dead or hidden).
 - **Voice:** `VoiceChat` on the Player prefab: always-on proximity voice (mute key M). Owner records the default mic,
   20 ms Opus frames (Concentus, Assets/Plugins) sent by unreliable RPC only while talking; others play it as a 3D
   sound from the speaker's head (a hidden player calls out from the hiding spot). Loud talking -> NoiseSystem.

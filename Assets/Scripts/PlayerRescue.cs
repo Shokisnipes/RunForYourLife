@@ -5,6 +5,8 @@ using UnityEngine.InputSystem;
 // Captured players: the trail to them and getting them out. Lives on the Player prefab, runs on every computer.
 // - Blood trail: while a monster carries this player off, every computer drips blood on the ground below them, and
 //   leaves a pool where they're put down. Follow it from the catch to the hiding spot (their voice is the other clue).
+// - Struggling (your own player, while hidden): tap Space to slow your death timer. Every tap jolts your body on
+//   everyone's screen and makes noise the monster can hear.
 // - Freeing (your own player): stand next to a hidden teammate and hold E. It takes a few seconds and makes noise
 //   the monster can hear. The host checks you're really there, then they get up and their death timer stops.
 public class PlayerRescue : NetworkBehaviour
@@ -20,6 +22,17 @@ public class PlayerRescue : NetworkBehaviour
     [Tooltip("...every this many seconds while you hold E.")]
     public float freeNoiseInterval = 1f;
 
+    [Header("Struggling (while hidden)")]
+    public Key struggleKey = Key.Space;
+    [Tooltip("Struggling makes a noise this big (m)...")]
+    public float struggleNoiseRadius = 10f;
+    [Tooltip("...at most this often (s).")]
+    public float struggleNoiseInterval = 1f;
+    [Tooltip("How hard each tap jolts the limp body (speed in m/s given to the arms and legs).")]
+    public float wiggleStrength = 1.6f;
+    [Tooltip("Small camera jolt you feel on each tap.")]
+    public float struggleShake = 0.25f;
+
     [Header("Blood trail (while carried off)")]
     [Tooltip("A drip every this many meters the body travels.")]
     public float dripSpacing = 2.5f;
@@ -31,6 +44,8 @@ public class PlayerRescue : NetworkBehaviour
     public int maxDrips = 80;
 
     FirstPersonController player;
+    PlayerRagdoll ragdoll;
+    float nextStruggleNoise, lastWiggle;   // host
 
     // Freeing (owner)
     FirstPersonController freeing;
@@ -43,13 +58,54 @@ public class PlayerRescue : NetworkBehaviour
     int drips;
     Transform trailRoot;
 
-    void Awake() => player = GetComponent<FirstPersonController>();
+    void Awake()
+    {
+        player = GetComponent<FirstPersonController>();
+        ragdoll = GetComponentInChildren<PlayerRagdoll>(true);
+    }
 
     void Update()
     {
         if (!IsSpawned || player == null) return;
         UpdateTrail();
-        if (IsOwner) UpdateFreeing();
+        if (!IsOwner) return;
+        UpdateFreeing();
+        UpdateStruggle();
+    }
+
+    // ---------- Struggling ----------
+
+    void UpdateStruggle()
+    {
+        if (!player.IsHidden || NetworkUI.MenuOpen) return;
+        var kb = Keyboard.current;
+        if (kb == null || !kb[struggleKey].wasPressedThisFrame) return;
+        CameraShake.ShakeFrom(transform.position, struggleShake, 1f);
+        StruggleRpc();
+    }
+
+    // Host: slows the timer (FirstPersonController.Struggle), makes noise now and then, jolts the body for everyone
+    [Rpc(SendTo.Server)]
+    void StruggleRpc()
+    {
+        if (!player.IsHidden) return;
+        player.Struggle();
+        if (Time.time >= nextStruggleNoise)
+        {
+            nextStruggleNoise = Time.time + struggleNoiseInterval;
+            NoiseSystem.Emit(transform.position, struggleNoiseRadius);
+        }
+        if (Time.time - lastWiggle >= 0.12f)   // a mashing player doesn't flood the network
+        {
+            lastWiggle = Time.time;
+            WiggleRpc();
+        }
+    }
+
+    [Rpc(SendTo.Everyone)]
+    void WiggleRpc()
+    {
+        if (ragdoll != null) ragdoll.Wiggle(wiggleStrength);
     }
 
     // ---------- Freeing ----------
@@ -110,9 +166,17 @@ public class PlayerRescue : NetworkBehaviour
 
     void OnGUI()
     {
-        if (!IsSpawned || !IsOwner || freeing == null || NetworkUI.MenuOpen) return;
+        if (!IsSpawned || !IsOwner || NetworkUI.MenuOpen) return;
         if (hintStyle == null) hintStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
         hintStyle.fontSize = Mathf.RoundToInt(Screen.height * 0.028f);
+
+        if (player.IsHidden)
+        {
+            GUI.Label(new Rect(0, Screen.height * 0.8f, Screen.width, Screen.height * 0.04f),
+                      $"TAP {struggleKey.ToString().ToUpper()} TO STRUGGLE  (slows your timer, but it hears you)", hintStyle);
+            return;
+        }
+        if (freeing == null) return;
 
         float w = Screen.width * 0.22f, h = Screen.height * 0.012f;
         float x = (Screen.width - w) / 2f, y = Screen.height * 0.62f;

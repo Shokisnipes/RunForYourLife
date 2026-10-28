@@ -45,6 +45,11 @@ public class FirstPersonController : NetworkBehaviour
     public float hiddenSurviveSeconds = 300f;
     [Tooltip("Eye height (m) while you lie at the hiding spot.")]
     public float lyingEyeHeight = 0.3f;
+    [Tooltip("Struggling (PlayerRescue: tapping the struggle key while hidden) runs your death timer at this speed " +
+             "(0.5 = half as fast). Tapping faster doesn't beat it.")]
+    [Range(0.1f, 1f)] public float struggleTimerSpeed = 0.5f;
+    [Tooltip("Taps no further apart than this (s) count as struggling the whole time in between.")]
+    public float struggleWindow = 0.6f;
 
     [Header("Death")]
     public float fadeOutTime = 0.4f;
@@ -79,6 +84,7 @@ public class FirstPersonController : NetworkBehaviour
     // Hidden by the monster: the network time you die at (0 = not hidden). Written by the host, shown to everyone.
     readonly NetworkVariable<double> netHiddenUntil = new NetworkVariable<double>(0);
     bool dieSent;          // host: the death for this capture has been sent
+    float lastStruggle = -100f;   // host: when this hidden player last struggled
     bool lyingHidden;      // owner: lying at the hiding spot, can only look around
 
     CharacterController controller;
@@ -381,6 +387,16 @@ public class FirstPersonController : NetworkBehaviour
     {
         letGoAt = spot;
         letGoHidden = hidden;
+    }
+
+    // Host: the hidden player struggled. The time since their last tap (up to struggleWindow) only counted at
+    // struggleTimerSpeed, so keeping it up slows the whole countdown by that much.
+    public void Struggle()
+    {
+        if (!IsServer || !IsHidden) return;
+        float gap = Mathf.Min(Time.time - lastStruggle, struggleWindow);
+        lastStruggle = Time.time;
+        netHiddenUntil.Value += gap * (1f - struggleTimerSpeed);
     }
 
     // Host: a teammate freed this hidden player (PlayerRescue checked they were next to them)

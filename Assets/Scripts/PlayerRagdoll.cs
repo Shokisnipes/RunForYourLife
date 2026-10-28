@@ -183,6 +183,21 @@ public class PlayerRagdoll : MonoBehaviour
         gripJoint.projectionMode = JointProjectionMode.PositionAndRotation;   // never stretches, even when yanked
     }
 
+    // Struggling on the ground (PlayerRescue): a jolt through the limp body, mostly the arms and legs
+    public void Wiggle(float strength)
+    {
+        if (!Active || gripJoint != null) return;   // only lying on the ground, not in a monster's hand
+        foreach (var p in parts)
+        {
+            if (p.body.isKinematic) continue;
+            bool core = p.body == chest || p.bone == hips;
+            float s = strength * (core ? 0.35f : Random.Range(0.6f, 1.3f));
+            Vector3 kick = new Vector3(Random.Range(-1f, 1f), Random.Range(0.3f, 1f), Random.Range(-1f, 1f)).normalized * s;
+            p.body.AddForce(kick, ForceMode.VelocityChange);
+            p.body.AddTorque(Random.insideUnitSphere * s * 3f, ForceMode.VelocityChange);
+        }
+    }
+
     void LetGo()
     {
         if (gripJoint == null) return;

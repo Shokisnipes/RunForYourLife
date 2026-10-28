@@ -90,7 +90,7 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   Done: GenomeManager "Evolution" settings (winBoost 0.5, lossPenalty 0.3, min 0.25, max 4, mutationChance 0.15),
   evolution.json (Sense.X / Access.X weights; genome weight = sense x access). Host leaving or quitting before dawn
   or a wipe = monster win. Host-tested: dawn -> beaten, quit mid-run -> won, file written.
-- [ ] **8. Captured, hidden, rescued (L, Opus).** Split: 8a) on catch, the giant carries the player to a random hiding
+- [x] **8. Captured, hidden, rescued (L, Opus).** Split: 8a) on catch, the giant carries the player to a random hiding
   spot (empty markers placed in the scene), 5-min death timer synced to everyone (Inspector value; after it runs out they are dead until the next run); 8b) drag-mark decals from catch to
   spot + the captured player's voice is their clue; teammates hold E to free them (revive); 8c) struggle key slows the
   timer but emits noise. Replaces the current fade-to-black respawn.
@@ -103,7 +103,8 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
     client) + a pool at the hiding spot; hold E 4 s within 2.5 m of a hidden teammate (noise every second) -> host
     checks -> FirstPersonController.Free() (timer stops, ragdoll stands up). Voice clue = live proximity voice chat
     (VoiceChat + VoicePlayback, Opus via Concentus; MIC button in the menus picks the device, M mutes).
-  - [ ] c. Struggle key.
+  - [x] c. Done 2026-10-28: tap Space while hidden = timer at struggleTimerSpeed 0.5 (host-timed, can't beat it by
+    mashing), noise 10 m at most 1/s, ragdoll jolts on every client (PlayerRagdoll.Wiggle), small camera jolt.
 - [ ] **9. Generator night job (M, Sonnet).** Generator powers nearby street lamps/lights; fuel runs out every few
   minutes; fuel cans spawn outside; carrying one is a two-person job (two players hold it, or one player at half speed
   making noise). Needs a generator model + sounds first.
