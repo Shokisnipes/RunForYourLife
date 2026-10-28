@@ -262,6 +262,7 @@ public class NetworkUI : MonoBehaviour
     void ShowOnly(GameObject panel)
     {
         foreach (var l in lookLabels) l.text = LookText();   // saved choice / changed in the other menu
+        foreach (var l in micLabels) l.text = VoiceChat.DeviceLabel;
         mainPanel.SetActive(panel == mainPanel);
         joinPanel.SetActive(panel == joinPanel);
         pausePanel.SetActive(panel == pausePanel);
@@ -326,6 +327,7 @@ public class NetworkUI : MonoBehaviour
         AddButton(mainPanel.transform, "HOST", ref y, Host);
         AddButton(mainPanel.transform, "JOIN", ref y, () => { ShowOnly(joinPanel); addressField.text = address; });
         AddLookButton(mainPanel.transform, ref y);
+        AddMicButton(mainPanel.transform, ref y);
         AddButton(mainPanel.transform, "QUIT", ref y, Quit);
         mainMessage = AddLabel(mainPanel.transform, "", 24, new Vector2(140, y - 30), accentColor, TextAnchor.UpperLeft, 900);
 
@@ -350,6 +352,7 @@ public class NetworkUI : MonoBehaviour
         y = -110f;
         AddButton(pausePanel.transform, "RESUME", ref y, Resume);
         AddLookButton(pausePanel.transform, ref y);
+        AddMicButton(pausePanel.transform, ref y);
         AddButton(pausePanel.transform, "LEAVE GAME", ref y, Leave);
         AddButton(pausePanel.transform, "QUIT", ref y, Quit);
     }
@@ -468,6 +471,20 @@ public class NetworkUI : MonoBehaviour
     }
 
     readonly System.Collections.Generic.List<Text> lookLabels = new System.Collections.Generic.List<Text>();
+
+    // "MIC: DEFAULT / <device>" (VoiceChat): each click picks the next microphone, remembered on this PC
+    void AddMicButton(Transform parent, ref float y)
+    {
+        Text label = null;
+        label = AddButton(parent, VoiceChat.DeviceLabel, ref y, () =>
+        {
+            VoiceChat.NextDevice();
+            label.text = VoiceChat.DeviceLabel;
+        });
+        micLabels.Add(label);
+    }
+
+    readonly System.Collections.Generic.List<Text> micLabels = new System.Collections.Generic.List<Text>();
     static string LookText() => RetroLook.On ? "LOOK: RETRO" : "LOOK: NORMAL";
 
     InputField AddInput(Transform parent, Vector2 pos)

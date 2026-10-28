@@ -47,6 +47,45 @@ public class VoiceChat : NetworkBehaviour
     /// <summary>Your own mic is muted (shown on the HUD).</summary>
     public static bool Muted { get; private set; }
 
+    // ---- Which microphone (MIC button in the main / pause menu, saved on this PC; "" = the Windows default) ----
+    const string DevicePref = "MicDevice";
+    static VoiceChat local;   // your own player's VoiceChat, to switch the mic live
+
+    /// <summary>The chosen microphone, or "" for the Windows default (also when the saved one is unplugged).</summary>
+    public static string ChosenDevice
+    {
+        get
+        {
+            string d = PlayerPrefs.GetString(DevicePref, "");
+            return d != "" && System.Array.IndexOf(Microphone.devices, d) >= 0 ? d : "";
+        }
+    }
+
+    /// <summary>Next microphone in the list (Default, then each device), saved and switched to right away.</summary>
+    public static void NextDevice()
+    {
+        var devices = Microphone.devices;
+        int i = System.Array.IndexOf(devices, ChosenDevice);   // -1 = Default
+        string next = i + 1 < devices.Length ? devices[i + 1] : "";
+        PlayerPrefs.SetString(DevicePref, next);
+        PlayerPrefs.Save();
+        if (local != null) local.RestartMic();
+    }
+
+    public static string DeviceLabel
+    {
+        get
+        {
+            string d = ChosenDevice;
+            if (d == "") return "MIC: DEFAULT";
+            // "Microphone (Volt 2)" -> "VOLT 2"
+            int open = d.IndexOf('('), close = d.LastIndexOf(')');
+            if (open >= 0 && close > open) d = d.Substring(open + 1, close - open - 1);
+            if (d.Length > 18) d = d.Substring(0, 18);
+            return "MIC: " + d.ToUpperInvariant();
+        }
+    }
+
     FirstPersonController player;
 
     // ---- Sending (owner) ----
@@ -74,21 +113,36 @@ public class VoiceChat : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        if (IsOwner) StartMic();
+        if (!IsOwner) return;
+        local = this;
+        StartMic();
     }
 
     public override void OnNetworkDespawn()
     {
+        StopMic();
+        if (local == this) local = null;
+    }
+
+    void StopMic()
+    {
         if (micClip != null) Microphone.End(micDevice);
         micClip = null;
+    }
+
+    void RestartMic()
+    {
+        StopMic();
+        StartMic();
     }
 
     // ---------- Sending ----------
 
     void StartMic()
     {
-        if (Microphone.devices.Length == 0) { noMic = true; Debug.Log("VoiceChat: no microphone found"); return; }
-        micDevice = null;   // the system default
+        noMic = Microphone.devices.Length == 0;
+        if (noMic) { Debug.Log("VoiceChat: no microphone found"); return; }
+        micDevice = ChosenDevice == "" ? null : ChosenDevice;   // null = the Windows default
         Microphone.GetDeviceCaps(micDevice, out int min, out int max);
         micRate = 48000;
         foreach (int r in new[] { 16000, 24000, 48000, 12000, 8000 })   // rates Opus works at, voice-friendly first
@@ -101,7 +155,7 @@ public class VoiceChat : NetworkBehaviour
         encoder = OpusEncoder.Create(micRate, 1, OpusApplication.OPUS_APPLICATION_VOIP);
         encoder.Bitrate = bitrate;
         micReadPos = 0;
-        Debug.Log($"VoiceChat: default microphone on at {micRate} Hz");
+        Debug.Log($"VoiceChat: microphone '{micDevice ?? "default"}' on at {micRate} Hz");
     }
 
     void Update()
