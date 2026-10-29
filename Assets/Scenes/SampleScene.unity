@@ -753,6 +753,7 @@ MonoBehaviour:
   stoopMaxBow: 110
   stoopSpeed: 1.6
   stoopBowSpeed: 140
+  freeArmHangBow: {x: 40, y: 80}
   gripCloseSpeed: 4
   gripFingerCurl: {x: 55, y: 65, z: 45}
   gripThumbCurl: {x: 20, y: 30, z: 25}
@@ -1013,7 +1014,7 @@ MonoBehaviour:
   - access: 1
     canSee: 0
     canHear: 1
-  allowScouts: 1
+  allowScouts: 0
   scoutCount: {x: 5, y: 6}
   useEvolution: 1
   winBoost: 0.5
@@ -1022,6 +1023,7 @@ MonoBehaviour:
   maxWeight: 4
   mutationChance: 0.15
   saveFileName: evolution.json
+  recordInEditor: 0
 --- !u!114 &765556352
 MonoBehaviour:
   m_ObjectHideFlags: 0
