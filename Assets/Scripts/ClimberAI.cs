@@ -143,6 +143,14 @@ public class ClimberAI : NetworkBehaviour
     public float searchDuration = 12f;
     public float searchArea = 12f;
 
+    [Header("It feeds (every catch makes it stronger for the rest of the night)")]
+    [Range(0f, 0.5f), Tooltip("Crawl, hunt, chase, run and lunge speed added per catch (0.1 = +10%). Climbing stays the same.")]
+    public float feedSpeedBonus = 0.1f;
+    [Range(0f, 0.5f), Tooltip("Sight, hearing and feel range added per catch (0.1 = +10%). Feel range is how a blind Climber finds you up close.")]
+    public float feedSenseBonus = 0.1f;
+    [Tooltip("It stops getting stronger after this many catches in one night.")]
+    public int maxFeeds = 5;
+
     NavMeshAgent agent;
     NavMeshPath path;
     FirstPersonController target;
@@ -202,7 +210,13 @@ public class ClimberAI : NetworkBehaviour
 
     // Base senses are remembered the first time, so applying a new genome each run never stacks multipliers.
     bool baseSensesSaved;
-    float baseSight, baseFlashSight, baseLitSight, baseHearing;
+    float baseSight, baseFlashSight, baseLitSight, baseHearing, baseFeel;
+    MonsterGenome genome;
+    int feeds;   // catches this night (It feeds)
+
+    // Catches so far this night, for tests and the HUD
+    public int Feeds => feeds;
+    float FedSpeed => 1f + feedSpeedBonus * feeds;
 
     // Host only: called by GenomeManager at game start. Only shows up when the genome is a Climber.
     public void ApplyGenome(MonsterGenome genome)
@@ -211,13 +225,35 @@ public class ClimberAI : NetworkBehaviour
         {
             baseSight = sightRange; baseFlashSight = flashlightSightRange;
             baseLitSight = litSightRange; baseHearing = hearingMultiplier;
+            baseFeel = feelRange;
             baseSensesSaved = true;
         }
-        sightRange = baseSight * genome.sightRangeMultiplier;
-        flashlightSightRange = baseFlashSight * genome.sightRangeMultiplier;
-        litSightRange = baseLitSight * genome.sightRangeMultiplier;
-        hearingMultiplier = baseHearing * genome.hearingMultiplier;
+        this.genome = genome;
+        feeds = 0;   // a new run: it starts hungry again
+        ApplySenses();
         inPlay = genome.access == GenomeAccess.Climber;
+    }
+
+    // Genome senses, plus whatever it has gained from feeding tonight
+    void ApplySenses()
+    {
+        float sight = genome != null ? genome.sightRangeMultiplier : 1f;
+        float hearing = genome != null ? genome.hearingMultiplier : 1f;
+        float fed = 1f + feedSenseBonus * feeds;
+        sightRange = baseSight * sight * fed;
+        flashlightSightRange = baseFlashSight * sight * fed;
+        litSightRange = baseLitSight * sight * fed;
+        hearingMultiplier = baseHearing * hearing * fed;
+        feelRange = baseFeel * fed;
+    }
+
+    // Host: it caught someone. Faster and sharper for the rest of the night.
+    void Feed()
+    {
+        if (!baseSensesSaved || feeds >= maxFeeds) return;
+        feeds++;
+        ApplySenses();
+        Debug.Log($"Climber fed ({feeds}/{maxFeeds}): speed x{FedSpeed:0.00}, hearing x{hearingMultiplier:0.00}, feel {feelRange:0.0} m");
     }
 
     void OnEnable() => NoiseSystem.OnNoise += HearNoise;
@@ -233,6 +269,8 @@ public class ClimberAI : NetworkBehaviour
         else Debug.LogError("ClimberAI: no Climber NavMesh near the climber. Run Tools > RunForYourLife > Climber Setup.");
         holding = false;
         currentRoof = null;
+        feeds = 0;
+        if (baseSensesSaved) ApplySenses();
         SetState(ClimberState.Patrol);
     }
 
@@ -392,7 +430,7 @@ public class ClimberAI : NetworkBehaviour
 
         bool running = canRun && state == ClimberState.Chase && target != null &&
                        Vector3.Distance(transform.position, target.transform.position) > runWhenFartherThan;
-        if (agent.enabled && state == ClimberState.Chase) agent.speed = grabStart >= 0f ? lungeSpeed : running ? runSpeed : chaseSpeed;
+        if (agent.enabled && state == ClimberState.Chase) agent.speed = (grabStart >= 0f ? lungeSpeed : running ? runSpeed : chaseSpeed) * FedSpeed;
         if (netRunning.Value != running) netRunning.Value = running;
     }
 
@@ -411,44 +449,44 @@ public class ClimberAI : NetworkBehaviour
         switch (newState)
         {
             case ClimberState.Patrol:
-                agent.speed = crawlSpeed;
+                agent.speed = crawlSpeed * FedSpeed;
                 GoToRandomPoint(patrolCenter != null ? patrolCenter.position : homePosition, wanderRadius);
                 break;
             case ClimberState.Investigate:
             case ClimberState.Search:
-                agent.speed = huntSpeed;
+                agent.speed = huntSpeed * FedSpeed;
                 agent.SetDestination(pointOfInterest);
                 break;
             case ClimberState.Chase:
-                agent.speed = chaseSpeed;
+                agent.speed = chaseSpeed * FedSpeed;
                 nextRepath = 0f;
                 break;
             case ClimberState.ToWall:
-                agent.speed = huntSpeed;
+                agent.speed = huntSpeed * FedSpeed;
                 agent.SetDestination(plan.foot);
                 break;
             case ClimberState.OnRoof:
-                agent.speed = huntSpeed;
+                agent.speed = huntSpeed * FedSpeed;
                 nextRepath = 0f;
                 break;
             case ClimberState.ToEdge:
-                agent.speed = huntSpeed;
+                agent.speed = huntSpeed * FedSpeed;
                 agent.SetDestination(plan.roofPoint);
                 break;
             case ClimberState.ToHatch:
-                agent.speed = huntSpeed;
+                agent.speed = huntSpeed * FedSpeed;
                 if (RoofSpot(currentRoof, currentRoof.hatch.transform.position, out var rim)) agent.SetDestination(rim);
                 break;
             case ClimberState.ToUnderHatch:
-                agent.speed = huntSpeed;
+                agent.speed = huntSpeed * FedSpeed;
                 agent.SetDestination(hatchFloor);
                 break;
             case ClimberState.Perch:
-                agent.speed = huntSpeed;
+                agent.speed = huntSpeed * FedSpeed;
                 agent.SetDestination(plan.roofPoint);
                 break;
             case ClimberState.ToWindow:
-                agent.speed = huntSpeed;
+                agent.speed = huntSpeed * FedSpeed;
                 agent.SetDestination(windowIn ? windowOutside : windowInside);
                 break;
         }
@@ -1323,6 +1361,7 @@ public class ClimberAI : NetworkBehaviour
         target.Caught(NetworkObject);
         CaughtFxRpc(grabHoldTime);   // holds the pose while it has you, grab sound
         heldVictim = target;
+        Feed();
         target = null;
         ignorePlayersUntil = Time.time + catchCooldown;
         SetState(ClimberState.Patrol);

@@ -125,6 +125,18 @@ public class MonsterAI : NetworkBehaviour
     public float searchDuration = 15f;
     public float searchArea = 15f;
 
+    [Header("It feeds (every catch makes it stronger for the rest of the night)")]
+    [Range(0f, 0.5f), Tooltip("Walk, hunt, chase and lunge speed added per catch (0.1 = +10%). Carrying you off stays the same.")]
+    public float feedSpeedBonus = 0.1f;
+    [Range(0f, 0.5f), Tooltip("Sight and hearing range added per catch (0.1 = +10%).")]
+    public float feedSenseBonus = 0.1f;
+    [Range(0f, 0.5f), Tooltip("The stare before it charges gets this much shorter per catch (0.15 = 15% shorter each time).")]
+    public float feedStareCut = 0.15f;
+    [Tooltip("The stare never gets shorter than this (seconds): you always get a moment to hide.")]
+    public float minNoticeTime = 0.5f;
+    [Tooltip("It stops getting stronger after this many catches in one night.")]
+    public int maxFeeds = 5;
+
     NavMeshAgent agent;
     NavMeshPath path;
     FirstPersonController target;
@@ -174,7 +186,13 @@ public class MonsterAI : NetworkBehaviour
 
     // Base senses are remembered the first time, so applying a new genome each run never stacks multipliers.
     bool baseSensesSaved;
-    float baseSight, baseFlashSight, baseLitSight, baseHearing;
+    float baseSight, baseFlashSight, baseLitSight, baseHearing, baseNotice;
+    MonsterGenome genome;
+    int feeds;   // catches this night (It feeds)
+
+    // Catches so far this night, for tests and the HUD
+    public int Feeds => feeds;
+    float FedSpeed => 1f + feedSpeedBonus * feeds;
 
     // Host only: called by GenomeManager at game start.
     public void ApplyGenome(MonsterGenome genome)
@@ -183,13 +201,35 @@ public class MonsterAI : NetworkBehaviour
         {
             baseSight = sightRange; baseFlashSight = flashlightSightRange;
             baseLitSight = litSightRange; baseHearing = hearingMultiplier;
+            baseNotice = noticeTime;
             baseSensesSaved = true;
         }
-        sightRange = baseSight * genome.sightRangeMultiplier;
-        flashlightSightRange = baseFlashSight * genome.sightRangeMultiplier;
-        litSightRange = baseLitSight * genome.sightRangeMultiplier;
-        hearingMultiplier = baseHearing * genome.hearingMultiplier;
+        this.genome = genome;
+        feeds = 0;   // a new run: it starts hungry again
+        ApplySenses();
         inPlay = genome.access == GenomeAccess.Reacher;
+    }
+
+    // Genome senses, plus whatever it has gained from feeding tonight
+    void ApplySenses()
+    {
+        float sight = genome != null ? genome.sightRangeMultiplier : 1f;
+        float hearing = genome != null ? genome.hearingMultiplier : 1f;
+        float fed = 1f + feedSenseBonus * feeds;
+        sightRange = baseSight * sight * fed;
+        flashlightSightRange = baseFlashSight * sight * fed;
+        litSightRange = baseLitSight * sight * fed;
+        hearingMultiplier = baseHearing * hearing * fed;
+        noticeTime = Mathf.Max(minNoticeTime, baseNotice * Mathf.Pow(1f - feedStareCut, feeds));
+    }
+
+    // Host: it caught someone. Faster, sharper and quicker to charge for the rest of the night.
+    void Feed()
+    {
+        if (!baseSensesSaved || feeds >= maxFeeds) return;
+        feeds++;
+        ApplySenses();
+        Debug.Log($"Giant fed ({feeds}/{maxFeeds}): speed x{FedSpeed:0.00}, sight {sightRange:0.0} m, hearing x{hearingMultiplier:0.00}, stare {noticeTime:0.00} s");
     }
 
     void OnEnable() => NoiseSystem.OnNoise += HearNoise;
@@ -207,6 +247,8 @@ public class MonsterAI : NetworkBehaviour
         carryVictim = null;
         netCarrying.Value = false;
         agent.angularSpeed = 70f;   // slow, heavy turns
+        feeds = 0;
+        if (baseSensesSaved) ApplySenses();
         SetState(MonsterState.Patrol);
     }
 
@@ -345,12 +387,12 @@ public class MonsterAI : NetworkBehaviour
         switch (newState)
         {
             case MonsterState.Patrol:
-                agent.speed = walkSpeed;
+                agent.speed = walkSpeed * FedSpeed;
                 agent.acceleration = 4f;
                 GoToNextPatrolPoint();
                 break;
             case MonsterState.Investigate:
-                agent.speed = huntSpeed;
+                agent.speed = huntSpeed * FedSpeed;
                 agent.acceleration = 6f;
                 agent.SetDestination(pointOfInterest);
                 break;
@@ -370,12 +412,12 @@ public class MonsterAI : NetworkBehaviour
                 // Only peek in through a doorway. No doorway near you? Back to patrolling.
                 currentReachPoint = FindReachPoint(pointOfInterest);
                 if (currentReachPoint == null) { SetState(MonsterState.Patrol); return; }
-                agent.speed = pursuitSpeed;
+                agent.speed = pursuitSpeed * FedSpeed;
                 agent.acceleration = 10f;
                 agent.SetDestination(StandPoint(currentReachPoint));
                 break;
             case MonsterState.Search:
-                agent.speed = huntSpeed;
+                agent.speed = huntSpeed * FedSpeed;
                 agent.acceleration = 6f;
                 agent.SetDestination(pointOfInterest);
                 break;
@@ -460,7 +502,7 @@ public class MonsterAI : NetworkBehaviour
         }
 
         bool lunging = Time.time - stateStartTime < lungeTime;
-        agent.speed = lunging ? lungeSpeed : pursuitSpeed;
+        agent.speed = (lunging ? lungeSpeed : pursuitSpeed) * FedSpeed;
 
         // Run for the street spot nearest you (on the pavement it can't fit onto, that's the curb beside you)
         bool nearStreet = StreetPointNear(target, out var chasePoint);
@@ -975,6 +1017,7 @@ public class MonsterAI : NetworkBehaviour
         target.Caught(NetworkObject);     // that player gets dragged out / picked up, then carried off and hidden
         carryVictim = target;
         netCarrying.Value = true;
+        Feed();
         target = null;
         ignorePlayersUntil = Time.time + catchCooldown;
         SetState(MonsterState.Patrol);

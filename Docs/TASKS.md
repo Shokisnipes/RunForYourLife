@@ -113,8 +113,11 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   - [x] b. Car alarms (Petar's idea): CarAlarms on GameFlow, ~35% of parked non-wreck cars; walking/running into
     one rings it 20 s (orange blinking light, noise 70 m); host-tested (giant went to Investigate).
   Also real car models replace the box cars (Tools > Vehicle Setup, Docs/CREDITS.md).
-- [ ] **10. It feeds (S, Sonnet).** Each capture: monster +10% speed, +10% sight/hearing range, shorter stare
+- [x] **10. It feeds (S, Sonnet).** Each capture: monster +10% speed, +10% sight/hearing range, shorter stare
   (Inspector values), reset at run start. File: MonsterAI.cs.
+  Done 2026-10-29, host-tested: MonsterAI "It feeds" header (speed/sense +10% per catch, stare -15% per catch, min
+  0.5 s, max 5 catches; carry speed unchanged). Reset in ApplyGenome. Climber feeds too (speed + sight/hearing/feel,
+  no stare); same code as the giant, compiled, not host-tested (play mode kept stopping).
 - [ ] **11. Chase feel (M, Sonnet).** Open-ground sprint (no building within ~8 m -> openGroundSpeed 16), near-miss
   ground slam, tunnel vision + muffled audio as it closes in, look-back key (Q), silence on the stare.
   Files: MonsterAI.cs, MonsterAudio.cs, CameraShake.cs, FirstPersonController.cs.
