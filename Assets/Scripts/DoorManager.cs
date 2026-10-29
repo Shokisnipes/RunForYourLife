@@ -108,6 +108,7 @@ public class DoorManager : NetworkBehaviour
         var me = LocalPlayer();
         var kb = Keyboard.current;
         if (me == null || kb == null || !kb.eKey.wasPressedThisFrame || NetworkUI.MenuOpen || me.IsDead || me.IsGrabbed) return;
+        if (GeneratorJob.Instance != null && GeneratorJob.Instance.ClaimsUse(me)) return;   // E is for the fuel can
         int door = Aimed(me);
         if (door >= 0) ToggleRpc(door);
     }
@@ -212,6 +213,7 @@ public class DoorManager : NetworkBehaviour
         if (!IsSpawned) return;
         var me = LocalPlayer();
         if (me == null || me.IsDead || me.IsGrabbed || NetworkUI.MenuOpen) return;
+        if (GeneratorJob.Instance != null && GeneratorJob.Instance.ClaimsUse(me)) return;
         int door = Aimed(me);
         if (door < 0) return;
         var state = (Door.State)states[door];

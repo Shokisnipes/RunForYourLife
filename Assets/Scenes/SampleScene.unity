@@ -1112,6 +1112,8 @@ GameObject:
   - component: {fileID: 1018997751}
   - component: {fileID: 1018997752}
   - component: {fileID: 1018997753}
+  - component: {fileID: 1018997755}
+  - component: {fileID: 1018997754}
   m_Layer: 0
   m_Name: GameFlow
   m_TagString: Untagged
@@ -1277,6 +1279,75 @@ MonoBehaviour:
   radioVolume: 0.35
   broadcastEvery: 14
   broadcastShowTime: 6
+--- !u!114 &1018997754
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1018997745}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1e5ce9c262b519642b2b8093da707bea, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CarAlarms
+  ShowTopMostFoldoutHeaderGroup: 1
+  alarmChance: 0.35
+  bumpSpeed: 2.5
+  touchDistance: 0.15
+  alarmSeconds: 20
+  rearmSeconds: 30
+  noiseRadius: 70
+  noiseInterval: 2.5
+  alarmClip: {fileID: 8300000, guid: 288f1bc13573a9440b011f74c91f26ad, type: 3}
+  alarmVolume: 0.72
+  soundRange: 120
+  lightColour: {r: 1, g: 0.55, b: 0.15, a: 1}
+  lightIntensity: 6
+  blinkRate: 1.6
+--- !u!114 &1018997755
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1018997745}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 34b48a07e825dfa428f775ed8673164c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GeneratorJob
+  ShowTopMostFoldoutHeaderGroup: 1
+  generatorPrefab: {fileID: 5214249182590077687, guid: 932947c669360d64b9fe0042d9a478ec, type: 3}
+  canPrefab: {fileID: 8948677064075340357, guid: d7e29f3435dc38d45ad97241e2e3442d, type: 3}
+  powerRadius: 40
+  startFuel: 150
+  fuelPerCan: 180
+  maxFuel: 300
+  startNoiseRadius: 25
+  canCount: 3
+  minCanDistance: 40
+  maxCanDistance: 140
+  useRange: 2.2
+  refuelRange: 2.5
+  refuelSeconds: 3
+  soloSpeed: 0.5
+  pairSpeed: 0.9
+  pairBreakDistance: 3
+  sloshNoiseRadius: 14
+  sloshNoiseInterval: 1.2
+  humClip: {fileID: 8300000, guid: a89860a5f19fe434c86335ceda2ad3d7, type: 3}
+  humVolume: 0.2
+  startClip: {fileID: 8300000, guid: 4507d0dec4d13014ba29e0965f691b45, type: 3}
+  startVolume: 0.46
+  stallClip: {fileID: 8300000, guid: 0d6ac041276207c4d9401744ca5491d2, type: 3}
+  stallVolume: 0.49
+  pourClip: {fileID: 8300000, guid: a8546a65b898ffc4884d672567d4b5bd, type: 3}
+  pourVolume: 0.23
+  sloshClip: {fileID: 8300000, guid: e3bcb1a2fbde5a9498e3efb2de3ca64e, type: 3}
+  sloshVolume: 0.56
+  sloshRange: 15
+  soundRange: 60
 --- !u!1 &1118492851
 GameObject:
   m_ObjectHideFlags: 0

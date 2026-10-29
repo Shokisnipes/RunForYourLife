@@ -74,12 +74,19 @@ when it's done and tested.
   Alleys must stay closed to the giant (radius 2.5): they're lined with walls whose gaps are 1.2 m. Runtime NavMesh
   is baked from physics colliders, so colliderless litter/windows don't affect it; keep anything big near a street
   curb collider-free or the giant can get stuck between it and a lamp.
+- **Cars:** `Vehicle` prefabs parked by CityGenerator (stalls = small cars only; main-road curb + empty lots also pickups/trucks/ambulance), paint recoloured / wrecks rusted with shared material copies. CC-BY credits in `Docs/CREDITS.md` (must ship in the game). GLB models: convert to FBX with Blender 5.1 (installed) headless.
+- **Night job (task 9):** `GeneratorJob` (GameFlow object, host-owned): generator placed against the wall beside the
+  start door, lamps within powerRadius go dark (StreetLamp.SetPowered) when fuel runs out (burns only at night);
+  fuel cans at City.hidingSpots 40-140 m away; E pick up / help carry, G drop, hold E at the generator to pour.
+  Solo = half speed, no sprint, slosh noise; pair = 0.9 speed (FPC.SpeedScale / CanSprint). E there wins over doors
+  (DoorManager checks ClaimsUse). `CarAlarms` (GameFlow object): some parked cars ring when you walk into them.
 - **World:** `BoxUV` gives scaled cubes real-world texture tiling. `AmbientAudio`, `WindowFlicker`, `LobbyCameraDrift`.
 
 ## Editor tools (Tools > RunForYourLife)
 Building Generator (adds a roof hatch), Upgrade Existing Buildings, Add Roof Hatches To Existing Buildings, Widen Interior Doorways, Add Reach Points To Existing Buildings, Building Texturer (Use Texture
 Set), Street Lamps, Monster Animator Builder, Climber Setup (clips, agent type, controller, scene object, NavMesh bake), Scout Setup (imports, controller, Scout prefab),
-Make It Look Good, City Preview (generate a city from a seed next to the map), Retro Look Setup, Player Model Setup. Prefer improving these tools (and
+Make It Look Good, City Preview (generate a city from a seed next to the map), Retro Look Setup, Player Model Setup,
+Vehicle Setup (car models in Assets/Models/Vehicle -> Assets/Prefabs/Vehicles, real size, URP materials, CitySettings.vehicles). Prefer improving these tools (and
 CityGenerator) over hand-editing scenes; the scene has no buildings, the city is generated.
 
 ## Conventions and lessons learned

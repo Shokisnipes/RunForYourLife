@@ -27,6 +27,10 @@ public class StreetLamp : MonoBehaviour
     public float flickerSpeed = 8f;
     [Range(0f, 1f)] public float flickerOffChance = 0.25f;   // how much of the time it's out
 
+    // false = its generator is out of fuel (GeneratorJob): dark until it's refuelled
+    public bool Powered { get; private set; } = true;
+
+    bool started;
     float baseIntensity;
     Color baseEmission;
     MaterialPropertyBlock mpb, shaftMpb;
@@ -49,7 +53,8 @@ public class StreetLamp : MonoBehaviour
             baseEmission = bulb.sharedMaterial.GetColor(EmissionId);
 
         MakeShaft();
-        if (mode == Mode.Broken) SetLevel(0f);
+        started = true;
+        if (mode == Mode.Broken || !Powered) SetLevel(0f);
     }
 
     // The visible beam: a cone from the bulb down to the ground
@@ -107,9 +112,16 @@ public class StreetLamp : MonoBehaviour
         return coneMesh;
     }
 
+    public void SetPowered(bool on)
+    {
+        if (Powered == on) return;
+        Powered = on;
+        if (started && mode != Mode.Broken) SetLevel(on ? 1f : 0f);   // before Start: Start applies it
+    }
+
     void Update()
     {
-        if (mode != Mode.Flickering) return;
+        if (mode != Mode.Flickering || !Powered) return;
 
         // Mostly on, with stuttering drop-outs
         float n = Mathf.PerlinNoise(seed, Time.time * flickerSpeed);
@@ -139,7 +151,7 @@ public class StreetLamp : MonoBehaviour
         }
     }
 
-    public bool IsLit => mode != Mode.Broken && level > 0.5f;
+    public bool IsLit => mode != Mode.Broken && Powered && level > 0.5f;
 
     // Is this position standing in any lit lamp's pool of light?
     public static bool IsUnderLight(Vector3 position)

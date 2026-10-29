@@ -105,9 +105,14 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
     (VoiceChat + VoicePlayback, Opus via Concentus; MIC button in the menus picks the device, M mutes).
   - [x] c. Done 2026-10-28: tap Space while hidden = timer at struggleTimerSpeed 0.5 (host-timed, can't beat it by
     mashing), noise 10 m at most 1/s, ragdoll jolts on every client (PlayerRagdoll.Wiggle), small camera jolt.
-- [ ] **9. Generator night job (M, Sonnet).** Generator powers nearby street lamps/lights; fuel runs out every few
+- [x] **9. Generator night job (M, Sonnet).** Generator powers nearby street lamps/lights; fuel runs out every few
   minutes; fuel cans spawn outside; carrying one is a two-person job (two players hold it, or one player at half speed
   making noise). Needs a generator model + sounds first.
+  Done 2026-10-28, host-tested (stall -> circuit lamps off, pick up, solo slosh noise, hold E refuel -> restart):
+  GeneratorJob on GameFlow. Left: Petar's 2-player check of carrying together. Slosh = 3D loop on the can (Gas_Slosh, -27 dB).
+  - [x] b. Car alarms (Petar's idea): CarAlarms on GameFlow, ~35% of parked non-wreck cars; walking/running into
+    one rings it 20 s (orange blinking light, noise 70 m); host-tested (giant went to Investigate).
+  Also real car models replace the box cars (Tools > Vehicle Setup, Docs/CREDITS.md).
 - [ ] **10. It feeds (S, Sonnet).** Each capture: monster +10% speed, +10% sight/hearing range, shorter stare
   (Inspector values), reset at run start. File: MonsterAI.cs.
 - [ ] **11. Chase feel (M, Sonnet).** Open-ground sprint (no building within ~8 m -> openGroundSpeed 16), near-miss

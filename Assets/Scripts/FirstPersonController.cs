@@ -110,6 +110,9 @@ public class FirstPersonController : NetworkBehaviour
 
     // Read by other systems (footstep noise, monster)
     public float CurrentSpeed { get; private set; }
+    // Set every frame by whatever slows you down (GeneratorJob: carrying a fuel can). 1 = normal speed.
+    public float SpeedScale { get; set; } = 1f;
+    public bool CanSprint { get; set; } = true;
     public bool IsGrabbed => netGrabbed.Value;   // synced, so the monster ignores whoever it's holding
     public bool IsCrouching => netCrouching.Value;
     public bool IsDead => netDead.Value;         // stays dead for the rest of the night (task 8 adds rescue)
@@ -282,7 +285,8 @@ public class FirstPersonController : NetworkBehaviour
 
         float speed = walkSpeed;
         if (isCrouching) speed = crouchSpeed;
-        else if (kb.leftShiftKey.isPressed && input.y > 0) speed = sprintSpeed;
+        else if (kb.leftShiftKey.isPressed && input.y > 0 && CanSprint) speed = sprintSpeed;
+        speed *= SpeedScale;
 
         if (controller.isGrounded && verticalVelocity < 0f)
             verticalVelocity = -2f; // keeps us snapped to the ground

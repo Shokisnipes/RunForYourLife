@@ -9,6 +9,7 @@ using UnityEngine;
 // a target level (loudest 0.4 s RMS of the file + the volume in dB). When adding a sound, measure the file and
 // pick the volume that hits its target:
 //   giant scream / climber call  -11 to -12 dB   (meant to carry across the map)
+//   car alarm                     -13 dB         (a lure: meant to carry)
 //   giant footstep / grab sounds  -14 dB
 //   scout relay screech           -15 dB         (a warning everyone hears; cut short if it's killed)
 //   scout death squeal            -20 dB
@@ -19,6 +20,10 @@ using UnityEngine;
 //   window smashed by the Climber -14 dB
 //   clue radio static             -30 dB         (louder while a broadcast comes through)
 //   door closing / opening        -27 / -28 dB   (your own sneaky actions: just above your footsteps)
+//   generator start / stall       -18 / -20 dB
+//   generator running loop        -26 dB
+//   pouring fuel                  -28 dB
+//   fuel can sloshing (carried)   -27 dB
 //   climber crawl steps           -24 dB         (climbing steps -27)
 //   giant breathing               -24 dB
 //   scout sniffing                -28 dB

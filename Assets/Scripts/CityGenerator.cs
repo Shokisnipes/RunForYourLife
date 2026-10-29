@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 // Builds a whole city from a seed: a ring road with a wall around it, a wide main road through the middle, streets
@@ -493,7 +494,7 @@ public static class CityGenerator
         {
             Vector3 p = b.Center + new Vector3(Range(-b.W / 2f + 2f, b.W / 2f - 2f), 0.08f, Range(-b.D / 2f + 2f, b.D / 2f - 2f));
             if (Rand() < 0.25f) Dumpster(p, Range(0f, 360f));
-            else if (Rand() < 0.4f) Car(p, Quaternion.Euler(0, Range(0f, 360f), 0) * Vector3.forward, true);
+            else if (Rand() < 0.4f) Car(p, Quaternion.Euler(0, Range(0f, 360f), 0) * Vector3.forward, true, PickVehicle(true));
             else Rubble(p);
         }
         foreach (var q in new[] { new Vector3(1, 0, 1), new Vector3(-1, 0, -1) })
@@ -599,9 +600,11 @@ public static class CityGenerator
             for (int i = 0, n = Count(length * s.wrecksPer100m / 100f); i < n; i++)
             {
                 float side = Rand() < 0.5f ? -1f : 1f;
-                Vector3 p = start + along * Range(4f, length - 4f) + across * side * (width / 2f - 1.3f);
+                var v = PickVehicle(true);
+                float halfWidth = v != null ? v.size.x / 2f : 0.9f;
+                Vector3 p = start + along * Range(4f, length - 4f) + across * side * (width / 2f - 0.4f - halfWidth);
                 if (InOtherRoad(road, p)) continue;
-                Car(p, along * (Rand() < 0.5f ? 1f : -1f), true);
+                Car(p, along * (Rand() < 0.5f ? 1f : -1f), true, v);
             }
     }
 
@@ -802,19 +805,72 @@ public static class CityGenerator
         new Color(0.08f, 0.08f, 0.08f), new Color(0.3f, 0.32f, 0.2f), new Color(0.45f, 0.4f, 0.32f),
     };
 
-    // A boxy parked car: cover to hide behind. wreck = rusted, sitting at an angle
-    static void Car(Vector3 p, Vector3 facing, bool wreck = false)
+    // A random car prefab from CitySettings.vehicles (null = none set up). big = trucks and vans allowed too.
+    static Vehicle PickVehicle(bool big)
+    {
+        if (s.vehicles == null) return null;
+        var fits = s.vehicles.Where(v => v != null && (big || !v.big)).ToList();
+        return fits.Count == 0 ? null : fits[rng.Next(fits.Count)];
+    }
+
+    // A parked car: cover to hide behind. wreck = rusted, sitting at an angle. v = which car (null = a small one)
+    static void Car(Vector3 p, Vector3 facing, bool wreck = false, Vehicle v = null)
     {
         int c = (int)(Rand() * CarColors.Length) % CarColors.Length;
+        var rot = Quaternion.LookRotation(facing) * Quaternion.Euler(wreck ? Range(-4f, 4f) : 0f, Range(-6f, 6f), wreck ? Range(-5f, 5f) : 0f);
+        if (v == null) v = PickVehicle(false);
+        if (v != null)
+        {
+            var model = Object.Instantiate(v.gameObject, root).transform;
+            model.name = "Car";
+            model.localPosition = p;
+            model.localRotation = rot;
+            model.GetComponent<Vehicle>().wreck = wreck;
+            Repaint(model, v, wreck ? -1 : c);
+            return;
+        }
+
+        // No car prefabs set up: a plain box car
         var paint = wreck ? Mat("City_Rust", new Color(0.24f, 0.13f, 0.07f), 0.1f) : Mat($"City_Car{c}", CarColors[c], 0.55f);
         var glass = Mat("City_CarGlass", new Color(0.02f, 0.025f, 0.03f), 0.9f);
-        var rot = Quaternion.LookRotation(facing) * Quaternion.Euler(wreck ? Range(-4f, 4f) : 0f, Range(-6f, 6f), wreck ? Range(-5f, 5f) : 0f);
         var car = new GameObject("Car").transform;
         car.SetParent(root, false);
         car.localPosition = p;
         car.localRotation = rot;
         Part(car, PrimitiveType.Cube, "Car_Body", new Vector3(0, 0.55f, 0), new Vector3(1.8f, 0.75f, 4.2f), paint, true);
         Part(car, PrimitiveType.Cube, "Car_Cabin", new Vector3(0, 1.2f, -0.2f), new Vector3(1.6f, 0.6f, 2.2f), glass, true);
+    }
+
+    // Shared recoloured copies of the car materials (one per material and colour), so cars still batch together
+    static readonly Dictionary<(Material, int), Material> carMats = new Dictionary<(Material, int), Material>();
+
+    // color = index into CarColors for the paint materials, or -1 = wreck: every material rusted and dulled
+    static void Repaint(Transform car, Vehicle v, int color)
+    {
+        foreach (var r in car.GetComponentsInChildren<Renderer>())
+        {
+            var mats = r.sharedMaterials;
+            for (int i = 0; i < mats.Length; i++)
+            {
+                var src = mats[i];
+                if (src == null || (color >= 0 && System.Array.IndexOf(v.paint, src) < 0)) continue;
+                if (!carMats.TryGetValue((src, color), out var m) || m == null)
+                {
+                    m = new Material(src) { name = src.name + (color < 0 ? "_Rust" : "_Paint" + color) };
+                    if (color < 0)
+                    {
+                        var rust = new Color(0.24f, 0.13f, 0.07f);
+                        m.SetColor("_BaseColor", Color.Lerp(src.GetColor("_BaseColor"), rust, 0.65f));
+                        m.SetFloat("_Smoothness", src.GetFloat("_Smoothness") * 0.3f);
+                        m.SetFloat("_Metallic", 0f);
+                    }
+                    else m.SetColor("_BaseColor", CarColors[color]);
+                    carMats[(src, color)] = m;
+                }
+                mats[i] = m;
+            }
+            r.sharedMaterials = mats;
+        }
     }
 
     static void Dumpster(Vector3 p, float yaw)

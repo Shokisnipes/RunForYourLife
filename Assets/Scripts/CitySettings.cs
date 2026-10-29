@@ -78,6 +78,8 @@ public class CitySettings : ScriptableObject
     public float crackDensity = 0.5f;
     [Tooltip("Wrecked cars per 100 m of main road (only the main road is wide enough to leave the giant a way past).")]
     public float wrecksPer100m = 2f;
+    [Tooltip("Car prefabs parked around the city (filled in by Tools > Vehicle Setup). Empty = plain boxes.")]
+    public Vehicle[] vehicles;
 
     [Header("Ground and props (empty = plain colour)")]
     public Material groundMaterial;
