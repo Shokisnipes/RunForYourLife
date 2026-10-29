@@ -1176,7 +1176,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameFlow
   ShowTopMostFoldoutHeaderGroup: 1
-  prepSeconds: 2
+  prepSeconds: 360
   nightSeconds: 360
 --- !u!114 &1018997749
 MonoBehaviour:
@@ -1331,9 +1331,11 @@ MonoBehaviour:
   useRange: 2.2
   refuelRange: 2.5
   refuelSeconds: 3
-  soloSpeed: 0.5
+  soloSpeed: 0.75
   pairSpeed: 0.9
   pairBreakDistance: 3
+  gripOffset: 0.08
+  canHangLength: 0.48
   sloshNoiseRadius: 14
   sloshNoiseInterval: 1.2
   humClip: {fileID: 8300000, guid: a89860a5f19fe434c86335ceda2ad3d7, type: 3}
@@ -1496,6 +1498,9 @@ MonoBehaviour:
   windowCrawlTime: 1
   searchDuration: 12
   searchArea: 12
+  feedSpeedBonus: 0.1
+  feedSenseBonus: 0.1
+  maxFeeds: 5
 --- !u!114 &1118492856
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1964,6 +1969,11 @@ MonoBehaviour:
   carryGiveUpTime: 60
   searchDuration: 12
   searchArea: 15
+  feedSpeedBonus: 0.1
+  feedSenseBonus: 0.1
+  feedStareCut: 0.15
+  minNoticeTime: 0.5
+  maxFeeds: 5
 --- !u!195 &1857967605
 NavMeshAgent:
   m_ObjectHideFlags: 0

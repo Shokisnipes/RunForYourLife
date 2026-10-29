@@ -9,6 +9,7 @@ using UnityEngine.InputSystem;
 // the generator starts up again (loud). G drops the can.
 // The host owns everything (fuel, who holds what); every machine shows the cans, lamps and sounds from synced state.
 // Place ONE of these on the same scene object as GameFlow (it needs the NetworkObject).
+[DefaultExecutionOrder(200)]   // LateUpdate after PlayerAnimator / FlashlightHand (100) have posed the body
 public class GeneratorJob : NetworkBehaviour
 {
     [Header("Prefabs (Tools > Vehicle Setup makes them)")]
@@ -42,12 +43,16 @@ public class GeneratorJob : NetworkBehaviour
     public float refuelSeconds = 3f;
 
     [Header("Carrying")]
-    [Range(0.1f, 1f), Tooltip("Speed while carrying a can alone (1 = normal). No sprinting.")]
-    public float soloSpeed = 0.5f;
+    [Range(0.1f, 1f), Tooltip("Speed while carrying a can alone (1 = normal walk 3.5 m/s). No sprinting.")]
+    public float soloSpeed = 0.75f;
     [Range(0.1f, 1f), Tooltip("Speed while two players carry it. No sprinting.")]
     public float pairSpeed = 0.9f;
     [Tooltip("The helper lets go when the two carriers get further apart than this (metres).")]
     public float pairBreakDistance = 3f;
+    [Tooltip("The can's handle sits this far past the wrist, in the fist (metres).")]
+    public float gripOffset = 0.08f;
+    [Tooltip("From the handle down to the bottom of the can (metres; the GasCan prefab is 0.5 m tall).")]
+    public float canHangLength = 0.48f;
     [Tooltip("Carrying alone and moving: the sloshing is heard this far away (metres).")]
     public float sloshNoiseRadius = 14f;
     [Tooltip("How often the sloshing makes that noise (seconds).")]
@@ -270,8 +275,47 @@ public class GeneratorJob : NetworkBehaviour
     {
         if (!IsSpawned) return;
         if (IsServer) HostUpdate();
-        ShowCans();
         LocalPlayer();
+    }
+
+    // After the animation has posed the arms, so the can hangs from where the hand really is this frame
+    void LateUpdate()
+    {
+        if (IsSpawned) ShowCans();
+    }
+
+    // The left hand and forearm of a player's body (the right hand holds the flashlight)
+    readonly System.Collections.Generic.Dictionary<FirstPersonController, (Transform hand, Transform arm)> hands =
+        new System.Collections.Generic.Dictionary<FirstPersonController, (Transform, Transform)>();
+
+    bool LeftHand(FirstPersonController p, out Transform hand, out Transform arm)
+    {
+        if (!hands.TryGetValue(p, out var h) || h.hand == null)
+        {
+            var anim = p.GetComponentInChildren<Animator>();
+            h = anim != null && anim.isHuman
+                ? (anim.GetBoneTransform(HumanBodyBones.LeftHand), anim.GetBoneTransform(HumanBodyBones.LeftLowerArm))
+                : (null, null);
+            hands[p] = h;
+        }
+        hand = h.hand;
+        arm = h.arm;
+        return hand != null && arm != null;
+    }
+
+    // Where the handle is (in the fist) and which way is "down the arm"
+    bool Grip(FirstPersonController p, out Vector3 grip, out Vector3 down)
+    {
+        if (!LeftHand(p, out var hand, out var arm))
+        {
+            Transform t = p.transform;
+            down = Vector3.down;
+            grip = t.position - t.right * 0.3f + t.forward * 0.05f + Vector3.up * 0.85f;
+            return false;
+        }
+        down = (hand.position - arm.position).normalized;
+        grip = hand.position + down * gripOffset;
+        return true;
     }
 
     void ShowCans()
@@ -307,17 +351,20 @@ public class GeneratorJob : NetworkBehaviour
             var b = Player(can.b);
             if (a != null && b != null)
             {
-                // Between the two of them, at hand height
-                Vector3 pa = a.transform.position, pb = b.transform.position;
-                Vector3 along = Flat(pb - pa);
-                go.transform.SetPositionAndRotation((pa + pb) / 2f + Vector3.up * 0.55f,
+                // Hanging between their two left hands, upright
+                Grip(a, out var ga, out _);
+                Grip(b, out var gb, out _);
+                Vector3 along = Flat(gb - ga);
+                go.transform.SetPositionAndRotation((ga + gb) / 2f - Vector3.up * canHangLength,
                     Quaternion.LookRotation(along.sqrMagnitude > 0.01f ? along : a.transform.forward));
             }
             else if (a != null)
             {
-                // Hanging from the right hand
-                Transform t = a.transform;
-                go.transform.SetPositionAndRotation(t.position + t.right * 0.32f + t.forward * 0.12f + Vector3.up * 0.42f, t.rotation);
+                // Handle in the left fist, the can carrying on down the line of the forearm: it swings with the arm
+                Grip(a, out var grip, out var down);
+                Vector3 fwd = Vector3.ProjectOnPlane(a.transform.forward, down);
+                var rot = Quaternion.LookRotation(fwd.sqrMagnitude > 0.001f ? fwd : a.transform.forward, -down);
+                go.transform.SetPositionAndRotation(grip - rot * Vector3.up * canHangLength, rot);
             }
             else go.transform.SetPositionAndRotation(can.pos, Quaternion.Euler(0f, i * 73f, 0f));
 

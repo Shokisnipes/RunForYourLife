@@ -78,7 +78,8 @@ when it's done and tested.
 - **Night job (task 9):** `GeneratorJob` (GameFlow object, host-owned): generator placed against the wall beside the
   start door, lamps within powerRadius go dark (StreetLamp.SetPowered) when fuel runs out (burns only at night);
   fuel cans at City.hidingSpots 40-140 m away; E pick up / help carry, G drop, hold E at the generator to pour.
-  Solo = half speed, no sprint, slosh noise; pair = 0.9 speed (FPC.SpeedScale / CanSprint). E there wins over doors
+  The can hangs from the LEFT hand bone (right = flashlight), placed in LateUpdate at execution order 200 so it swings
+  with the arm. Solo = 0.75 speed, no sprint, slosh noise; pair = 0.9 speed (FPC.SpeedScale / CanSprint). E there wins over doors
   (DoorManager checks ClaimsUse). `CarAlarms` (GameFlow object): some parked cars ring when you walk into them.
 - **World:** `BoxUV` gives scaled cubes real-world texture tiling. `AmbientAudio`, `WindowFlicker`, `LobbyCameraDrift`.
 
