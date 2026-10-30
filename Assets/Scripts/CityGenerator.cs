@@ -9,7 +9,7 @@ using UnityEngine;
 //
 // Everything random comes from one System.Random, and nothing depends on physics or scene order, so the same seed
 // builds the same city on every machine (task 4.5c: the host picks the seed, everyone builds it).
-public static class CityGenerator
+public static partial class CityGenerator
 {
     // What got built, and the spots the rest of the game needs
     public class City
@@ -278,8 +278,10 @@ public static class CityGenerator
             Row(b, side, Mathf.Min(19f, across - sw - (alleyBehind ? 0.3f : sw + 1f)), alleyBehind ? across - 0.3f : 0f);
         }
 
+        // Lamps, power lines, hydrants, bins... along each street side, signs and signals at the corners
         for (int side = 0; side < 4; side++)
-            if (b.road[side] >= StreetMin) LampsAlong(b, side);
+            if (b.road[side] >= StreetMin) SidewalkFurniture(b, side);
+        CornerFurniture(b);
     }
 
     // backLine > 0: buildings sit with their back on this line (measured in from the street edge), not on the sidewalk
@@ -573,6 +575,7 @@ public static class CityGenerator
         }
 
         if (alley) AlleyWalls(road, length);
+        else RoadWorks(road, start, along, across, length, width);
 
         float area = length * width;
 

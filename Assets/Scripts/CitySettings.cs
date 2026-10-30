@@ -67,6 +67,32 @@ public class CitySettings : ScriptableObject
     [Range(0f, 1f)] public float brokenLampChance = 0.15f;
     [Range(0f, 1f)] public float flickeringLampChance = 0.12f;
 
+    [Header("Street furniture (13a)")]
+    [Tooltip("Wooden power poles with sagging wires down one side of each street.")]
+    public bool powerLines = true;
+    [Tooltip("Metres between power poles.")]
+    public float poleSpacing = 26f;
+    [Tooltip("Fire hydrants per 100 m of sidewalk.")]
+    public float hydrantsPer100m = 2f;
+    [Tooltip("Trash cans per 100 m of sidewalk.")]
+    public float trashCansPer100m = 3f;
+    [Tooltip("Mailboxes per 100 m of sidewalk.")]
+    public float mailboxesPer100m = 1f;
+    [Range(0f, 1f), Tooltip("Chance a block side gets a bus stop (shelter + sign).")]
+    public float busStopChance = 0.2f;
+    [Range(0f, 1f), Tooltip("Chance a block side gets a row of newspaper boxes.")]
+    public float newspaperBoxChance = 0.3f;
+    [Tooltip("Parking meters along the main road.")]
+    public bool parkingMeters = true;
+    [Tooltip("Traffic lights (dead, the power's out) at the corners where the main road crosses.")]
+    public bool trafficLights = true;
+    [Range(0f, 1f), Tooltip("Chance of a stop sign at each other street corner.")]
+    public float stopSignChance = 0.5f;
+    [Range(0f, 1f), Tooltip("Chance a stop sign has street name signs on top.")]
+    public float streetSignChance = 0.6f;
+    [Tooltip("Road works (cones round a hole, a striped barrier) per 100 m of street.")]
+    public float roadWorksPer100m = 0.6f;
+
     [Header("Roads (deserted city)")]
     [Tooltip("Faded lane lines and crosswalks.")]
     public bool roadMarkings = true;

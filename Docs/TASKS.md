@@ -132,6 +132,46 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   doorway Reach (ReachPoint, arm IK, hand feeling around) and the put-down stoop/bow in MonsterAnimator.
   Petar's idea, 2026-10-28; do after task 8.
 
+- [ ] **13. City fill (L, split, one sub-task per session).** Petar, 2026-10-29: the streets, lots, parks and open
+  areas don't have enough stuff or buildings. Everything is built in code from simple shapes (CityGenerator /
+  BuildingBuilder), usable as is or as placeholders: each prop gets its own small function so a model can replace it
+  later. Rules: seeded rng only; nothing big with a collider near a curb (the giant gets stuck); alleys stay closed to
+  the giant (gaps <= 1.2 m); small clutter has no collider; keep an eye on draw calls (Optimize).
+  - [x] a. Street furniture (Sonnet, done 2026-10-29, Scripts/CityStreetFurniture.cs): utility poles with sagging power lines down one side of each street, traffic
+    lights / stop signs at junctions, street name signs, hydrants, mailboxes, newspaper boxes, trash cans, bus stops
+    with shelters, bollards, parking meters, manhole covers, cones and road barriers. New CitySettings densities.
+  - [ ] b. Fuller blocks (Opus): buildings on the short ends and corners of blocks (corner shops), tighter rows
+    (fewer and smaller gaps), garages and sheds; backyards behind rows get fences, sheds, clotheslines, grills, kiddie
+    pools, junk. More buildings per city overall.
+  - [ ] c. Parks, plaza and lots (Sonnet): parks get a playground, gazebo, pond, hedges, picnic tables, statue, more
+    trees and bushes; the plaza gets kiosks, market stalls, planters, a phone booth, a bus shelter; empty blocks become
+    a construction site or junkyard (containers, scaffolding, portable toilets, sand/gravel piles, pallets); parking
+    lots get a booth, light poles, cart corrals.
+  - [ ] d. Abandonment (Sonnet): what happened here. Police roadblocks with barriers and police cars, an evacuation
+    camp (tents, cots, crates, sandbags) in a park or the plaza, dropped suitcases and bags, burnt-out cars, spray-
+    painted warnings and missing posters on walls, boarded windows, blood trails. Ties into Clues / Story (DESIGN.md).
+  - [ ] e. New block types (Opus): gas station (fuel cans can spawn there), church, school with a fenced field,
+    small store with its own parking; 1-2 per city, picked by the seed. Placeholders now, models later.
+  - [ ] f. Swap in models (when Petar has them): Kenney City Kits / Quaternius (CC0), see CLAUDE.md Assets.
+
+- [ ] **14. Living world (M, split).** Petar, 2026-10-29: make the game feel more alive. Today: dusk birds bed, a very
+  quiet night drone (AmbientAudio.ambienceVolume 0.067 in the scene), flickering lamps/windows, clouds, car alarms.
+  AmbientAudio.distantSounds is EMPTY, so the random distant one-shots never play.
+  Suggested order: b, a, c, then d, e.
+  - [ ] a. Wind (code): gusts sway trees and power lines, paper/litter blowing down streets, swinging shop signs, some
+    doors/shutters banging in abandoned buildings, flapping tarps. Needs wind gust + creak/bang sounds.
+  - [ ] b. Sound layer (needs sounds first): fill distantSounds (dog barks, far siren, metal clangs, glass breaking);
+    3D emitters: buzzing lamps, humming transformers on the 13a poles, dripping pipes, wind whistling through alley
+    gaps, a radio/TV muttering in some houses.
+  - [ ] c. Creatures: crows on wires/roofs that burst into the air when you get close (a noise the monster hears;
+    birds lifting far away hint where the giant is), rats along alley walls, a stray dog glimpsed far off.
+  - [ ] d. Signs of life: TVs flickering blue in some windows, a sparking power line, a car with hazards blinking,
+    a payphone that rings (story hook, DESIGN.md Clues/Story).
+  - [ ] e. Weather: rainy nights (rain, wet streets, sound), lightning that shows the giant's silhouette, fog banks.
+  Sounds Petar needs (freesound.org CC0, 3D = Force To Mono): distant dog barks, far siren, metal clangs, glass
+  breaking, crow caws + wing flaps, electrical hum/buzz, dripping water loop, wind gusts, door creak/bang, TV static,
+  an old public-domain radio song. Rain loop + thunder for e.
+
 ## After the prototype
 Playtest with friends before building more. Then pick from Docs/DESIGN.md: Mimic, bestiary, mutations, AI director,
 more access types.
