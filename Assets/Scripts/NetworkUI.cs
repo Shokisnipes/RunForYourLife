@@ -1,7 +1,12 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Threading.Tasks;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
+using Unity.Services.Authentication;
+using Unity.Services.Core;
+using Unity.Services.Relay;
+using Unity.Services.Relay.Models;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -10,6 +15,8 @@ using UnityEngine.UI;
 
 // Main menu + pause menu. Sits on the NetworkManager object and builds its own UI at startup.
 // Main menu: HOST / JOIN / QUIT over the foggy street. In game: Esc opens the pause menu.
+// Online play goes through Unity Relay: HOST gets a join code (copied to the clipboard, shown in the pause menu),
+// friends type it into JOIN. Typing an IP address instead connects directly (LAN / 127.0.0.1 testing).
 public class NetworkUI : MonoBehaviour
 {
     public static bool MenuOpen { get; private set; }
@@ -17,6 +24,10 @@ public class NetworkUI : MonoBehaviour
     [Header("Connection")]
     public string address = "127.0.0.1";
     public ushort port = 7777;
+    [Tooltip("Host through Unity Relay (join codes, works over the internet). Off = direct IP only.")]
+    public bool useRelay = true;
+    [Tooltip("How many friends can join a Relay game (the host doesn't count).")]
+    public int maxFriends = 3;
 
     [Header("Look")]
     public string title = "RUN FOR YOUR LIFE";
@@ -34,6 +45,10 @@ public class NetworkUI : MonoBehaviour
     InputField addressField;
     Font defaultFont;
     bool connecting;
+    string joinCode = "";      // Relay code of the game we're hosting (empty = direct IP)
+    string statusWord = "CONNECTING";
+    int attempt;               // bumped by CANCEL so a Relay request that finishes later is ignored
+    GameObject copyButton;
 
     // ---------- Lifecycle ----------
 
@@ -57,7 +72,7 @@ public class NetworkUI : MonoBehaviour
                     cam.gameObject.AddComponent<LobbyCameraDrift>();
         }
 
-        // Testing from the command line: Game.exe -host, or Game.exe -join 192.168.1.20
+        // Testing from the command line: Game.exe -host, or Game.exe -join 192.168.1.20 (or a join code)
         var args = System.Environment.GetCommandLineArgs();
         for (int i = 0; i < args.Length; i++)
         {
@@ -95,14 +110,16 @@ public class NetworkUI : MonoBehaviour
 
         if (pausePanel.activeSelf)
         {
-            string info = nm.IsHost ? $"Hosting  ·  {nm.ConnectedClientsIds.Count} player(s)\nFriends join with: {LocalIP()}" : "Connected";
+            string join = joinCode != "" ? $"JOIN CODE: {joinCode}" : $"Friends join with: {LocalIP()}";
+            string info = nm.IsHost ? $"Hosting  ·  {nm.ConnectedClientsIds.Count} player(s)\n{join}" : "Connected";
             pauseInfo.text = info;
+            copyButton.SetActive(nm.IsHost && joinCode != "");
         }
 
         UpdateRunHud(inGame);
 
         if (connecting && statusPanel.activeSelf)
-            statusText.text = "CONNECTING" + new string('.', 1 + (int)(Time.time * 2f) % 3);
+            statusText.text = statusWord + new string('.', 1 + (int)(Time.time * 2f) % 3);
     }
 
     // Top-of-screen timer and the win / lose screen
@@ -191,31 +208,101 @@ public class NetworkUI : MonoBehaviour
 
     // ---------- Actions ----------
 
-    void Host()
+    async void Host()
     {
-        Transport().SetConnectionData("127.0.0.1", port, "0.0.0.0");   // listen on every network card
+        int me = ++attempt;
+        joinCode = "";
+        if (useRelay)
+        {
+            statusWord = "STARTING";
+            connecting = true;
+            ShowOnly(statusPanel);
+            try
+            {
+                await SignIn();
+                Allocation alloc = await RelayService.Instance.CreateAllocationAsync(maxFriends);
+                string code = await RelayService.Instance.GetJoinCodeAsync(alloc.AllocationId);
+                if (me != attempt) return;   // cancelled meanwhile
+                Transport().SetRelayServerData(alloc.ToRelayServerData("dtls"));
+                joinCode = code;
+            }
+            catch (System.Exception e)
+            {
+                if (me != attempt) return;
+                Debug.LogWarning($"Relay failed, hosting by IP instead (only LAN players can join): {e.Message}");
+            }
+            connecting = false;
+        }
+        if (joinCode == "") Transport().SetConnectionData("127.0.0.1", port, "0.0.0.0");   // direct IP: listen on every network card
+
         if (CityManager.Instance != null) CityManager.Instance.PrepareHost();   // new city + NavMesh before anything spawns
-        if (NetworkManager.Singleton.StartHost()) CloseMenus();
+        if (NetworkManager.Singleton.StartHost())
+        {
+            CloseMenus();
+            if (joinCode != "") GUIUtility.systemCopyBuffer = joinCode;   // ready to paste to friends
+        }
         else ShowMessage("Couldn't start hosting (is the port in use?)");
     }
 
-    void Join()
+    async void Join()
     {
+        int me = ++attempt;
         address = addressField.text.Trim();
         if (string.IsNullOrEmpty(address)) address = "127.0.0.1";
-        Transport().SetConnectionData(address, port);
-        if (NetworkManager.Singleton.StartClient())
+        statusWord = "CONNECTING";
+        connecting = true;
+        ShowOnly(statusPanel);
+
+        if (LooksLikeAddress(address)) Transport().SetConnectionData(address, port);
+        else
         {
-            connecting = true;
-            ShowOnly(statusPanel);
+            address = address.ToUpperInvariant();
+            try
+            {
+                await SignIn();
+                JoinAllocation alloc = await RelayService.Instance.JoinAllocationAsync(address);
+                if (me != attempt) return;
+                Transport().SetRelayServerData(alloc.ToRelayServerData("dtls"));
+            }
+            catch (System.Exception e)
+            {
+                if (me != attempt) return;
+                connecting = false;
+                Debug.LogWarning($"Relay join failed: {e.Message}");
+                ShowMessage($"No game found with code {address}");
+                return;
+            }
         }
-        else ShowMessage("Couldn't start the client.");
+        if (!NetworkManager.Singleton.StartClient())
+        {
+            connecting = false;
+            ShowMessage("Couldn't start the client.");
+        }
+    }
+
+    // An IP / hostname connects directly; anything else is a Relay join code
+    static bool LooksLikeAddress(string s) => s.Contains(".") || s.Contains(":") || s.ToLowerInvariant() == "localhost";
+
+    // Unity Services + anonymous sign-in, once per session. Each copy of the game on this PC (MPPM players, a second
+    // build folder) gets its own profile, otherwise Relay sees host and friend as the same player.
+    static async Task SignIn()
+    {
+        if (UnityServices.State == ServicesInitializationState.Uninitialized)
+        {
+            string profile = "p" + ((uint)Application.dataPath.GetHashCode()).ToString("x8");
+            await UnityServices.InitializeAsync(new InitializationOptions().SetProfile(profile));
+        }
+        while (UnityServices.State == ServicesInitializationState.Initializing) await Task.Yield();
+        if (!AuthenticationService.Instance.IsSignedIn)
+            await AuthenticationService.Instance.SignInAnonymouslyAsync();
     }
 
     void Leave()
     {
-        NetworkManager.Singleton.Shutdown();
+        attempt++;
+        if (NetworkManager.Singleton.IsListening) NetworkManager.Singleton.Shutdown();
         connecting = false;
+        joinCode = "";
         ShowOnly(mainPanel);
         mainMessage.text = "";
     }
@@ -229,7 +316,11 @@ public class NetworkUI : MonoBehaviour
 #endif
     }
 
-    void OpenPause() => ShowOnly(pausePanel);
+    void OpenPause()
+    {
+        copyButton.GetComponentInChildren<Text>().text = "COPY JOIN CODE";
+        ShowOnly(pausePanel);
+    }
 
     void Resume() => CloseMenus();
 
@@ -333,7 +424,7 @@ public class NetworkUI : MonoBehaviour
 
         // JOIN
         joinPanel = AddPanel(root, "Join", 0.55f);
-        AddTitle(joinPanel.transform, "JOIN A GAME", "host's address (same Wi-Fi: their local IP)");
+        AddTitle(joinPanel.transform, "JOIN A GAME", "the host's join code (or an IP on the same Wi-Fi)");
         addressField = AddInput(joinPanel.transform, new Vector2(140, -40));
         y = -140f;
         AddButton(joinPanel.transform, "CONNECT", ref y, Join);
@@ -351,6 +442,9 @@ public class NetworkUI : MonoBehaviour
         pauseInfo = AddLabel(pausePanel.transform, "", 24, new Vector2(140, -10), new Color(0.6f, 0.6f, 0.6f), TextAnchor.UpperLeft, 900);
         y = -110f;
         AddButton(pausePanel.transform, "RESUME", ref y, Resume);
+        Text copyLabel = null;
+        copyLabel = AddButton(pausePanel.transform, "COPY JOIN CODE", ref y, () => { GUIUtility.systemCopyBuffer = joinCode; copyLabel.text = "COPIED"; });
+        copyButton = copyLabel.transform.parent.gameObject;
         AddLookButton(pausePanel.transform, ref y);
         AddMicButton(pausePanel.transform, ref y);
         AddButton(pausePanel.transform, "LEAVE GAME", ref y, Leave);
@@ -504,7 +598,7 @@ public class NetworkUI : MonoBehaviour
         trt.offsetMin = new Vector2(18, 0); trt.offsetMax = new Vector2(-18, 0);
         text.supportRichText = false;
 
-        var ph = AddLabel(go.transform, "127.0.0.1", 34, Vector2.zero, new Color(1f, 1f, 1f, 0.25f), TextAnchor.MiddleLeft, 500);
+        var ph = AddLabel(go.transform, "JOIN CODE", 34, Vector2.zero, new Color(1f, 1f, 1f, 0.25f), TextAnchor.MiddleLeft, 500);
         var prt = ph.rectTransform;
         prt.anchorMin = Vector2.zero; prt.anchorMax = Vector2.one;
         prt.offsetMin = new Vector2(18, 0); prt.offsetMax = new Vector2(-18, 0);

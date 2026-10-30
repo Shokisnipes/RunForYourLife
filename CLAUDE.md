@@ -10,7 +10,10 @@ when it's done and tested.
 ## How the code fits together (Assets/Scripts)
 - **Networking:** host runs all monster logic. Player prefab = `FirstPersonController` (owner moves itself via
   `OwnerNetworkTransform`; crouch/pitch/grabbed synced with owner-write NetworkVariables). `NetworkUI` = main/pause menu
-  (Host/Join/Quit), lives on the NetworkManager object. `NetworkUI.MenuOpen` blocks player input.
+  (Host/Join/Quit), lives on the NetworkManager object. `NetworkUI.MenuOpen` blocks player input. Online play =
+  Unity Relay (com.unity.services.multiplayer, anonymous sign-in): HOST gets a join code (clipboard + pause menu),
+  JOIN takes the code; an IP typed into JOIN connects directly. Each game copy on one PC signs in with its own
+  profile (hash of dataPath) so MPPM host + player 2 are different Relay players.
 - **Monster:** `MonsterAI` (host only; states Patrol, Investigate, Notice, Chase, Reach, Search; giant NavMesh agent
   type "Giant"; syncs state/look/hand targets for everyone). `MonsterAnimator` (on the Model child, runs on every
   client: locomotion blend, stride matching, foot plants -> footsteps/shake, head look IK, reach/carry IK, floor snap).
