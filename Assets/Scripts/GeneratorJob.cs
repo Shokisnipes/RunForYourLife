@@ -7,6 +7,8 @@ using UnityEngine.InputSystem;
 // pick one up. Alone you carry it at half speed and it sloshes (the monsters hear it); a second player presses E on
 // it to help and you both move almost normally (stay close or they let go). Hold E at the generator to pour it in;
 // the generator starts up again (loud). G drops the can.
+// It also powers the radio beacon the van homes in on: while it's off the dawn countdown stops (GameFlow). There are
+// always enough cans for the whole night, and a can only pours if it all fits, so fuel can't be wasted.
 // The host owns everything (fuel, who holds what); every machine shows the cans, lamps and sounds from synced state.
 // Place ONE of these on the same scene object as GameFlow (it needs the NetworkObject).
 [DefaultExecutionOrder(200)]   // LateUpdate after PlayerAnimator / FlashlightHand (100) have posed the body
@@ -20,7 +22,7 @@ public class GeneratorJob : NetworkBehaviour
     [Tooltip("Street lamps within this distance of the generator are on its circuit (metres).")]
     public float powerRadius = 40f;
     [Tooltip("Fuel in the tank when the run starts (seconds of running at night).")]
-    public float startFuel = 150f;
+    public float startFuel = 30f;
     [Tooltip("Seconds of running each can adds.")]
     public float fuelPerCan = 180f;
     [Tooltip("Most fuel the tank holds (seconds).")]
@@ -29,8 +31,10 @@ public class GeneratorJob : NetworkBehaviour
     public float startNoiseRadius = 25f;
 
     [Header("Fuel cans")]
-    [Tooltip("Cans placed around the city each run.")]
+    [Tooltip("At least this many cans each run. More are placed if the night needs them (see Spare Cans).")]
     public int canCount = 3;
+    [Tooltip("Cans on top of what the whole night needs (night length minus start fuel, divided by fuel per can).")]
+    public int spareCans = 2;
     [Tooltip("Cans lie at least this far from the generator (metres).")]
     public float minCanDistance = 40f;
     [Tooltip("...and at most this far (metres).")]
@@ -162,20 +166,34 @@ public class GeneratorJob : NetworkBehaviour
         cans.Clear();
         var rng = new System.Random((city != null ? city.seed : 0) ^ 0x6e6e);
         var spots = new System.Collections.Generic.List<Vector3>();
+        var further = new System.Collections.Generic.List<Vector3>();   // used only if the ring runs out
         if (city != null)
             foreach (var s in city.hidingSpots)
             {
                 float d = Vector3.Distance(Flat(s), Flat(pos));
-                if (d >= minCanDistance && d <= maxCanDistance) spots.Add(s);
+                if (d < minCanDistance) continue;
+                (d <= maxCanDistance ? spots : further).Add(s);
             }
-        for (int i = 0; i < canCount && spots.Count > 0; i++)
+        int want = CansNeeded();
+        for (int i = 0; i < want && spots.Count + further.Count > 0; i++)
         {
-            int k = rng.Next(spots.Count);
-            Vector3 p = spots[k] + new Vector3((float)rng.NextDouble() * 2f - 1f, 0f, (float)rng.NextDouble() * 2f - 1f);
-            spots.RemoveAt(k);
+            var from = spots.Count > 0 ? spots : further;
+            int k = rng.Next(from.Count);
+            Vector3 p = from[k] + new Vector3((float)rng.NextDouble() * 2f - 1f, 0f, (float)rng.NextDouble() * 2f - 1f);
+            from.RemoveAt(k);
             cans.Add(new FuelCan { pos = Ground(p), a = Nobody, b = Nobody });
         }
-        if (cans.Count < canCount) Debug.LogWarning($"GeneratorJob: only {cans.Count} of {canCount} fuel cans placed (no spots {minCanDistance}-{maxCanDistance} m away)");
+        if (cans.Count < want) Debug.LogWarning($"GeneratorJob: only {cans.Count} of {want} fuel cans placed (not enough hiding spots)");
+        else Debug.Log($"GeneratorJob: {cans.Count} fuel cans placed, {hostFuel:0} s in the tank");
+    }
+
+    // Enough for the whole night from the start fuel, plus the spares
+    int CansNeeded()
+    {
+        var flow = GetComponent<GameFlow>();
+        float night = flow != null ? flow.nightSeconds : 0f;
+        int forNight = Mathf.CeilToInt(Mathf.Max(0f, night - startFuel) / Mathf.Max(1f, fuelPerCan));
+        return Mathf.Max(canCount, forNight + spareCans);
     }
 
     // Against the wall beside the door you start at, out of the doorway
@@ -489,6 +507,7 @@ public class GeneratorJob : NetworkBehaviour
         ulong id = rpc.Receive.SenderClientId;
         var me = Player(id);
         if (me == null || Vector3.Distance(me.transform.position, genPos.Value) > refuelRange + 1.5f) return;
+        if (hostFuel + fuelPerCan > maxFuel) return;   // the can stays full: fuel is never wasted
         for (int i = 0; i < cans.Count; i++)
         {
             var can = cans[i];
@@ -496,7 +515,7 @@ public class GeneratorJob : NetworkBehaviour
             can.used = true;
             can.a = can.b = Nobody;
             cans[i] = can;
-            hostFuel = Mathf.Min(maxFuel, hostFuel + fuelPerCan);
+            hostFuel += fuelPerCan;
             fuel.Value = hostFuel;
             if (!running.Value)
             {
@@ -522,7 +541,7 @@ public class GeneratorJob : NetworkBehaviour
 
         var kb = Keyboard.current;
         bool blocked = kb == null || NetworkUI.MenuOpen || !CanHold(me);
-        if (held >= 0 && NearGenerator(me))
+        if (held >= 0 && NearGenerator(me) && CanFits)
         {
             // Hold E to pour
             if (!blocked && kb.eKey.isPressed)
@@ -553,6 +572,8 @@ public class GeneratorJob : NetworkBehaviour
     }
 
     bool NearGenerator(FirstPersonController me) => Vector3.Distance(Flat(me.transform.position), Flat(genPos.Value)) <= refuelRange;
+
+    bool CanFits => fuel.Value + fuelPerCan <= maxFuel;
 
     int HeldBy(ulong id)
     {
@@ -604,7 +625,8 @@ public class GeneratorJob : NetworkBehaviour
         {
             bool alone = cans[held].b == Nobody;
             msg = NearGenerator(me)
-                ? (refuelProgress > 0f ? $"Pouring... {Mathf.RoundToInt(refuelProgress * 100f)}%" : "Hold E - refuel the generator")
+                ? (!CanFits ? "Tank too full for a whole can - keep it for later   G - drop"
+                   : refuelProgress > 0f ? $"Pouring... {Mathf.RoundToInt(refuelProgress * 100f)}%" : "Hold E - refuel the generator")
                 : alone ? "Carrying fuel alone: slow and noisy   G - drop" : "Carrying fuel together   G - let go";
         }
         else
@@ -627,5 +649,5 @@ public class GeneratorJob : NetworkBehaviour
     public float Fuel => fuel.Value;
     public int CanCount => cans.Count;
     public Vector3 CanPosition(int i) => cans[i].pos;
-    public void DebugSetFuel(float seconds) { if (IsServer) { hostFuel = seconds; fuel.Value = seconds; } }
+    public void DebugSetFuel(float seconds) { if (IsServer) { hostFuel = seconds; fuel.Value = seconds; running.Value = seconds > 0f; } }
 }

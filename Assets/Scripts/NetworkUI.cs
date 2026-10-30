@@ -139,12 +139,25 @@ public class NetworkUI : MonoBehaviour
             case GamePhase.Night: timerText.text = $"NIGHT  {clock}"; break;
             default:              timerText.text = ""; break;
         }
+        // The generator keeps the van's beacon on: no power, no dawn
+        var generator = GeneratorJob.Instance;
+        if (!flow.RunOver && generator != null && generator.IsSpawned)
+        {
+            float f = generator.Fuel;
+            timerText.text += flow.DawnOnHold ? "\n<size=24>NO SIGNAL - DAWN WON'T COME - REFUEL THE GENERATOR</size>"
+                                              : $"\n<size=24>GENERATOR  {(int)f / 60}:{(int)f % 60:00}</size>";
+        }
         // Everyone sees how long each hidden player has left
         bool anyTaken = false;
         if (!flow.RunOver)
             foreach (var p in FirstPersonController.All)
             {
                 if (!p.IsSpawned || !p.IsHidden) continue;
+                if (p.IsDowned)
+                {
+                    timerText.text += $"\n<size=24>{(p.IsOwner ? "YOU ARE" : $"PLAYER {p.OwnerClientId + 1} IS")} DOWN</size>";
+                    continue;
+                }
                 float h = p.HiddenSecondsLeft;
                 string who = p.IsOwner ? "YOU WERE TAKEN" : $"PLAYER {p.OwnerClientId + 1} WAS TAKEN";
                 timerText.text += $"\n<size=24>{who}  {(int)h / 60}:{(int)h % 60:00}</size>";

@@ -19,12 +19,15 @@ public class GameFlow : NetworkBehaviour
     readonly NetworkVariable<GamePhase> phase = new NetworkVariable<GamePhase>(GamePhase.Prep);
     // Network time at which the current timed phase ends
     readonly NetworkVariable<double> phaseEndsAt = new NetworkVariable<double>(0);
+    readonly NetworkVariable<double> heldLeft = new NetworkVariable<double>(-1);   // 0 or more = dawn is on hold, this much was left
 
     public GamePhase Phase => phase.Value;
     public bool MonsterActive => !IsSpawned || phase.Value == GamePhase.Night;
     public bool RunOver => IsSpawned && (phase.Value == GamePhase.Won || phase.Value == GamePhase.Lost);
 
-    public float SecondsLeft => Mathf.Max(0f, (float)(phaseEndsAt.Value - NetworkManager.ServerTime.Time));
+    public float SecondsLeft => Mathf.Max(0f, (float)(DawnOnHold ? heldLeft.Value : phaseEndsAt.Value - NetworkManager.ServerTime.Time));
+    // The generator is off, so the van's beacon is too: the night clock (and the sky) wait until it's running again
+    public bool DawnOnHold => IsSpawned && heldLeft.Value >= 0;
 
     void Awake() => Instance = this;
 
@@ -39,6 +42,7 @@ public class GameFlow : NetworkBehaviour
         if (!IsServer) return;
         phase.Value = GamePhase.Prep;
         phaseEndsAt.Value = NetworkManager.ServerTime.Time + prepSeconds;
+        heldLeft.Value = -1;
         Debug.Log($"GameFlow: prep phase started ({prepSeconds:0}s)");
     }
 
@@ -54,7 +58,17 @@ public class GameFlow : NetworkBehaviour
         }
         else if (phase.Value == GamePhase.Night)
         {
-            if (NetworkManager.ServerTime.Time >= phaseEndsAt.Value)
+            double now = NetworkManager.ServerTime.Time;
+            var generator = GeneratorJob.Instance;
+            bool beaconOn = generator == null || !generator.IsSpawned || generator.Running;
+            if (!beaconOn && heldLeft.Value < 0) heldLeft.Value = phaseEndsAt.Value - now;
+            else if (beaconOn && heldLeft.Value >= 0)
+            {
+                phaseEndsAt.Value = now + heldLeft.Value;
+                heldLeft.Value = -1;
+            }
+
+            if (heldLeft.Value < 0 && now >= phaseEndsAt.Value)
             {
                 phase.Value = GamePhase.Won;
                 Debug.Log("GameFlow: dawn - players win");

@@ -21,7 +21,10 @@ when it's done and tested.
   rotation tweaks). `ReachPoint` = doorway marker the giant crouches at.
 - **Climber** (Climber genome; the giant hides): `ClimberAI` (host only; crawls the streets on NavMesh agent type
   "Climber", too tall for doorways; scripted climb up/down walls to the roof, drops in and climbs out through `RoofHatch`; door camping: doorstep counts as inside, perches above the door and pounces, leaps off roofs when it sees you) + `ClimberAnimator` on its Model child + `ClimberAudio` (steps timed to the anim loop, call, grab, hatch creak).
-  Each monster only shows up when the genome's Access matches it (synced `netInPlay`).
+  Each monster only shows up when the genome's Access matches it (synced `netInPlay`). `GenomeManager.bothMonsters`
+  (on) picks a genome for each, so the giant and the Climber hunt the same night (Current = giant, Companion = Climber).
+  A Climber catch kills on the spot with no timer (FPC.Down, netHiddenUntil = NoTimer); a teammate revives you with
+  the same hold E as freeing. Nobody left standing still loses the run.
 - **Scouts** (task 6, in progress): tiny (0.6 m) crawlers that relay player positions to the monster. Body =
   `Assets/Prefabs/Scout.prefab` from Tools > Scout Setup (Ch25 model scaled 0.32, Crawling + Prone Death clips, the
   Climber's wall climbs reused). `ScoutAnimator` (crawl playback from speed, lift so the body sits on the floor,
@@ -78,8 +81,10 @@ when it's done and tested.
   is baked from physics colliders, so colliderless litter/windows don't affect it; keep anything big near a street
   curb collider-free or the giant can get stuck between it and a lamp.
 - **Cars:** `Vehicle` prefabs parked by CityGenerator (stalls = small cars only; main-road curb + empty lots also pickups/trucks/ambulance), paint recoloured / wrecks rusted with shared material copies. CC-BY credits in `Docs/CREDITS.md` (must ship in the game). GLB models: convert to FBX with Blender 5.1 (installed) headless.
-- **Night job (task 9):** `GeneratorJob` (GameFlow object, host-owned): generator placed against the wall beside the
-  start door, lamps within powerRadius go dark (StreetLamp.SetPowered) when fuel runs out (burns only at night);
+- **Night job (task 9, 15):** `GeneratorJob` (GameFlow object, host-owned): generator placed against the wall beside the
+  start door, lamps within powerRadius go dark (StreetLamp.SetPowered) when fuel runs out (burns only at night).
+  It also powers the van's beacon: while it's off the dawn countdown and sky stop (GameFlow.DawnOnHold). Starts with 30 s;
+  cans = what the night needs + spareCans, and a can only pours if it all fits, so fuel can't be wasted;
   fuel cans at City.hidingSpots 40-140 m away; E pick up / help carry, G drop, hold E at the generator to pour.
   The can hangs from the LEFT hand bone (right = flashlight), placed in LateUpdate at execution order 200 so it swings
   with the arm. Solo = 0.75 speed, no sprint, slosh noise; pair = 0.9 speed (FPC.SpeedScale / CanSprint). E there wins over doors

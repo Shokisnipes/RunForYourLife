@@ -385,8 +385,8 @@ public class ClimberAI : NetworkBehaviour
             if (Time.time < holdUntil) return;
             holding = false;
             agent.isStopped = false;
-            // It leaves you where it caught you (hidden with the same death timer; it doesn't carry you off yet)
-            if (heldVictim != null && heldVictim.IsSpawned) heldVictim.Hide(heldVictim.transform.position);
+            // It kills you where it caught you; there's no timer, a teammate can revive you any time
+            if (heldVictim != null && heldVictim.IsSpawned) heldVictim.Down(heldVictim.transform.position);
             heldVictim = null;
         }
 

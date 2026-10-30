@@ -11,6 +11,8 @@ public class GenomeManager : MonoBehaviour
     public bool allowClimber = true;
     [Tooltip("Testing: always pick a Climber genome.")]
     public bool alwaysClimber = false;
+    [Tooltip("On = the giant AND the Climber hunt on the same night, each with its own genome (needs Allow Climber).")]
+    public bool bothMonsters = false;
 
     // Which senses a monster type has. A sense it lacks is never picked for it; one that can't see is blind.
     // Evolution (later) can grant a missing sense to a lineage as a mutation by ticking it here for that run.
@@ -58,6 +60,8 @@ public class GenomeManager : MonoBehaviour
     public bool recordInEditor = false;
 
     public static MonsterGenome Current { get; private set; }
+    // The Climber's genome on a both-monsters night (Current is then the giant's); null on a normal night
+    public static MonsterGenome Companion { get; private set; }
 
     bool applied;
     bool resultRecorded;   // this run's win/loss is already saved
@@ -83,7 +87,7 @@ public class GenomeManager : MonoBehaviour
         {
             // The host left before dawn or a wipe: quitting/disconnecting counts as a monster win
             if (applied && !resultRecorded && Current != null) RecordResult(true);
-            applied = false; Current = null;   // new genome next time we host; never a stale one
+            applied = false; Current = null; Companion = null;   // new genome next time we host; never a stale one
         }
     }
 
@@ -133,7 +137,9 @@ public class GenomeManager : MonoBehaviour
         if (Application.isEditor && !recordInEditor) { Debug.Log("GenomeManager: editor run, result not saved (Record In Editor is off)"); return; }
         LoadSave();   // fresh from disk, in case another instance wrote it since the pick
         float delta = monsterWon ? winBoost : -lossPenalty;
-        foreach (var key in new[] { SenseKey(Current.sense), AccessKey(Current.access) })
+        var keys = new HashSet<string> { SenseKey(Current.sense), AccessKey(Current.access) };
+        if (Companion != null) { keys.Add(SenseKey(Companion.sense)); keys.Add(AccessKey(Companion.access)); }
+        foreach (var key in keys)
         {
             var t = Trait(key);
             t.weight = Mathf.Clamp(t.weight + delta, minWeight, maxWeight);
@@ -192,22 +198,31 @@ public class GenomeManager : MonoBehaviour
                 (!alwaysClimber || g.access == GenomeAccess.Climber)) pool.Add(g);
         if (pool.Count == 0) { Debug.LogWarning("GenomeManager: no usable genomes."); return; }
 
-        Current = PickWeighted(pool);
-        if (!SensesOf(Current.access).canSee && !Current.blind)
-        {
-            // A hand-made genome for a monster type that can't see: make a blind copy (never edit the asset)
-            Current = Instantiate(Current);
-            Current.sightRangeMultiplier = 0f;
-            Current.blind = true;
-        }
-        // Every monster gets the genome; only the one matching its Access shows up (Reacher = giant, Climber = climber)
+        var reachers = pool.FindAll(g => g.access == GenomeAccess.Reacher);
+        var climbers = pool.FindAll(g => g.access == GenomeAccess.Climber);
+        bool both = bothMonsters && reachers.Count > 0 && climbers.Count > 0;
+        Current = BlindIfNeeded(PickWeighted(both ? reachers : pool));
+        Companion = both ? BlindIfNeeded(PickWeighted(climbers)) : null;
+
+        // Every monster gets a genome; only one matching its Access shows up (Reacher = giant, Climber = climber)
         var giant = FindAnyObjectByType<MonsterAI>();
         var climber = FindAnyObjectByType<ClimberAI>();
         if (giant != null) giant.ApplyGenome(Current);
-        if (climber != null) climber.ApplyGenome(Current);
+        if (climber != null) climber.ApplyGenome(Companion != null ? Companion : Current);
         if (Current.access == GenomeAccess.Climber && climber == null)
             Debug.LogWarning("GenomeManager: Climber genome but no ClimberAI in scene (Tools > RunForYourLife > Climber Setup).");
         Debug.Log($"Genome picked: {Current.name} (sense {Current.sense}, access {Current.access}, blind {Current.blind}, " +
-                  $"sight x{Current.sightRangeMultiplier}, hearing x{Current.hearingMultiplier})");
+                  $"sight x{Current.sightRangeMultiplier}, hearing x{Current.hearingMultiplier})" +
+                  (Companion != null ? $" + {Companion.name}" : ""));
+    }
+
+    // A hand-made genome for a monster type that can't see: make a blind copy (never edit the asset)
+    MonsterGenome BlindIfNeeded(MonsterGenome g)
+    {
+        if (SensesOf(g.access).canSee || g.blind) return g;
+        g = Instantiate(g);
+        g.sightRangeMultiplier = 0f;
+        g.blind = true;
+        return g;
     }
 }

@@ -172,6 +172,13 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   breaking, crow caws + wing flaps, electrical hum/buzz, dripping water loop, wind gusts, door creak/bang, TV static,
   an old public-domain radio song. Rain loop + thunder for e.
 
+- [ ] **15. Something to do at night (Petar, 2026-10-30).** Generator starts with 30 s; 4 cans for a 10 min night + 2
+  spare; no power = dawn on hold (HUD warning, generator fuel on the HUD); a can only pours if it all fits. Giant and
+  Climber hunt the same night (GenomeManager.bothMonsters), scouts on, prep 3 min, night 10 min. Climber catch = dead
+  on the spot, no timer, revivable (FPC.Down). Host-tested: 6 cans, both hunting, dawn holds and resumes, real Climber
+  catch -> downed -> run lost when alone, Free() stands you up. Left: Petar's 2-player check of a hold-E revive,
+  pouring cans by hand and how the fuel runs feel.
+
 ## After the prototype
 Playtest with friends before building more. Then pick from Docs/DESIGN.md: Mimic, bestiary, mutations, AI director,
 more access types.

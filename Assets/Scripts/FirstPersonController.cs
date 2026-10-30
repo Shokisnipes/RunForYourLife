@@ -86,6 +86,7 @@ public class FirstPersonController : NetworkBehaviour
     // The monster holding us (NoCarrier when nobody is). Every computer pins the body to its own copy of that
     // monster's hand: our synced position arrives late and smoothed, so it wouldn't line up with the hand there.
     const ulong NoCarrier = ulong.MaxValue;
+    const double NoTimer = double.MaxValue;   // netHiddenUntil of a downed player: the time never comes
     readonly NetworkVariable<ulong> netCarrierId = new NetworkVariable<ulong>(
         NoCarrier, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
@@ -129,6 +130,7 @@ public class FirstPersonController : NetworkBehaviour
     public bool IsInMonsterHand => netCarrierId.Value != NoCarrier;
     public bool IsDropped => IsGrabbed && !IsInMonsterHand;   // the monster let go: the body lies on the floor
     public bool IsHidden => netHiddenUntil.Value > 0 && !IsDead;   // lying at a hiding spot, still alive
+    public bool IsDowned => IsHidden && netHiddenUntil.Value == NoTimer;   // killed where you stood: lies there until revived
     public float HiddenSecondsLeft => IsHidden && IsSpawned ? Mathf.Max(0f, (float)(netHiddenUntil.Value - NetworkManager.ServerTime.Time)) : 0f;
 
     void Awake()
@@ -400,6 +402,15 @@ public class FirstPersonController : NetworkBehaviour
         LetGoRpc(spot, night);
     }
 
+    // Called by the Climber on the host: like Hide, but you're dead on the floor with no timer until a teammate
+    // revives you (PlayerRescue, same as freeing). Nobody left standing still loses the run.
+    public void Down(Vector3 spot)
+    {
+        if (!IsServer) return;
+        Hide(spot);
+        if (netHiddenUntil.Value > 0) netHiddenUntil.Value = NoTimer;
+    }
+
     Vector3? letGoAt;      // owner: where the monster let go of us
     bool letGoHidden;
 
@@ -414,7 +425,7 @@ public class FirstPersonController : NetworkBehaviour
     // struggleTimerSpeed, so keeping it up slows the whole countdown by that much.
     public void Struggle()
     {
-        if (!IsServer || !IsHidden) return;
+        if (!IsServer || !IsHidden || IsDowned) return;
         float gap = Mathf.Min(Time.time - lastStruggle, struggleWindow);
         lastStruggle = Time.time;
         netHiddenUntil.Value += gap * (1f - struggleTimerSpeed);

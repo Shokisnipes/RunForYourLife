@@ -754,6 +754,15 @@ MonoBehaviour:
   stoopSpeed: 1.6
   stoopBowSpeed: 140
   freeArmHangBow: {x: 40, y: 80}
+  leanBlendSpeed: 1.5
+  leanHandSmoothing: 8
+  leanSquatHeight: 1
+  leanStandHeight: 6
+  leanSquat: 0.8
+  leanMaxBend: 70
+  leanForwardBow: 12
+  leanHipShift: 0.08
+  braceHandHeight: 0.05
   slamHipDrop: 0.2
   slamHandHeight: 0.06
   slamDownSpeed: 18
@@ -902,6 +911,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::NetworkUI
   address: 127.0.0.1
   port: 7777
+  useRelay: 1
+  maxFriends: 3
   title: RUN FOR YOUR LIFE
   subtitle: it can see over the rooftops
   titleFont: {fileID: 0}
@@ -1009,8 +1020,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GenomeManager
   genomes: []
-  allowClimber: 0
+  allowClimber: 1
   alwaysClimber: 0
+  bothMonsters: 1
   startingSenses:
   - access: 0
     canSee: 1
@@ -1018,7 +1030,7 @@ MonoBehaviour:
   - access: 1
     canSee: 0
     canHear: 1
-  allowScouts: 0
+  allowScouts: 1
   scoutCount: {x: 5, y: 6}
   useEvolution: 1
   winBoost: 0.5
@@ -1180,8 +1192,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameFlow
   ShowTopMostFoldoutHeaderGroup: 1
-  prepSeconds: 10
-  nightSeconds: 360
+  prepSeconds: 180
+  nightSeconds: 600
 --- !u!114 &1018997749
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1325,11 +1337,12 @@ MonoBehaviour:
   generatorPrefab: {fileID: 5214249182590077687, guid: 932947c669360d64b9fe0042d9a478ec, type: 3}
   canPrefab: {fileID: 8948677064075340357, guid: d7e29f3435dc38d45ad97241e2e3442d, type: 3}
   powerRadius: 40
-  startFuel: 150
+  startFuel: 30
   fuelPerCan: 180
   maxFuel: 300
   startNoiseRadius: 25
   canCount: 3
+  spareCans: 2
   minCanDistance: 40
   maxCanDistance: 140
   useRange: 2.2
@@ -1970,6 +1983,14 @@ MonoBehaviour:
   peekDuration: 6
   doorSearchRadius: 15
   peekStandBack: 2
+  alleySearchRadius: 14
+  alleyArmReach: 9
+  alleyLeanTime: 0.8
+  alleyClearance: 1.2
+  braceHeight: {x: 1.5, y: 9}
+  braceSideOffset: 1.8
+  alleyTurn: 75
+  alleyRepositionDelay: 1.5
   carrySpeed: 4
   minCarryDistance: 35
   maxCarryDistance: 110

@@ -77,7 +77,7 @@ public class PlayerRescue : NetworkBehaviour
 
     void UpdateStruggle()
     {
-        if (!player.IsHidden || NetworkUI.MenuOpen) return;
+        if (!player.IsHidden || player.IsDowned || NetworkUI.MenuOpen) return;
         var kb = Keyboard.current;
         if (kb == null || !kb[struggleKey].wasPressedThisFrame) return;
         CameraShake.ShakeFrom(transform.position, struggleShake, 1f);
@@ -88,7 +88,7 @@ public class PlayerRescue : NetworkBehaviour
     [Rpc(SendTo.Server)]
     void StruggleRpc()
     {
-        if (!player.IsHidden) return;
+        if (!player.IsHidden || player.IsDowned) return;
         player.Struggle();
         if (Time.time >= nextStruggleNoise)
         {
@@ -173,7 +173,8 @@ public class PlayerRescue : NetworkBehaviour
         if (player.IsHidden)
         {
             GUI.Label(new Rect(0, Screen.height * 0.8f, Screen.width, Screen.height * 0.04f),
-                      $"TAP {struggleKey.ToString().ToUpper()} TO STRUGGLE  (slows your timer, but it hears you)", hintStyle);
+                      player.IsDowned ? "YOU ARE DEAD  (a teammate can revive you)"
+                                      : $"TAP {struggleKey.ToString().ToUpper()} TO STRUGGLE  (slows your timer, but it hears you)", hintStyle);
             return;
         }
         if (freeing == null) return;
@@ -181,7 +182,7 @@ public class PlayerRescue : NetworkBehaviour
         float w = Screen.width * 0.22f, h = Screen.height * 0.012f;
         float x = (Screen.width - w) / 2f, y = Screen.height * 0.62f;
         GUI.Label(new Rect(0, y - Screen.height * 0.05f, Screen.width, Screen.height * 0.04f),
-                  $"HOLD {freeKey.ToString().ToUpper()} TO FREE PLAYER {freeing.OwnerClientId + 1}", hintStyle);
+                  $"HOLD {freeKey.ToString().ToUpper()} TO {(freeing.IsDowned ? "REVIVE" : "FREE")} PLAYER {freeing.OwnerClientId + 1}", hintStyle);
         if (freeProgress <= 0f) return;
         GUI.color = new Color(0f, 0f, 0f, 0.6f);
         GUI.DrawTexture(new Rect(x, y, w, h), Texture2D.whiteTexture);

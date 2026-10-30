@@ -89,6 +89,8 @@ The group lives in a worn-down bunker between nights, R.E.P.O.-style: the bunker
 - **Night jobs:** optional goals that pay salvage and make you leave your fortified building (also the fix for
   camping): bring back N scout bodies, record the monster's call near its patrol, recover a supply crate, refuel a
   generator, rescue a teammate. Surviving until dawn is still the only win; jobs only decide how much you earn.
+  Exception (2026-10-30): the generator powers the van's beacon, so dawn doesn't come while it's off. Refuelling is
+  required, and that's what gets players outside.
 - **Losing:** salvage you carry is lost if you don't reach the van at dawn. A lost night can also break something in
   the bunker (a light goes dark, a room floods) so losses feel real without wiping progress.
 - **Upgrades are options, not power** (they must not fight the monster's evolution, and every one gets a counter):
