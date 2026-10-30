@@ -754,6 +754,10 @@ MonoBehaviour:
   stoopSpeed: 1.6
   stoopBowSpeed: 140
   freeArmHangBow: {x: 40, y: 80}
+  slamHipDrop: 0.2
+  slamHandHeight: 0.06
+  slamDownSpeed: 18
+  slamSquatSpeed: 5
   gripCloseSpeed: 4
   gripFingerCurl: {x: 55, y: 65, z: 45}
   gripThumbCurl: {x: 20, y: 30, z: 25}
@@ -1176,7 +1180,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameFlow
   ShowTopMostFoldoutHeaderGroup: 1
-  prepSeconds: 360
+  prepSeconds: 10
   nightSeconds: 360
 --- !u!114 &1018997749
 MonoBehaviour:
@@ -1900,6 +1904,7 @@ GameObject:
   - component: {fileID: 1857967604}
   - component: {fileID: 1857967611}
   - component: {fileID: 1857967612}
+  - component: {fileID: 1857967613}
   m_Layer: 0
   m_Name: Monster
   m_TagString: Untagged
@@ -1927,6 +1932,8 @@ MonoBehaviour:
   lungeSpeed: 12
   lungeTime: 1.5
   turnSpeed: 90
+  openGroundSpeed: 16
+  openGroundRadius: 8
   eyeHeightStanding: 13
   eyeHeightPeeking: 3
   sightRange: 35
@@ -1948,6 +1955,8 @@ MonoBehaviour:
   grabWidth: 2.5
   grabOvershoot: 1.5
   chaseSnapDistance: 3
+  nearMissDistance: 6
+  slamPause: 1.2
   grabEscapeRange: 7
   grabHoldTime: 2
   catchCooldown: 3
@@ -2057,6 +2066,8 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 15aee7e70a6322c408ce63ebdce5414c, type: 3}
   growlClips: []
   chaseScream: {fileID: 8300000, guid: a758f0d82947ee44aa16148c12c977ee, type: 3}
+  slamClips: []
+  slamVolume: 1
   attackClips: []
   playerDeathScreams: []
   deathStinger: {fileID: 8300000, guid: b50ea3e348ca72d41b393dc516ad1427, type: 3}
@@ -2064,6 +2075,7 @@ MonoBehaviour:
   silenceAfterDeath: 3
   chaseMusicLoop: {fileID: 8300000, guid: ce48f1175e4b7fb4ab5a7732877a4be7, type: 3}
   heartbeatLoop: {fileID: 8300000, guid: 9409d10d34f18c54f981c1eac75f7bf1, type: 3}
+  silenceOnStare: 1
   soundRange: 45
   breathFullVolumeDistance: 6
   footstepRange: 120
@@ -2082,6 +2094,7 @@ MonoBehaviour:
   footstepShake: 0.35
   screamShake: 0.5
   grabShake: 1
+  slamShake: 0.9
   shakeRange: 45
   stepDistance: 3.5
   growlInterval: {x: 8, y: 20}
@@ -2133,6 +2146,36 @@ MonoBehaviour:
   SwitchTransformSpaceWhenParented: 0
   Interpolate: 1
   SlerpPosition: 0
+--- !u!114 &1857967613
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1857967603}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ccceff454f43bc42b6d096a2199e395, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GroundSlamFx
+  impactDelay: 0.12
+  maxCraters: 12
+  crackDecalMaterial: {fileID: 2100000, guid: bb6d2da463efc0240b1259300778620b, type: 2}
+  decalSize: 6
+  rubbleMaterial: {fileID: 2100000, guid: cf2fa3d5d47895f42974ec67ac2b7895, type: 2}
+  rimSlabs: 12
+  rimRadius: 1.35
+  rimTilt: {x: 12, y: 35}
+  chunks: 9
+  chunkSize: {x: 0.12, y: 0.4}
+  chunkSpeed: {x: 4, y: 9}
+  chunkSettleTime: 3
+  dustMaterial: {fileID: 2100000, guid: 9c012236b7e04dd45b76589e2c689153, type: 2}
+  dustPuffs: 45
+  dustColor: {r: 0.55, g: 0.53, b: 0.5, a: 0.45}
+  dustSpeed: {x: 3, y: 8}
+  dustLifetime: {x: 3, y: 5.5}
+  grit: 40
 --- !u!1 &2014776694
 GameObject:
   m_ObjectHideFlags: 0

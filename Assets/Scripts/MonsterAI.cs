@@ -49,6 +49,11 @@ public class MonsterAI : NetworkBehaviour
     public float lungeSpeed = 12f;        // the sudden burst when a chase starts
     public float lungeTime = 1.5f;
     public float turnSpeed = 90f;         // degrees/sec when it turns to stare
+    [Tooltip("Chasing with no building within openGroundRadius of it: it sprints this fast (players sprint at 6). " +
+             "Out in the open you can't outrun it; get between buildings.")]
+    public float openGroundSpeed = 16f;
+    [Tooltip("No building this close (m) to the giant = open ground.")]
+    public float openGroundRadius = 8f;
 
     [Header("Vision")]
     public float eyeHeightStanding = 13f;   // sees over walls and low buildings
@@ -90,6 +95,12 @@ public class MonsterAI : NetworkBehaviour
              "nothing solid in between. Covers the pavement along walls where its big body doesn't fit; without it the " +
              "chase stalls there (run, stop, run). Keep it small or it stands outside doorways instead of reaching in.")]
     public float chaseSnapDistance = 3f;
+    [Tooltip("Running grab missed but you were still this close (m) to where its hand came down: it slams the " +
+             "ground beside you (shake + thud for everyone).")]
+    public float nearMissDistance = 6f;
+    [Tooltip("After the slam it stays down with its hand on the ground this long (s) before it pushes up and chases " +
+             "again: your window to get away. Gets shorter as it feeds (divided by its speed bonus).")]
+    public float slamPause = 1.2f;
     public float grabEscapeRange = 7f;      // Reach (doorway) grabs only: get this far away to dodge
     public float grabHoldTime = 3.5f;       // stands still holding you up after a catch
     public float catchCooldown = 4f;
@@ -154,6 +165,7 @@ public class MonsterAI : NetworkBehaviour
     float arrivedTime = -1f;
     float grabStart = -1f;
     Vector3 grabDir;   // running grab: the line it charges along (locked when the grab starts)
+    float slamRecoverUntil = -1f;   // near miss: down on its hand until then
     ReachPoint currentReachPoint;
 
     enum ReachPhase { Peek, Enter, Feel, Retract }
@@ -380,6 +392,7 @@ public class MonsterAI : NetworkBehaviour
         windupStart = -1f;
         arrivedTime = -1f;
         grabStart = -1f;
+        slamRecoverUntil = -1f;
         agent.isStopped = false;
         agent.updateRotation = true;
         agent.autoBraking = newState != MonsterState.Chase;   // chasing: full speed right up to you, no easing off
@@ -479,6 +492,16 @@ public class MonsterAI : NetworkBehaviour
         Vector3 playerPos = target.transform.position;
         Vector3 hand = transform.position + Vector3.up * 4f;
 
+        // Down on its hand after a near miss: it doesn't move or look for you until it's back up
+        if (slamRecoverUntil >= 0f)
+        {
+            if (Time.time < slamRecoverUntil) return;
+            slamRecoverUntil = -1f;
+            agent.isStopped = false;
+            agent.updateRotation = true;
+            nextPathCheck = 0f;
+        }
+
         // Mid-grab: it doesn't stop. It charges on in a straight line while the hand swipes down,
         // so running straight away gets you caught; sprinting sideways out of its path dodges it.
         if (grabStart >= 0f)
@@ -487,7 +510,23 @@ public class MonsterAI : NetworkBehaviour
 
             grabStart = -1f;
             if (InGrabPath(target, hand)) { CatchPlayer(); return; }
-            // Missed! Back to the chase (it re-paths to you below)
+            // Missed! The hand comes down beside you and slams the ground. Back to the chase (it re-paths below).
+            // The hand lands on its line of charge, level with you (or as far ahead as it reaches)
+            float along = Mathf.Clamp(Vector3.Dot(playerPos - transform.position, grabDir), 3f, grabRange);
+            Vector3 slam = transform.position + grabDir * along;
+            slam.y = playerPos.y;
+            if (Vector3.Distance(slam, playerPos) < nearMissDistance)
+            {
+                if (NavMesh.SamplePosition(slam, out var ground, 2f, NavMesh.AllAreas)) slam.y = ground.position.y;
+                float pause = slamPause / FedSpeed;
+                slamRecoverUntil = Time.time + pause;
+                agent.ResetPath();
+                agent.velocity = Vector3.zero;   // the hand hitting the street stops it dead
+                agent.isStopped = true;
+                agent.updateRotation = false;
+                SlamRpc(slam, pause);
+                return;
+            }
         }
         else if (CanGrab(target, grabRange, hand))
         {
@@ -502,7 +541,13 @@ public class MonsterAI : NetworkBehaviour
         }
 
         bool lunging = Time.time - stateStartTime < lungeTime;
-        agent.speed = (lunging ? lungeSpeed : pursuitSpeed) * FedSpeed;
+        if (Time.time >= nextOpenCheck)
+        {
+            nextOpenCheck = Time.time + 0.3f;
+            onOpenGround = !BuildingWithin(transform.position, openGroundRadius);
+        }
+        float chaseSpeed = onOpenGround ? Mathf.Max(openGroundSpeed, pursuitSpeed) : pursuitSpeed;
+        agent.speed = (lunging ? Mathf.Max(lungeSpeed, chaseSpeed) : chaseSpeed) * FedSpeed;
 
         // Run for the street spot nearest you (on the pavement it can't fit onto, that's the curb beside you)
         bool nearStreet = StreetPointNear(target, out var chasePoint);
@@ -527,6 +572,38 @@ public class MonsterAI : NetworkBehaviour
             pointOfInterest = playerPos;
             SetState(MonsterState.Reach);
         }
+    }
+
+    // Open ground check: is any building (its footprint) within this distance? Footprints cached per city.
+    float nextOpenCheck;
+    bool onOpenGround;
+    CityGenerator.City boundsCity;
+    readonly System.Collections.Generic.List<Bounds> buildingBounds = new System.Collections.Generic.List<Bounds>();
+    bool BuildingWithin(Vector3 p, float radius)
+    {
+        var city = CityManager.Current;
+        if (city == null) return true;   // no city: never sprint
+        if (boundsCity != city)
+        {
+            boundsCity = city;
+            buildingBounds.Clear();
+            foreach (var b in city.buildings)
+            {
+                if (b == null) continue;
+                var cols = b.GetComponentsInChildren<Collider>();
+                if (cols.Length == 0) continue;
+                var bounds = cols[0].bounds;
+                foreach (var c in cols) bounds.Encapsulate(c.bounds);
+                buildingBounds.Add(bounds);
+            }
+        }
+        float r2 = radius * radius;
+        foreach (var b in buildingBounds)
+        {
+            Vector3 flat = new Vector3(p.x, b.center.y, p.z);   // footprint only, ignore height
+            if (b.SqrDistance(flat) < r2) return true;
+        }
+        return false;
     }
 
     void UpdateReach()
@@ -1035,6 +1112,26 @@ public class MonsterAI : NetworkBehaviour
     {
         var anim = GetComponentInChildren<MonsterAnimator>();
         if (anim != null && victim.TryGet(out NetworkObject obj)) anim.StartSwipe(obj.transform, windup);
+    }
+
+    // Everyone: near miss, the hand slams the ground beside you
+    [Rpc(SendTo.Everyone)]
+    void SlamRpc(Vector3 point, float pause)
+    {
+        var anim = GetComponentInChildren<MonsterAnimator>();
+        if (anim != null) anim.StartSlam(point, pause);
+        var fx = GetComponent<GroundSlamFx>();
+        float delay = fx != null ? fx.impactDelay : 0f;   // effects land when the hand does
+        StartCoroutine(SlamImpact(point, delay));
+    }
+
+    System.Collections.IEnumerator SlamImpact(Vector3 point, float delay)
+    {
+        if (delay > 0f) yield return new WaitForSeconds(delay);
+        var monsterAudio = GetComponent<MonsterAudio>();
+        if (monsterAudio != null) monsterAudio.PlaySlam(point);
+        var fx = GetComponent<GroundSlamFx>();
+        if (fx != null) fx.Spawn(point, transform.position);
     }
 
     [Rpc(SendTo.Everyone)]

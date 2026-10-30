@@ -118,9 +118,13 @@ Sizes: S = ~20-40k tokens, M = ~40-80k, L = split it if it runs long.
   Done 2026-10-29, host-tested: MonsterAI "It feeds" header (speed/sense +10% per catch, stare -15% per catch, min
   0.5 s, max 5 catches; carry speed unchanged). Reset in ApplyGenome. Climber feeds too (speed + sight/hearing/feel,
   no stare); same code as the giant, compiled, not host-tested (play mode kept stopping).
-- [ ] **11. Chase feel (M, Sonnet).** Open-ground sprint (no building within ~8 m -> openGroundSpeed 16), near-miss
+- [x] **11. Chase feel (M, Sonnet).** Open-ground sprint (no building within ~8 m -> openGroundSpeed 16), near-miss
   ground slam, tunnel vision + muffled audio as it closes in, look-back key (Q), silence on the stare.
   Files: MonsterAI.cs, MonsterAudio.cs, CameraShake.cs, FirstPersonController.cs.
+  Done 2026-10-29, Petar checked: open-ground sprint, Q look-back, stare silence (heartbeat + music cut). Near miss =
+  1.2 s stop with the hand on the street (MonsterAnimator.StartSlam squat) + GroundSlamFx crater (dust, grit, chunks,
+  slab rim, generated crack decal: Tools > Crack Decal Textures / Ground Slam FX Setup). Slam sound = footstep
+  stand-in until a real clip. Tunnel vision/muffling already existed (ChaseStress).
 - [ ] **12. Giant reaches into alleys (L, Opus).** Today it sees you in an alley it can't fit into and just runs
   around. Instead: it stands at the alley mouth (or beside the alley over the buildings), bends over to suit what's
   around it (lower over low walls, round corners) and reaches in with one arm. If a wall, house or big object is in the

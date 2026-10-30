@@ -28,6 +28,14 @@ public class FirstPersonController : NetworkBehaviour
     [Tooltip("Seconds the view takes to catch up with the mouse (0 = instant). Tiny values just take the edge off.")]
     public float lookSmoothing = 0.02f;
 
+    [Header("Look back")]
+    [Tooltip("Hold this to look over your shoulder while you keep running the same way.")]
+    public Key lookBackKey = Key.Q;
+    [Tooltip("How far (degrees) the head turns when looking back.")]
+    public float lookBackAngle = 165f;
+    [Tooltip("How fast the head swings round and back (higher = snappier).")]
+    public float lookBackSpeed = 10f;
+
     [Header("Camera feel")]
     public float fieldOfView = 72f;
     public float sprintFovBoost = 6f;     // view widens a little when sprinting
@@ -99,6 +107,7 @@ public class FirstPersonController : NetworkBehaviour
     Camera ownCamera;
     float bobPhase;
     float bobBlend;
+    float lookBackYaw;     // head turned over the shoulder (Q), the body keeps facing the way you run
     Coroutine falling;
 
     // The monster holding this player, looked up from netCarrierId
@@ -212,6 +221,7 @@ public class FirstPersonController : NetworkBehaviour
         if (kb == null || mouse == null) return;
 
         Look(mouse);
+        LookBack(kb);
         Crouch(kb);
         Move(kb);
         bool sprinting = !NetworkUI.MenuOpen && kb.leftShiftKey.isPressed && kb.wKey.isPressed && !isCrouching;
@@ -240,7 +250,7 @@ public class FirstPersonController : NetworkBehaviour
         cameraPivot.localPosition += new Vector3(Mathf.Cos(bobPhase) * amount * 0.4f, -Mathf.Abs(Mathf.Sin(bobPhase)) * amount, 0f);
 
         float roll = Mathf.Cos(bobPhase) * bobSway * bobBlend * damp;
-        cameraPivot.localRotation = Quaternion.Euler(pitch, 0f, roll);
+        cameraPivot.localRotation = Quaternion.Euler(pitch, lookBackYaw, roll);
 
         if (ownCamera != null)
         {
@@ -266,6 +276,13 @@ public class FirstPersonController : NetworkBehaviour
         cameraPivot.localRotation = Quaternion.Euler(pitch, 0f, 0f); // head looks up/down
 
         if (Mathf.Abs(netPitch.Value - pitch) > 0.5f) netPitch.Value = pitch;
+    }
+
+    // Hold Q: the head swings round over the shoulder; let go and it snaps back
+    void LookBack(Keyboard kb)
+    {
+        bool held = !NetworkUI.MenuOpen && kb[lookBackKey].isPressed;
+        lookBackYaw = Mathf.Lerp(lookBackYaw, held ? lookBackAngle : 0f, 1f - Mathf.Exp(-lookBackSpeed * Time.deltaTime));
     }
 
     void Move(Keyboard kb)
@@ -421,6 +438,7 @@ public class FirstPersonController : NetworkBehaviour
         lyingHidden = false;
         letGoAt = null;
         pitch = pitchTarget = 0f;
+        lookBackYaw = 0f;
         pendingYaw = 0f;
         cameraPivot.localRotation = Quaternion.identity;
         netPitch.Value = 0f;
@@ -492,6 +510,7 @@ public class FirstPersonController : NetworkBehaviour
         yield return new WaitForSeconds(blackTime);
 
         pitch = pitchTarget = 0f;
+        lookBackYaw = 0f;
         pendingYaw = 0f;
         cameraPivot.localRotation = Quaternion.identity;
         netPitch.Value = 0f;

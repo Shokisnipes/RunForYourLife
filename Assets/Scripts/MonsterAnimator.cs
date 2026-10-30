@@ -107,6 +107,16 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     [Tooltip("Bowing between these angles (degrees), the free arm eases into hanging straight down instead of " +
              "keeping its animated swing (which points up behind the back when bent over).")]
     public Vector2 freeArmHangBow = new Vector2(40f, 80f);
+    [Header("Near miss: the hand slams the ground")]
+    [Tooltip("Slamming, the hips drop this much more so the hand gets all the way down (normal human meters, scaled " +
+             "automatically). The feet stay planted, so the knees bend: a heavy squat over its hand.")]
+    public float slamHipDrop = 0.2f;
+    [Tooltip("Where the wrist ends up above the ground (normal human meters, scaled): the palm flat on the street.")]
+    public float slamHandHeight = 0.06f;
+    [Tooltip("How fast the hand comes down (higher = more violent).")]
+    public float slamDownSpeed = 18f;
+    [Tooltip("How fast it gets into and out of the squat (full squat per second).")]
+    public float slamSquatSpeed = 5f;
 
     [Tooltip("How fast the hand closes around you on a catch and opens when it lets go (full close per second).")]
     public float gripCloseSpeed = 4f;
@@ -463,6 +473,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
             target = Mathf.InverseLerp(stoopStartDistance, stoopFullDistance, d.magnitude);
         }
         if (swipeTarget != null && Time.time < swipeUntil) target = 1f;
+        if (Slamming) target = 1f;
         if (carrying && !carryThroughDoor)
             target = Mathf.Max(target, 1f - Mathf.SmoothStep(0f, 1f, (Time.time - carryStart) / Mathf.Max(0.1f, liftTime)));
         if (PuttingDown) target = 1f;
@@ -487,6 +498,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         if (stoop <= 0f) return;
         float w = Mathf.SmoothStep(0f, 1f, stoop);
         animator.bodyPosition += (Vector3.down * stoopHipDrop + Flat(root.forward) * stoopHipForward) * modelScale * w;
+        if (slamSquat > 0f) animator.bodyPosition += Vector3.down * slamHipDrop * modelScale * Mathf.SmoothStep(0f, 1f, slamSquat);
     }
 
     // After the animation: bow the upper body forward, as far as the hand needs to reach you (searching from
@@ -554,6 +566,19 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     float swipeUntil, swipeRate, swipeWeight;
     Vector3 swipeGoal;
 
+    float slamUntil = -1f, slamSquat;
+    Vector3 slamPoint;
+    bool Slamming => Time.time < slamUntil && !carrying;
+
+    // Called on every computer on a near miss: the swiping hand comes down flat on the street and stays there
+    // while it squats over it, then it pushes back up
+    public void StartSlam(Vector3 point, float duration)
+    {
+        slamPoint = point;
+        slamUntil = Time.time + duration;
+        swipeTarget = null;   // the hand goes for the ground now, not the player
+    }
+
     // Called on every computer when a running grab starts
     public void StartSwipe(Transform victim, float windup)
     {
@@ -565,6 +590,15 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
 
     void UpdateSwipe(float dt)
     {
+        bool slamming = Slamming;
+        slamSquat = Mathf.MoveTowards(slamSquat, slamming ? 1f : 0f, dt * slamSquatSpeed);
+        if (slamming)
+        {
+            swipeWeight = 1f;
+            swipeGoal = Vector3.Lerp(swipeGoal, slamPoint + Vector3.up * slamHandHeight * modelScale, 1f - Mathf.Exp(-slamDownSpeed * dt));
+            lookPos = Vector3.Lerp(lookPos, slamPoint, 1f - Mathf.Exp(-8f * dt));   // glares at where you were
+            return;
+        }
         bool on = swipeTarget != null && Time.time < swipeUntil && !carrying;
         swipeWeight = Mathf.MoveTowards(swipeWeight, on ? 1f : 0f, dt * (on ? swipeRate : 3f));
         if (swipeTarget == null) return;

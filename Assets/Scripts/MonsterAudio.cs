@@ -11,6 +11,9 @@ public class MonsterAudio : MonoBehaviour
     public AudioClip[] footstepClips;
     public AudioClip[] growlClips;
     public AudioClip chaseScream;          // plays when it spots someone
+    [Tooltip("Near miss: its hand slams the ground beside you. Empty = its footstep sound, pitched down.")]
+    public AudioClip[] slamClips;
+    [Range(0f, 1f)] public float slamVolume = 1f;
 
     [Header("Death")]
     public AudioClip[] attackClips;        // 3D on the monster: the roar/crunch when it gets someone
@@ -22,6 +25,9 @@ public class MonsterAudio : MonoBehaviour
     [Header("Your ears only")]
     public AudioClip chaseMusicLoop;
     public AudioClip heartbeatLoop;
+    [Tooltip("While it stares at you before charging, your heartbeat and the chase music cut out (dead silence), " +
+             "then the scream breaks it.")]
+    public bool silenceOnStare = true;
 
     [Header("Distances (full volume out to the first number, silent at the range; see AudioMix)")]
     [Tooltip("How far its breathing carries.")]
@@ -53,6 +59,7 @@ public class MonsterAudio : MonoBehaviour
     [Range(0f, 1f)] public float footstepShake = 0.35f;
     [Range(0f, 1f)] public float screamShake = 0.5f;
     [Range(0f, 1f)] public float grabShake = 1f;
+    [Range(0f, 1f), Tooltip("Near-miss ground slam, felt within 25 m.")] public float slamShake = 0.9f;
     public float shakeRange = 45f;
 
     [Header("Timing")]
@@ -151,11 +158,12 @@ public class MonsterAudio : MonoBehaviour
         float dist = Time.time < silencedUntil ? float.MaxValue : DistanceToLocalPlayer();
 
         float closeness = Mathf.Clamp01(1f - dist / heartbeatDistance);   // 0 far, 1 on top of you
-        heartbeat.volume = Mathf.MoveTowards(heartbeat.volume, heartbeatVolume * closeness, Time.deltaTime);
+        bool hush = silenceOnStare && staring && dist < voiceRange;          // the stare: everything goes quiet
+        heartbeat.volume = Mathf.MoveTowards(heartbeat.volume, hush ? 0f : heartbeatVolume * closeness, Time.deltaTime * (hush ? 4f : 1f));
         heartbeat.pitch = Mathf.Lerp(0.85f, 1.6f, closeness);
 
         float musicTarget = (chasing && dist < chaseMusicDistance) ? chaseMusicVolume : 0f;
-        float fadeSpeed = musicTarget > music.volume ? 1.5f : 0.25f;   // fast in, slow out
+        float fadeSpeed = hush ? 4f : musicTarget > music.volume ? 1.5f : 0.25f;   // fast in, slow out
         music.volume = Mathf.MoveTowards(music.volume, musicTarget, Time.deltaTime * fadeSpeed);
     }
 
@@ -168,6 +176,27 @@ public class MonsterAudio : MonoBehaviour
         PlayRandom(steps, footstepClips, footstepVolume, 0.85f, 1.05f);
         float runBoost = Mathf.Clamp01(smoothedSpeed / 7f) * 0.5f + 0.5f;   // heavier when running
         CameraShake.ShakeFrom(footPosition, footstepShake * runBoost, shakeRange);
+    }
+
+    // Near miss: the hand hits the ground right beside someone (every computer)
+    public void PlaySlam(Vector3 point)
+    {
+        var go = new GameObject("Slam");
+        go.transform.position = point;
+        var s = go.AddComponent<AudioSource>();
+        AudioMix.Setup3D(s, footstepFullVolumeDistance, footstepRange);
+        s.bypassListenerEffects = true;   // cuts through the chase muffling
+        bool hasSlam = slamClips != null && slamClips.Length > 0;
+        var clips = hasSlam ? slamClips : footstepClips;
+        if (clips != null && clips.Length > 0)
+        {
+            var clip = clips[Random.Range(0, clips.Length)];
+            s.pitch = hasSlam ? Random.Range(0.95f, 1.05f) : Random.Range(0.6f, 0.7f);   // stand-in: a deeper footstep
+            s.PlayOneShot(clip, slamVolume);
+            Destroy(go, clip.length / s.pitch + 0.1f);
+        }
+        else Destroy(go);
+        CameraShake.ShakeFrom(point, slamShake, 25f);
     }
 
     // Called on every computer when the monster catches someone
