@@ -2066,7 +2066,8 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 15aee7e70a6322c408ce63ebdce5414c, type: 3}
   growlClips: []
   chaseScream: {fileID: 8300000, guid: a758f0d82947ee44aa16148c12c977ee, type: 3}
-  slamClips: []
+  slamClips:
+  - {fileID: 8300000, guid: ed6abcdc6f78d6c46a2863bf002e3f6b, type: 3}
   slamVolume: 1
   attackClips: []
   playerDeathScreams: []

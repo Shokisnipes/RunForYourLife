@@ -132,7 +132,7 @@ public class MonsterAudio : MonoBehaviour
         }
 
         // Breathing gets faster and heavier while chasing
-        bool chasing = state == MonsterState.Chase;
+        bool chasing = state == MonsterState.Chase || state == MonsterState.AlleyReach;   // reaching into your alley is still the chase
         bool staring = state == MonsterState.Notice;   // it holds its breath while it stares at you
         breath.pitch = Mathf.MoveTowards(breath.pitch, chasing ? 1.3f : 1f, Time.deltaTime);
         float breathTarget = staring ? 0f : breathingVolume * (chasing ? 1f : 0.7f);

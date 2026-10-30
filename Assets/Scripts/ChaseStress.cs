@@ -125,7 +125,7 @@ public class ChaseStress : MonoBehaviour
         Vector3 me = transform.position;
         foreach (var giant in giants)
         {
-            if (giant == null || !giant.IsSpawned || giant.SyncedState != MonsterState.Chase) continue;
+            if (giant == null || !giant.IsSpawned || (giant.SyncedState != MonsterState.Chase && giant.SyncedState != MonsterState.AlleyReach)) continue;
             worst = Mathf.Max(worst, ChaseFear(Vector3.Distance(me, giant.transform.position), giantFearDistance));
         }
         foreach (var climber in climbers)

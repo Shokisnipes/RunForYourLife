@@ -2,7 +2,7 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
 
-public enum MonsterState { Patrol, Investigate, Notice, Chase, Reach, Search, Carry }
+public enum MonsterState { Patrol, Investigate, Notice, Chase, Reach, Search, Carry, AlleyReach }
 
 // The giant. Put on the Monster root together with a NavMeshAgent (Giant agent type),
 // NetworkObject and NetworkTransform. The brain only runs on the host; everyone else just sees it move.
@@ -10,6 +10,8 @@ public enum MonsterState { Patrol, Investigate, Notice, Chase, Reach, Search, Ca
 // Patrol -> hears a noise -> Investigate
 // sees you -> Notice (freezes and stares) -> Chase (lunges, then pursues)
 // you're somewhere it can't walk (inside a building) -> Reach (crouches at the opening, peeks in, grabs)
+// you're outdoors where it can't fit (alley, backyard) -> AlleyReach (stands as close as it gets, bends over the walls,
+//   braces its free hand on a wall or roof edge and reaches in)
 // loses you -> Search -> Patrol
 // catches you -> Carry (walks off with you to a hiding spot, stoops and puts you down) -> Patrol
 [RequireComponent(typeof(NavMeshAgent))]
@@ -41,6 +43,13 @@ public class MonsterAI : NetworkBehaviour
     // Holding a caught player until it puts them down at a hiding spot (MonsterAnimator keeps the hand closed)
     readonly NetworkVariable<bool> netCarrying = new NetworkVariable<bool>();
     public bool SyncedCarrying => netCarrying.Value;
+    // Alley reach: leaning in (the hand is netHandTarget) and the free hand braced on a wall top / roof edge
+    readonly NetworkVariable<bool> netLeaning = new NetworkVariable<bool>();
+    readonly NetworkVariable<bool> netBracing = new NetworkVariable<bool>();
+    readonly NetworkVariable<Vector3> netBracePoint = new NetworkVariable<Vector3>();
+    public bool SyncedLeaning => netLeaning.Value;
+    public bool SyncedBracing => netBracing.Value;
+    public Vector3 SyncedBracePoint => netBracePoint.Value;
 
     [Header("Movement")]
     public float walkSpeed = 2.5f;        // slow, lumbering patrol
@@ -118,6 +127,26 @@ public class MonsterAI : NetworkBehaviour
     [Tooltip("Extra distance it stands back from doorways. Raise it for a lying-down peek pose.")]
     public float peekStandBack = 0f;
 
+    [Header("Alley reach (you're outdoors somewhere it can't fit)")]
+    [Tooltip("It looks for the street spot nearest you within this distance (m). Further in than that, it doesn't try.")]
+    public float alleySearchRadius = 14f;
+    [Tooltip("How far (m, flat) from its feet its hand gets when it bends over and reaches in. Further in = safe.")]
+    public float alleyArmReach = 9f;
+    [Tooltip("Seconds it takes to bend over and get its hand up over the walls before it goes for you.")]
+    public float alleyLeanTime = 0.8f;
+    [Tooltip("The hand passes this high (m) over walls and roofs on its way in.")]
+    public float alleyClearance = 1.2f;
+    [Tooltip("Its free hand braces on a wall top or roof edge between these heights (m above the street).")]
+    public Vector2 braceHeight = new Vector2(1.5f, 9f);
+    [Tooltip("The brace spot is looked for this far (m) in front of its body, beside the line to you (it stands " +
+             "side-on, so that's where its free hand can get to: like a hand on the back of the couch).")]
+    public float braceSideOffset = 1.8f;
+    [Tooltip("How far it turns side-on while reaching in (degrees; 90 = reaching shoulder pointed straight at you). " +
+             "Like reaching behind a couch for the remote: shoulder in, body stays outside.")]
+    public float alleyTurn = 75f;
+    [Tooltip("You moved out of reach but it still sees you: after this long (s) it walks to a better spot.")]
+    public float alleyRepositionDelay = 1.5f;
+
     [Header("Carry off (after a catch)")]
     [Tooltip("Walking speed while it carries you off.")]
     public float carrySpeed = 4f;
@@ -166,6 +195,13 @@ public class MonsterAI : NetworkBehaviour
     float grabStart = -1f;
     Vector3 grabDir;   // running grab: the line it charges along (locked when the grab starts)
     float slamRecoverUntil = -1f;   // near miss: down on its hand until then
+    // Alley reach
+    enum AlleyPhase { Walk, Lean, Feel, Retract }
+    AlleyPhase alleyPhase;
+    float alleyPhaseStart, nextCruiseCheck, cruiseHeight, nextBraceCheck, outOfReachSince = -1f;
+    Vector3 alleyStand;
+    float alleyFloorY;
+    float alleyProbeHold;   // the real street under it (the NavMesh, and so its transform, floats metres above it)
     ReachPoint currentReachPoint;
 
     enum ReachPhase { Peek, Enter, Feel, Retract }
@@ -337,6 +373,7 @@ public class MonsterAI : NetworkBehaviour
             case MonsterState.Notice:      UpdateNotice(); break;
             case MonsterState.Chase:       UpdateChase(); break;
             case MonsterState.Reach:       UpdateReach(); break;
+            case MonsterState.AlleyReach:  UpdateAlleyReach(); break;
             case MonsterState.Search:      UpdateSearch(); break;
         }
 
@@ -349,7 +386,7 @@ public class MonsterAI : NetworkBehaviour
         bool hasLook = false;
 
         bool recentlySeen = target != null && target.IsSpawned && Time.time - lastSeenTime < 2f;
-        if (recentlySeen && (state == MonsterState.Notice || state == MonsterState.Chase || state == MonsterState.Reach))
+        if (recentlySeen && (state == MonsterState.Notice || state == MonsterState.Chase || state == MonsterState.Reach || state == MonsterState.AlleyReach))
         {
             look = Chest(target);          // stares right at you
             hasLook = true;
@@ -359,7 +396,7 @@ public class MonsterAI : NetworkBehaviour
             look = handGoal;                               // watches where its hand is feeling
             hasLook = true;
         }
-        else if (state == MonsterState.Investigate || state == MonsterState.Search || state == MonsterState.Reach)
+        else if (state == MonsterState.Investigate || state == MonsterState.Search || state == MonsterState.Reach || state == MonsterState.AlleyReach)
         {
             look = pointOfInterest + Vector3.up * 1.5f;   // looks where it thinks you are
             hasLook = true;
@@ -373,7 +410,8 @@ public class MonsterAI : NetworkBehaviour
 
         bool reaching = state == MonsterState.Reach && arrivedTime >= 0f && reachPhase != ReachPhase.Peek;
         if (netReaching.Value != reaching) netReaching.Value = reaching;
-        if (reaching && (netHandTarget.Value - handPos).sqrMagnitude > 0.0025f) netHandTarget.Value = handPos;
+        bool leaning = state == MonsterState.AlleyReach && netLeaning.Value;
+        if ((reaching || leaning) && (netHandTarget.Value - handPos).sqrMagnitude > 0.0025f) netHandTarget.Value = handPos;
         // The doorway posture needs the door while peeking too, not just once the arm goes in
         if ((peeking || reaching) && currentReachPoint != null && (netDoorPoint.Value - currentReachPoint.DoorPoint).sqrMagnitude > 0.01f)
             netDoorPoint.Value = currentReachPoint.DoorPoint;
@@ -387,6 +425,8 @@ public class MonsterAI : NetworkBehaviour
         if (carryVictim != null && newState != MonsterState.Carry && newState != MonsterState.Patrol) return;
         state = newState;
         netState.Value = newState;
+        if (netLeaning.Value) netLeaning.Value = false;
+        if (netBracing.Value) netBracing.Value = false;
         stateStartTime = Time.time;
         pauseUntil = 0f;
         windupStart = -1f;
@@ -434,6 +474,16 @@ public class MonsterAI : NetworkBehaviour
                 agent.acceleration = 6f;
                 agent.SetDestination(pointOfInterest);
                 break;
+            case MonsterState.AlleyReach:
+                // Walk to the street spot nearest you. None it can get to? It gives up.
+                if (!AlleyStandPoint(pointOfInterest, out alleyStand)) { SetState(MonsterState.Patrol); return; }
+                agent.speed = pursuitSpeed * FedSpeed;
+                agent.acceleration = 10f;
+                agent.SetDestination(alleyStand);
+                alleyPhase = AlleyPhase.Walk;
+                alleyPhaseStart = Time.time;
+                outOfReachSince = -1f;
+                break;
             case MonsterState.Carry:
                 agent.speed = carrySpeed;
                 agent.acceleration = 4f;
@@ -465,7 +515,7 @@ public class MonsterAI : NetworkBehaviour
     {
         if (!Arrived()) return;
         // Noise came from somewhere it can't walk (inside a building)? Go peek in.
-        SetState(IsReachable(pointOfInterest) ? MonsterState.Search : MonsterState.Reach);
+        if (IsReachable(pointOfInterest)) SetState(MonsterState.Search); else ReachFor(pointOfInterest);
     }
 
     void UpdateNotice()
@@ -481,7 +531,7 @@ public class MonsterAI : NetworkBehaviour
         else
         {
             pointOfInterest = lastSeenPosition;
-            SetState(IsReachable(pointOfInterest) ? MonsterState.Search : MonsterState.Reach);
+            if (IsReachable(pointOfInterest)) SetState(MonsterState.Search); else ReachFor(pointOfInterest);
         }
     }
 
@@ -562,15 +612,14 @@ public class MonsterAI : NetworkBehaviour
         if (Time.time - lastSeenTime > loseSightTime)
         {
             pointOfInterest = playerPos;
-            SetState(targetReachable ? MonsterState.Search : MonsterState.Reach);
+            if (targetReachable) SetState(MonsterState.Search); else ReachFor(playerPos);
             return;
         }
 
         // Can see you but can't walk to you (you're in a doorway / building): reach for you
         if (!targetReachable && Arrived())
         {
-            pointOfInterest = playerPos;
-            SetState(MonsterState.Reach);
+            ReachFor(playerPos);
         }
     }
 
@@ -602,6 +651,233 @@ public class MonsterAI : NetworkBehaviour
         {
             Vector3 flat = new Vector3(p.x, b.center.y, p.z);   // footprint only, ignore height
             if (b.SqrDistance(flat) < r2) return true;
+        }
+        return false;
+    }
+
+    // You're somewhere it can't walk to. Under a roof = inside a building: the doorway reach. Out in the open (alley,
+    // backyard, dead end) = it leans over the walls and reaches in.
+    void ReachFor(Vector3 point)
+    {
+        pointOfInterest = point;
+        SetState(Indoors(point) ? MonsterState.Reach : MonsterState.AlleyReach);
+    }
+
+    bool Indoors(Vector3 p)
+    {
+        int count = Physics.RaycastNonAlloc(p + Vector3.up * 0.5f, Vector3.up, handHits, 12f, Door.AllButDoors, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < count; i++)
+        {
+            var c = handHits[i].collider;
+            if (c.transform.IsChildOf(transform) || c.GetComponentInParent<FirstPersonController>() != null) continue;
+            return true;
+        }
+        return false;
+    }
+
+    // The ground it can stand on nearest to you, if it can walk there
+    bool AlleyStandPoint(Vector3 p, out Vector3 stand)
+    {
+        stand = p;
+        if (!NavMesh.SamplePosition(p, out var hit, alleySearchRadius, Filter)) return false;
+        stand = hit.position;
+        return IsReachable(stand, 0.5f);
+    }
+
+    static float FlatDistance(Vector3 a, Vector3 b) => Vector2.Distance(new Vector2(a.x, a.z), new Vector2(b.x, b.z));
+
+    void SetAlleyPhase(AlleyPhase phase)
+    {
+        alleyPhase = phase;
+        alleyPhaseStart = Time.time;
+    }
+
+    void UpdateAlleyReach()
+    {
+        bool seesTarget = target != null && target.IsSpawned && !target.IsGrabbed && Time.time - lastSeenTime < 0.25f;
+        if (seesTarget) pointOfInterest = lastSeenPosition;
+
+        // Back out into the street? Chase. Ducked into a building? Go to its door instead.
+        if (seesTarget && Time.time >= nextPathCheck)
+        {
+            nextPathCheck = Time.time + 0.3f;
+            if (StreetPointNear(target, out var street) && IsReachable(street, 0.5f)) { SetState(MonsterState.Chase); return; }
+            if (Indoors(target.transform.position)) { ReachFor(target.transform.position); return; }
+        }
+
+        if (alleyPhase == AlleyPhase.Walk)
+        {
+            if (!Arrived())
+            {
+                if (Time.time - alleyPhaseStart > 15f) SetState(MonsterState.Patrol);   // couldn't get there
+                return;
+            }
+            agent.isStopped = true;
+            agent.updateRotation = false;
+            handPos = HandRest();
+            alleyFloorY = TopBelow(transform.position, out var floor) ? floor.y : transform.position.y;
+            nextCruiseCheck = nextBraceCheck = 0f;
+            netLeaning.Value = true;
+            SetAlleyPhase(AlleyPhase.Lean);
+        }
+
+        if (alleyPhase == AlleyPhase.Retract) FaceTowards(pointOfInterest);
+        else FaceTowards(transform.position + SideOnForward(pointOfInterest) * 10f);
+        if (Time.time >= nextBraceCheck)
+        {
+            nextBraceCheck = Time.time + 1f;
+            Vector3 bracePoint = Vector3.zero;
+            bool brace = alleyPhase != AlleyPhase.Retract && FindBrace(pointOfInterest, out bracePoint);
+            if (brace && (netBracePoint.Value - bracePoint).sqrMagnitude > 0.04f) netBracePoint.Value = bracePoint;
+            if (netBracing.Value != brace) netBracing.Value = brace;
+        }
+
+        switch (alleyPhase)
+        {
+            case AlleyPhase.Lean:
+                // Bends over, hand up and over whatever's in the way, toward where you are
+                handPos = MoveAlleyHand(handPos, pointOfInterest + Vector3.up * 3f, handLungeSpeed);
+                if (Time.time - alleyPhaseStart > alleyLeanTime) { nextProbeTime = 0f; SetAlleyPhase(AlleyPhase.Feel); }
+                break;
+
+            case AlleyPhase.Feel:
+                bool knowsWhere = seesTarget || Time.time - heardTime < 1.5f;
+                if (knowsWhere)
+                    handGoal = seesTarget ? Chest(target) : pointOfInterest + Vector3.up * 0.8f;
+                else if (Time.time >= nextProbeTime || (Time.time >= alleyProbeHold && (handPos - handGoal).sqrMagnitude < 0.5f))
+                {
+                    // Pats the ground around where it last knew you were: one spot, then the next once the hand's there
+                    Vector2 r = Random.insideUnitCircle * 3f;
+                    handGoal = pointOfInterest + new Vector3(r.x, Random.Range(0.3f, 1.2f), r.y);
+                    alleyProbeHold = Time.time + Random.Range(0.4f, 1f);   // a moment feeling around there
+                    nextProbeTime = Time.time + 5f;                        // or give up on a spot it can't get to
+                }
+                // Travels fast while the hand is far off (over the roofs), feels slowly once it's close
+                float handDist = Vector3.Distance(handPos, handGoal);
+                float alleyHandSpeed = knowsWhere ? handLungeSpeed : Mathf.Lerp(handSpeed, handLungeSpeed, Mathf.InverseLerp(1f, 4f, handDist));
+                handPos = MoveAlleyHand(handPos, handGoal, alleyHandSpeed);
+
+                var touched = PlayerTouchedByHand();
+                if (touched != null)
+                {
+                    target = touched;
+                    CatchPlayer();
+                    return;
+                }
+
+                // It sees you just out of reach: find a closer spot to reach from
+                if (seesTarget && FlatDistance(transform.position, target.transform.position) > alleyArmReach + 1f)
+                {
+                    if (outOfReachSince < 0f) outOfReachSince = Time.time;
+                    if (Time.time - outOfReachSince > alleyRepositionDelay &&
+                        AlleyStandPoint(target.transform.position, out var better) && FlatDistance(better, transform.position) > 3f)
+                    {
+                        pointOfInterest = target.transform.position;
+                        SetState(MonsterState.AlleyReach);
+                        return;
+                    }
+                }
+                else outOfReachSince = -1f;
+
+                if (Time.time - alleyPhaseStart > (knowsWhere ? feelDuration * 1.5f : feelDuration))
+                    SetAlleyPhase(AlleyPhase.Retract);
+                break;
+
+            case AlleyPhase.Retract:
+                handPos = Vector3.MoveTowards(handPos, HandRest(), handLungeSpeed * Time.deltaTime);
+                if (netBracing.Value) netBracing.Value = false;
+                if (Time.time - alleyPhaseStart > 1.2f) SetState(MonsterState.Patrol);
+                break;
+        }
+    }
+
+    // The hand goes up, over whatever's in the way (walls, roofs, cars) and comes down onto the goal.
+    // It can't get further from its feet than alleyArmReach.
+    Vector3 MoveAlleyHand(Vector3 from, Vector3 goal, float speed)
+    {
+        if (Time.time >= nextCruiseCheck)
+        {
+            nextCruiseCheck = Time.time + 0.25f;
+            cruiseHeight = ObstacleTop(from, goal) + alleyClearance;
+        }
+        Vector3 flat = goal - from;
+        flat.y = 0f;
+        Vector3 aim = goal;
+        if (flat.magnitude > 1.5f && cruiseHeight > goal.y)
+        {
+            // Still on the way: first up to clear the tops, then across at that height
+            aim = from.y < cruiseHeight - 0.3f ? new Vector3(from.x, cruiseHeight, from.z) + flat.normalized * 0.5f
+                                               : new Vector3(goal.x, cruiseHeight, goal.z);
+        }
+        Vector3 next = Vector3.MoveTowards(from, aim, speed * Time.deltaTime);
+
+        Vector3 fromBody = next - transform.position;
+        fromBody.y = 0f;
+        if (fromBody.magnitude > alleyArmReach)
+            next = new Vector3(transform.position.x, next.y, transform.position.z) + fromBody.normalized * alleyArmReach;
+        next.y = Mathf.Max(next.y, alleyFloorY + 0.3f);
+
+        float t = Time.time * 3f;   // alive, not robotic
+        return next + new Vector3(Mathf.PerlinNoise(t, 0f) - 0.5f, Mathf.PerlinNoise(0f, t) - 0.5f, Mathf.PerlinNoise(t, t) - 0.5f) * 0.15f;
+    }
+
+    // Highest wall top / roof between two points (looking straight down every metre)
+    float ObstacleTop(Vector3 a, Vector3 b)
+    {
+        float top = Mathf.Max(alleyFloorY, b.y);
+        Vector3 d = b - a;
+        d.y = 0f;
+        int steps = Mathf.Clamp(Mathf.CeilToInt(d.magnitude), 1, 14);
+        for (int i = 0; i <= steps; i++)
+        {
+            Vector3 p = a + d * (i / (float)steps);
+            if (TopBelow(p, out var hit)) top = Mathf.Max(top, hit.y);
+        }
+        return top;
+    }
+
+    // The top of whatever is under this spot (not players, not itself)
+    bool TopBelow(Vector3 p, out Vector3 point)
+    {
+        point = p;
+        Vector3 from = new Vector3(p.x, transform.position.y + 25f, p.z);
+        int count = Physics.RaycastNonAlloc(from, Vector3.down, handHits, 45f, Door.AllButDoors, QueryTriggerInteraction.Ignore);
+        float best = float.MaxValue;
+        for (int i = 0; i < count; i++)
+        {
+            var h = handHits[i];
+            if (h.collider.transform.IsChildOf(transform) || h.collider.GetComponentInParent<FirstPersonController>() != null) continue;
+            if (h.distance < best) { best = h.distance; point = h.point; }
+        }
+        return best < float.MaxValue;
+    }
+
+    // Which way its body faces to reach side-on: the reaching shoulder toward 'toward'
+    Vector3 SideOnForward(Vector3 toward)
+    {
+        Vector3 d = toward - transform.position;
+        d.y = 0f;
+        if (d.sqrMagnitude < 0.01f) return transform.forward;
+        var anim = GiantAnimator();
+        float reachSide = anim != null && anim.ReachShoulderSide < 0f ? -1f : 1f;   // + = right hand
+        return Quaternion.AngleAxis(-reachSide * alleyTurn, Vector3.up) * d.normalized;
+    }
+
+    // Something solid to lean on with the free hand: a wall top or roof edge in front of it, beside the line to you
+    bool FindBrace(Vector3 toward, out Vector3 point)
+    {
+        point = Vector3.zero;
+        Vector3 d = toward - transform.position;
+        d.y = 0f;
+        float dist = d.magnitude;
+        if (dist < 3f) return false;
+        d /= dist;
+        Vector3 side = SideOnForward(toward) * braceSideOffset;
+        for (float s = 1.5f; s <= Mathf.Min(dist, 5f); s += 0.5f)
+        {
+            if (!TopBelow(transform.position + d * s + side, out var top)) continue;
+            float h = top.y - alleyFloorY;
+            if (h >= braceHeight.x && h <= braceHeight.y) { point = top; return true; }
         }
         return false;
     }
@@ -815,7 +1091,7 @@ public class MonsterAI : NetworkBehaviour
         if (dist > radius * hearingMultiplier) return;
 
         pointOfInterest = position;
-        if (state == MonsterState.Reach) { heardTime = Time.time; return; }   // hand goes for the sound
+        if (state == MonsterState.Reach || state == MonsterState.AlleyReach) { heardTime = Time.time; return; }   // hand goes for the sound
         SetState(MonsterState.Investigate);
     }
 

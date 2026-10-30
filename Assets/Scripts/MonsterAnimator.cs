@@ -107,6 +107,26 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     [Tooltip("Bowing between these angles (degrees), the free arm eases into hanging straight down instead of " +
              "keeping its animated swing (which points up behind the back when bent over).")]
     public Vector2 freeArmHangBow = new Vector2(40f, 80f);
+    [Header("Alley reach: bent over the walls, reaching in")]
+    [Tooltip("How fast the lean and the braced hand blend in and out (per second).")]
+    public float leanBlendSpeed = 1.5f;
+    [Tooltip("How quickly the hand follows the host's hand position (higher = snappier).")]
+    public float leanHandSmoothing = 8f;
+    [Tooltip("The hand going this low (m above its feet) or lower makes it squat all the way (Slam Hip Drop x Lean Squat).")]
+    public float leanSquatHeight = 1f;
+    [Tooltip("...and it doesn't squat at all for a hand this high (m).")]
+    public float leanStandHeight = 6f;
+    [Range(0f, 1f), Tooltip("How much of the slam squat it uses at most while reaching into an alley.")]
+    public float leanSquat = 0.8f;
+    [Tooltip("Reaching in, the upper body tips sideways toward the hand up to this far (degrees): the shoulder drops in.")]
+    public float leanMaxBend = 70f;
+    [Tooltip("...and bows forward only this much (degrees).")]
+    public float leanForwardBow = 12f;
+    [Tooltip("The hips shift away from the reach to balance the lean (normal human meters, scaled, at the full bend).")]
+    public float leanHipShift = 0.08f;
+    [Tooltip("The braced palm sits this far (normal human meters, scaled) above the wall top / roof edge.")]
+    public float braceHandHeight = 0.05f;
+
     [Header("Near miss: the hand slams the ground")]
     [Tooltip("Slamming, the hips drop this much more so the hand gets all the way down (normal human meters, scaled " +
              "automatically). The feet stay planted, so the knees bend: a heavy squat over its hand.")]
@@ -454,6 +474,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         }
         else smoothedHand = HandPosition;
 
+        UpdateLean(dt);
         UpdateSwipe(dt);
         UpdateCarry(dt);
         UpdateStoopWeight(dt);
@@ -473,7 +494,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
             target = Mathf.InverseLerp(stoopStartDistance, stoopFullDistance, d.magnitude);
         }
         if (swipeTarget != null && Time.time < swipeUntil) target = 1f;
-        if (Slamming) target = 1f;
+        if (Slamming || Leaning) target = 1f;
         if (carrying && !carryThroughDoor)
             target = Mathf.Max(target, 1f - Mathf.SmoothStep(0f, 1f, (Time.time - carryStart) / Mathf.Max(0.1f, liftTime)));
         if (PuttingDown) target = 1f;
@@ -499,6 +520,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         float w = Mathf.SmoothStep(0f, 1f, stoop);
         animator.bodyPosition += (Vector3.down * stoopHipDrop + Flat(root.forward) * stoopHipForward) * modelScale * w;
         if (slamSquat > 0f) animator.bodyPosition += Vector3.down * slamHipDrop * modelScale * Mathf.SmoothStep(0f, 1f, slamSquat);
+        if (leanBend > 0f) animator.bodyPosition -= leanDir * leanHipShift * modelScale * (leanBend / Mathf.Max(1f, leanMaxBend));
     }
 
     // After the animation: bow the upper body forward, as far as the hand needs to reach you (searching from
@@ -516,8 +538,9 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
 
         bool swiping = swipeWeight > 0f && !carrying;
         bool lifting = carrying && (!carryThroughDoor || PuttingDown) && carryWeight > 0f;
-        Vector3 goal = lifting ? carryTarget : swipeGoal;
-        float want = stoopChaseBow * w;
+        bool leaning = leanWeight > 0f && !carrying && leanHand != Vector3.zero;
+        Vector3 goal = lifting ? carryTarget : leaning ? leanHand : swipeGoal;
+        float want = leaning ? leanForwardBow * w : stoopChaseBow * w;
         if (swiping || lifting)
         {
             // Least bow that brings the shoulder within the arm's reach of the goal
@@ -533,13 +556,40 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         spine.rotation = Quaternion.AngleAxis(lower, right) * spine.rotation;
         if (chest != null) chest.rotation = Quaternion.AngleAxis(stoopBow - lower, right) * chest.rotation;
 
+        // Alley reach: tip the upper body sideways toward the hand (shoulder in, like reaching behind a couch),
+        // only as far as the arm needs
+        float bendWant = 0f;
+        if (leaning)
+        {
+            Vector3 toGoal = Flat(goal - spine.position);
+            if (toGoal.sqrMagnitude > 0.01f)
+            {
+                leanDir = toGoal.normalized;
+                leanAxis = Vector3.Cross(Vector3.up, leanDir);   // tips the spine's up toward the goal
+            }
+            float reach = armLength * 0.95f;
+            bendWant = leanMaxBend;
+            for (float b = 0f; b <= leanMaxBend; b += 4f)
+                if (Vector3.Distance(BowedShoulder(b, leanAxis), goal) <= reach) { bendWant = b; break; }
+            bendWant *= Mathf.SmoothStep(0f, 1f, leanWeight);
+        }
+        leanBend = Mathf.MoveTowards(leanBend, bendWant, dt * stoopBowSpeed * 0.7f);
+        if (leanBend > 0f)
+        {
+            float lowerBend = chest != null ? leanBend * 0.45f : leanBend;
+            spine.rotation = Quaternion.AngleAxis(lowerBend, leanAxis) * spine.rotation;
+            if (chest != null) chest.rotation = Quaternion.AngleAxis(leanBend - lowerBend, leanAxis) * chest.rotation;
+        }
+
         // The arm again, from the bowed shoulder (elbow out to the side and back, like scooping)
-        float armW = lifting ? carryWeight : swiping ? swipeWeight : 0f;
+        float armW = lifting ? carryWeight : leaning ? leanWeight : swiping ? swipeWeight : 0f;
         var hand = HandBone;
         if (armW > 0f && hand != null)
         {
             float side = Mathf.Sign(Vector3.Dot(shoulder.position - spine.position, right));
-            Vector3 pole = shoulder.position + (right * side * 0.6f - n * 0.3f + Vector3.up * 0.2f) * modelScale;
+            Vector3 pole = leaning
+                ? shoulder.position + (Vector3.up * 0.6f - n * 0.4f) * modelScale        // reaching down: elbow up and back
+                : shoulder.position + (right * side * 0.6f - n * 0.3f + Vector3.up * 0.2f) * modelScale;
             TwoBoneIK(shoulder, elbow, hand, goal, pole, armW);
         }
 
@@ -552,6 +602,17 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
             Vector3 hang = (Vector3.down * 0.9f + n * 0.3f + right * side * 0.1f).normalized * len * 0.92f;
             Vector3 pole = freeShoulder.position + (right * side * 0.4f - n * 0.3f) * modelScale;
             TwoBoneIK(freeShoulder, freeElbow, freeHand, freeShoulder.position + hang, pole, Mathf.SmoothStep(0f, 1f, hangW));
+        }
+
+        // Alley reach: the free hand planted on a wall top / roof edge, taking its weight as it leans in
+        if (braceWeight > 0f && braceHand != Vector3.zero && freeShoulder != null && freeElbow != null && freeHand != null)
+        {
+            // Across the front of the body to the wall top; only if the arm actually gets there
+            float len = Vector3.Distance(freeShoulder.position, freeElbow.position) + Vector3.Distance(freeElbow.position, freeHand.position);
+            float fits = Mathf.InverseLerp(len * 1.25f, len * 1.02f, Vector3.Distance(freeShoulder.position, braceHand));
+            float side = Mathf.Sign(Vector3.Dot(freeShoulder.position - spine.position, right));
+            Vector3 pole = freeShoulder.position + (right * side * 0.6f - n * 0.2f + Vector3.up * 0.4f) * modelScale;
+            TwoBoneIK(freeShoulder, freeElbow, freeHand, braceHand, pole, Mathf.SmoothStep(0f, 1f, braceWeight) * fits);
         }
     }
 
@@ -567,6 +628,40 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     Vector3 swipeGoal;
 
     float slamUntil = -1f, slamSquat;
+    // Alley reach (synced from MonsterAI): the reaching hand and the braced free hand
+    float leanWeight, braceWeight, leanBend;
+    Vector3 leanAxis = Vector3.right, leanDir;
+    Vector3 leanHand, braceHand;
+    bool Leaning => ai != null && ai.SyncedLeaning && !carrying;
+
+    void UpdateLean(float dt)
+    {
+        bool leaning = Leaning;
+        leanWeight = Mathf.MoveTowards(leanWeight, leaning ? 1f : 0f, dt * leanBlendSpeed);
+        if (leaning)
+        {
+            if (leanHand == Vector3.zero) leanHand = HandPosition;
+            leanHand = Vector3.Lerp(leanHand, ai.SyncedHandTarget, 1f - Mathf.Exp(-leanHandSmoothing * dt));
+        }
+        else if (leanWeight <= 0f) leanHand = Vector3.zero;
+
+        bool bracing = leaning && ai.SyncedBracing;
+        braceWeight = Mathf.MoveTowards(braceWeight, bracing ? 1f : 0f, dt * leanBlendSpeed * 1.5f);
+        if (bracing)
+        {
+            Vector3 want = ai.SyncedBracePoint + Vector3.up * braceHandHeight * modelScale;
+            braceHand = braceHand == Vector3.zero ? want : Vector3.Lerp(braceHand, want, 1f - Mathf.Exp(-6f * dt));
+        }
+        else if (braceWeight <= 0f) braceHand = Vector3.zero;
+    }
+
+    // Reaching low into an alley: squat down so the hand gets there
+    float LeanSquatTarget()
+    {
+        if (leanWeight <= 0f || leanHand == Vector3.zero) return 0f;
+        float h = leanHand.y - root.position.y;
+        return Mathf.InverseLerp(leanStandHeight, leanSquatHeight, h) * leanSquat * leanWeight;
+    }
     Vector3 slamPoint;
     bool Slamming => Time.time < slamUntil && !carrying;
 
@@ -591,7 +686,7 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
     void UpdateSwipe(float dt)
     {
         bool slamming = Slamming;
-        slamSquat = Mathf.MoveTowards(slamSquat, slamming ? 1f : 0f, dt * slamSquatSpeed);
+        slamSquat = Mathf.MoveTowards(slamSquat, slamming ? 1f : LeanSquatTarget(), dt * slamSquatSpeed);
         if (slamming)
         {
             swipeWeight = 1f;
@@ -1381,6 +1476,12 @@ public class MonsterAnimator : MonoBehaviour, IMonsterGrabber
         else if (doorwayPosture)
         {
             animator.SetIKPositionWeight(reachHand, 0f);   // LateUpdate threads the arm through the door
+        }
+        else if (leanWeight > 0f && leanHand != Vector3.zero)
+        {
+            // Alley reach: the arm goes over the walls to where the host says the hand is
+            animator.SetIKPositionWeight(reachHand, leanWeight);
+            animator.SetIKPosition(reachHand, leanHand);
         }
         else if (swipeWeight > currentReachWeight)
         {
